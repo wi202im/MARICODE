@@ -34,6 +34,10 @@ npm test
 
 Building the native app also requires Xcode Command Line Tools and the pinned HAPI artifacts described in the build guide. Tests use synthetic data and temporary folders; live AI account tests are not run by this command.
 
+- [Product requirements](docs/goals.md)
+- [Current state and next work](docs/handoff.md)
+- [Contributor workflow](AGENTS.md)
+
 ## Current limitations
 
 - No Intel Mac build, App Store release, Developer ID notarization or automatic updater.
