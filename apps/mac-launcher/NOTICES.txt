@@ -1,9 +1,9 @@
-MARICODE 1.0.0 — distribution notices
+MARICODE 1.0.1 — distribution notices
 
 MARICODE product code: AGPL-3.0-only. Full text: MARICODE-LICENSE.txt
 in the app, LICENSE in the source repository and release attachments.
 Source repository: https://github.com/wi202im/MARICODE
-Release source: MARICODE-1.0.0-source.tar.gz, supplied beside the DMG.
+Release source: MARICODE-1.0.1-source.tar.gz, supplied beside the DMG.
 No warranty is provided; see the respective license texts.
 
 Distribution inventory (paths below are relative to Contents/Resources)
@@ -70,3 +70,10 @@ Paseo UI reference and adapted design tokens
   MARICODE rewrites the layout in HTML/CSS for HAPI. Paseo React Native components,
   logos, provider icons, runtime, plugins and branding are not bundled.
   These modifications do not imply endorsement by Paseo.
+
+  Update UI flow reference (Apache-2.0, same Paseo license):
+  https://github.com/getpaseo/paseo/tree/7f318bf7cf32690436c8623f1277521538178942
+  packages/app/src/desktop/updates/update-callout-source.tsx and
+  packages/app/src/desktop/components/desktop-updates-section.tsx.
+  MARICODE implements native AppKit version/status rows, release notes,
+  download notification and manual installation, without bundling the updater.

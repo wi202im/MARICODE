@@ -3,6 +3,7 @@ import {dirname,basename,isAbsolute} from 'node:path';import {randomUUID,createH
 const uuid=x=>typeof x==='string'&&/^[a-f0-9-]{36}$/.test(x);
 // Stable migration IDs: a read never writes the registry or changes an existing execution key.
 function migratedWorkspaceId(id){const s=createHash('sha256').update('maricode-workspace:'+id).digest('hex');return `${s.slice(0,8)}-${s.slice(8,12)}-5${s.slice(13,16)}-a${s.slice(17,20)}-${s.slice(20,32)}`;}
+export function legacyProjectId(path){return migratedWorkspaceId('legacy-project:'+path);}
 export function projectRegistry(file){
  async function read(){
   let data;try{data=JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code==='ENOENT')return {version:2,projects:[],workspaces:[]};throw e;}
@@ -20,13 +21,21 @@ export function projectRegistry(file){
  function flatten(data,includeRemoved=false){return data.workspaces.filter(w=>includeRemoved||!w.removed&&!data.projects.find(p=>p.id===w.projectId).removed).map(w=>{const p=data.projects.find(p=>p.id===w.projectId);return {id:w.executionKey,name:w.executionKey===p.id?p.name:w.name,path:w.path,projectId:p.id,projectLabel:p.name,workspaceId:w.id,workspaceLabel:w.name,kind:w.kind,...(w.executionKey!==p.id?{parentId:p.id,worktree:w.kind==='worktree'}:{})};});}
  async function list({includeRemoved=false}={}){return flatten(await read(),includeRemoved);}
  async function navigation(){const data=await read();return {sessions:data.sessionViews??{},removed:[...data.projects.filter(p=>p.removed).map(p=>({kind:'project',id:p.id,name:p.name,path:p.path})),...data.workspaces.filter(w=>w.removed&&!data.projects.find(p=>p.id===w.projectId).removed).map(w=>({kind:'workspace',id:w.id,name:w.name,path:w.path}))]};}
- async function edit(input){
+ async function edit(input,{legacyPath}={}){
   if(!input||Object.keys(input).some(k=>!['kind','id','action','name'].includes(k))||!['project','workspace','session'].includes(input.kind)||!uuid(input.id)||!['rename','remove','restore'].includes(input.action))throw Error('목록 변경 대상을 확인하세요.');
   if(input.action==='rename'&&(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>120||/[\u0000-\u001f\u007f]/.test(input.name)))throw Error('이름은 줄바꿈 없이 1~120자로 입력하세요.');
   await mkdir(dirname(file),{recursive:true,mode:0o700});const lock=file+'.lock';await mkdir(lock,{mode:0o700});let temp;
   try{const data=await read();let row;
    if(input.kind==='session'){data.sessionViews??={};row=data.sessionViews[input.id]??={};}
-   else{row=(input.kind==='project'?data.projects:data.workspaces).find(r=>r.id===input.id);if(!row)throw Error('등록된 항목이 아닙니다.');}
+   else{
+    row=(input.kind==='project'?data.projects:data.workspaces).find(r=>r.id===input.id);
+    // Only an explicit edit can adopt the configured legacy root. Never accept a client path.
+    if(!row&&input.kind==='project'&&isAbsolute(legacyPath??'')&&input.id===legacyProjectId(legacyPath)&&!data.workspaces.some(w=>w.path===legacyPath)){
+     row={id:input.id,name:basename(legacyPath),path:legacyPath};data.projects.push(row);
+     data.workspaces.push({id:migratedWorkspaceId(row.id),executionKey:row.id,projectId:row.id,path:legacyPath,name:'기본 작업공간',kind:'directory'});
+    }
+    if(!row)throw Error('등록된 항목이 아닙니다.');
+   }
    if(input.kind==='workspace'&&input.action==='remove'&&row.executionKey===row.projectId)throw Error('기본 작업공간은 프로젝트와 함께 등록 해제하세요.');
    if(input.action==='restore'&&input.kind!=='session'){
     const paths=input.kind==='project'?data.workspaces.filter(w=>w.projectId===row.id&&!w.removed).map(w=>w.path):[row.path];

@@ -21,6 +21,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     var output: Pipe?
     var url: URL?
     var quitting = false
+    var quitReviewNonce: String?
     var stopping = false
     var received = ""
     var webView: WKWebView!
@@ -28,6 +29,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     var machineOrder = ["local"]
     var activeMachine = "local"
     var machineLabels: [String: String] = [:]
+    let updateNotice = NSButton(title: "새 업데이트", target: nil, action: nil)
     let machineLabel = NSTextField(labelWithString: "이 Mac")
     let connectionIndicator = NSImageView()
     var connectionTimer: Timer?
@@ -41,6 +43,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     var utilityViews: [String: WKWebView] = [:]
     var tabsRestored = false
     var selectedAgent: String?
+    lazy var appUpdater = AppUpdateController(version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0")
 
     var pendingConfiguration: String?
     var authenticating = false
@@ -50,7 +53,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let iconPath = Bundle.main.path(forResource: "AppIcon", ofType: "icns") { NSApp.applicationIconImage = NSImage(contentsOfFile: iconPath) }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "MARICODE 1.0.0"; window.minSize = NSSize(width: 820, height: 600); window.delegate = self
+        window.title = "MARICODE " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""); window.minSize = NSSize(width: 820, height: 600); window.delegate = self
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.userContentController.add(self, name: "maricode")
@@ -80,7 +83,9 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         connectionIndicator.widthAnchor.constraint(equalToConstant: 7).isActive = true
         connectionIndicator.heightAnchor.constraint(equalToConstant: 7).isActive = true
         let computer = NSStackView(views: [connectionIndicator, machineLabel]); computer.spacing = 6; computer.alignment = .centerY
-        let controls = NSStackView(views: [status, computer, rightPanelButton]); controls.spacing = 12
+        updateNotice.isHidden = true; updateNotice.bezelStyle = .recessed; updateNotice.target = self; updateNotice.action = #selector(showAppUpdates)
+        appUpdater.onAvailable = { [weak self] version in self?.updateNotice.isHidden = version == nil; self?.updateNotice.title = version.map { "업데이트 \($0)" } ?? "새 업데이트" }
+        let controls = NSStackView(views: [updateNotice, status, computer, rightPanelButton]); controls.spacing = 12
         let chrome = NSView(); chrome.wantsLayer = true
         chrome.layer?.backgroundColor = NSColor(srgbRed: 0.075, green: 0.075, blue: 0.086, alpha: 1).cgColor
         for view in [chrome, browserContainer] { view.translatesAutoresizingMaskIntoConstraints = false; window.contentView!.addSubview(view) }
@@ -107,7 +112,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         browserContainer.addSubview(hostButton)
         NSLayoutConstraint.activate([hostButton.leadingAnchor.constraint(equalTo: browserContainer.leadingAnchor, constant: 12), hostButton.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor, constant: -2), hostButton.widthAnchor.constraint(equalToConstant: 28), hostButton.heightAnchor.constraint(equalToConstant: 28)])
         let menu = NSMenu(); let item = NSMenuItem(); menu.addItem(item)
-        let appMenu = NSMenu(); appMenu.addItem(withTitle: "MARICODE 종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); item.submenu = appMenu; NSApp.mainMenu = menu
+        let appMenu = NSMenu(); let updates = appMenu.addItem(withTitle: "업데이트 확인…", action: #selector(showAppUpdates), keyEquivalent: ""); updates.target = self; appMenu.addItem(.separator()); appMenu.addItem(withTitle: "MARICODE 종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); item.submenu = appMenu; NSApp.mainMenu = menu
         let setupItem = NSMenuItem(); let setupMenu = NSMenu(title: "설정")
         setupMenu.delegate = self
         setupItem.submenu = setupMenu; menu.addItem(setupItem)
@@ -125,6 +130,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         connectionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.refreshConnectionIndicator() }
         startWeb()
+        if Bundle.main.object(forInfoDictionaryKey: "MARICODERelease") as? Bool == true { appUpdater.checkSilently() }
     }
     func updateLocalLabel() {
         machineLabel.stringValue = machineLabels[activeMachine] ?? "이 Mac"
@@ -325,8 +331,13 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
-        guard (message.webView === webView || message.webView === utilityViews["settings"] || message.webView === utilityViews["connections"]), let action = message.body as? String,
-              desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
+        guard (message.webView === webView || message.webView === utilityViews["settings"] || message.webView === utilityViews["connections"]), let rawAction = message.body as? String else { return }
+        let action = rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction
+        guard desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
+        if action == "quit-ready" {
+            guard message.webView === webView, let nonce = quitReviewNonce, rawAction == "quit-ready:" + nonce else { return }
+            quitReviewNonce = nil; NSApp.terminate(nil); return
+        }
         if action == "add-project" { addProjectFolder(); return }
         if action == "connect" { if webView.url?.path == "/workspace" { selectMachine("local") } else { restoreDesktop() }; updateLocalLabel(); return }
         if action == "codex" || action == "claude" { selectedAgent = action; requestConfiguration("add-agent"); return }
@@ -391,6 +402,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         panel.beginSheetModal(for: window) { answer in completionHandler(answer == .OK ? panel.urls : nil) }
     }
 
+    @objc func showAppUpdates() { appUpdater.show(); appUpdater.checkNow() }
     @objc func openUserGuide() {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent("USER-GUIDE.txt"),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return }
@@ -703,7 +715,19 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     self.stopping = false; self.pendingConfiguration = nil; self.connect.isEnabled = true
                     self.open.isEnabled = self.url != nil; self.stop.isEnabled = true
                     self.status.stringValue = "종료할 수 없습니다. 작업·승인·미확인 요청과 실행 상태를 웹 화면에서 확인한 뒤 다시 종료하세요."
-                    if self.quitting { self.quitting = false; NSApp.reply(toApplicationShouldTerminate: false) }
+                    if self.quitting {
+                        self.quitting = false; NSApp.reply(toApplicationShouldTerminate: false)
+                        if self.webView.url?.path == "/workspace" {
+                            self.selectMachine("local")
+                            let nonce = UUID().uuidString; self.quitReviewNonce = nonce
+                            self.webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('maricode-close-request',{detail:'\(nonce)'}))", completionHandler: nil)
+                        } else {
+                            let alert = NSAlert(); alert.messageText = "작업 화면에서 종료 상태를 확인해 주세요"
+                            alert.informativeText = "이 Mac의 작업 화면에 연결한 뒤 다시 앱을 닫으면 종료할 세션을 확인할 수 있습니다. 미확인 작업이나 연결 오류가 있으면 강제로 종료하지 않습니다."
+                            alert.addButton(withTitle: "작업 화면 열기"); alert.addButton(withTitle: "돌아가기")
+                            if alert.runModal() == .alertFirstButtonReturn { self.showWorkspace() }
+                        }
+                    }
                     self.window.makeKeyAndOrderFront(nil)
                 }
                 }

@@ -4,7 +4,8 @@ import {lstat,readdir,open,copyFile,mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 
-export async function packageProductSource(resources,output){
+export async function packageProductSource(resources,output,version='1.0.0'){
+ if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Invalid product version');
  const source=join(resources,'source');
  for(const name of ['Merry.swift','DesktopNavigation.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift','build.mjs','dmg.mjs','source-package.mjs','package-hapi.mjs','LICENSE','BUILDING.txt','Bun-LICENSE.md','HAPI-DEPENDENCY-NOTICES.txt']){
   if(!(await lstat(join(source,'apps/mac-launcher',name))).isFile())throw Error('Complete product source required');
@@ -17,7 +18,7 @@ export async function packageProductSource(resources,output){
   }
  }
  const roots=['apps/mac-launcher','pilots/hapi/client-probe'];for(const path of roots)await inspect(join(source,path));
- const name='MARICODE-1.0.0-source.tar.gz',archive=join(output,name);
+ const name=`MARICODE-${version}-source.tar.gz`,archive=join(output,name);
  // Exclusive reservation prevents replacing an existing release artifact.
  const file=await open(archive,'wx');await file.close();
  execFileSync('/usr/bin/tar',['-czf',archive,'-C',source,...roots],{env:{PATH:'/usr/bin:/bin',COPYFILE_DISABLE:'1'},stdio:'pipe'});

@@ -1,3 +1,4 @@
+import {createQuitFlow} from './quit-flow.mjs';
 import {requestQuestions,questionDecision} from './questions.mjs';
 import {questionForm} from './question-form.mjs';
 import {createAttachmentComposer} from './attachment-composer.mjs';
@@ -866,3 +867,43 @@ if(workspaceLayout){
  $('restore-navigation').onclick=restoreNavigation;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!navigationPending)closeNavigation();});
 }
+
+// Native close recovery uses this local workspace's existing authenticated API.
+let quitDialogOpen=false;
+const quitFlow=createQuitFlow({
+ list:async()=>{const c=await api('/config');if(!Array.isArray(c.sessions))throw Error('세션 목록을 확인하지 못했습니다.');return c.sessions.map(s=>s.id);},
+ read:async id=>(await api('/api/sessions/'+encodeURIComponent(id))).session,
+ archive:(id,body)=>api('/api/sessions/'+encodeURIComponent(id)+'/archive',{method:'POST',body}),
+ finish:()=>{const bridge=window.webkit?.messageHandlers?.maricode;if(bridge&&quitNonce){const nonce=quitNonce;quitNonce=null;bridge.postMessage('quit-ready:'+nonce);}}
+});
+let quitNonce=null;
+window.addEventListener('maricode-close-request',async event=>{
+ if(!workspaceLayout||!window.webkit?.messageHandlers?.maricode)return;
+ if(quitDialogOpen){const message=document.getElementById('quit-close-status');if(message)message.textContent='서버 종료가 아직 차단되어 있습니다. 돌아가기로 작업·연결·미확인 상태를 확인해 주세요.';quitNonce=null;return;}
+ const nonce=event.detail;if(typeof nonce!=='string'||!/^[-a-f0-9]{36}$/i.test(nonce))return;
+ quitNonce=nonce;quitDialogOpen=true;
+ const dialog=document.createElement('dialog');dialog.className='archive-dialog';dialog.setAttribute('aria-label','실행 종료 후 앱 닫기');
+ const heading=document.createElement('h2');heading.textContent='앱을 닫기 전에 실행을 종료할까요?';
+ const details=document.createElement('p');details.textContent='이 Mac의 실행 상태를 확인 중입니다…';
+ const rows=document.createElement('ul'),status=document.createElement('p');status.id='quit-close-status';status.setAttribute('role','status');
+ const buttons=document.createElement('div');buttons.className='archive-buttons';
+ const cancel=document.createElement('button');cancel.textContent='돌아가기';cancel.autofocus=true;
+ const confirm=document.createElement('button');confirm.textContent='실행 종료 후 앱 닫기';confirm.className='archive-confirm';confirm.disabled=true;
+ cancel.onclick=()=>dialog.close();buttons.append(cancel,confirm);dialog.append(heading,details,rows,status,buttons);document.body.append(dialog);dialog.showModal();
+ dialog.addEventListener('close',()=>{quitDialogOpen=false;quitNonce=null;dialog.remove();},{once:true});
+ let approved;
+ try{
+  if(!token||busy||actions?.pending||permissionActions?.pending||settingsPending())throw Error('로그인·진행 중 요청·미확인 결과를 먼저 확인한 뒤 닫아 주세요.');
+  approved=await quitFlow.review();if(!dialog.open)return;
+  for(const p of approved.sessions){const li=document.createElement('li');li.textContent=p.label+' · '+p.agent;rows.append(li);}
+  details.textContent=approved.sessions.length?'표시된 이 Mac 세션의 실행을 종료하고 앱을 닫습니다. 대화·파일·설정은 보존됩니다. 모든 창의 미전송 입력·첨부는 먼저 보관하세요. 원격 서버의 작업은 종료하지 않습니다.':'종료할 실행 세션이 없습니다. 미확인 작업이나 서버 상태 때문에 닫기가 막혔을 수 있습니다. 상태를 확인한 뒤 다시 닫아 주세요.';
+  confirm.disabled=approved.sessions.length===0;
+ }catch(e){status.textContent=e.message;}
+ confirm.onclick=async()=>{
+  confirm.disabled=true;cancel.disabled=true;busy=true;render();status.textContent='실행 종료 확인 중…';
+  const prevent=e=>e.preventDefault();dialog.addEventListener('cancel',prevent);
+  try{await quitFlow.confirm(approved);status.textContent='실행 종료 확인 완료 · 앱을 닫는 중…';}
+  catch(e){status.textContent=e.message+' 앱은 열어 두었습니다.';}
+  finally{busy=false;render();cancel.disabled=false;dialog.removeEventListener('cancel',prevent);}
+ };
+});

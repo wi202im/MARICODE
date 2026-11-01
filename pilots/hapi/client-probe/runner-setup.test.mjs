@@ -193,3 +193,25 @@ test('missing unrelated project does not hide healthy projects or sessions',asyn
  const rows=await service.projects('Bearer synthetic');assert.equal(rows.length,2);assert.equal(rows.find(p=>p.key===gone.id).available,false);assert.equal(rows.find(p=>p.key===healthy.id).available,true);assert.equal((await service.workspace('Bearer synthetic'))[0].id,'11111111-1111-4111-8111-111111111111');
  await assert.rejects(service.workspaceChoices('Bearer synthetic',gone.id));
 });
+
+test('legacy default folders expose ordinary management without writing on read',async t=>{
+ const {createServer}=await import('node:http'),{readFile,realpath}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'maricode-legacy-manage-'));const source=join(root,'source');await mkdir(source);const path=await realpath(source),accountConfig=join(root,'account'),projectsPath=join(root,'projects');
+ await writeFile(accountConfig,JSON.stringify({cwd:path}));let active=true;
+ const hub=createServer((req,res)=>{if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end();return;}res.end(JSON.stringify({sessions:[{active,metadata:{path}}]}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ const service=createRunnerSetup({directory:join(root,'runner'),accountConfig,projectsPath,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:`http://127.0.0.1:${hub.address().port}`});
+ const p=(await service.projects('Bearer synthetic'))[0];assert.ok(p.projectId);assert.equal(p.key,'');
+ assert.equal((await service.projects('Bearer synthetic'))[0].projectId,p.projectId);
+ await assert.rejects(readFile(projectsPath),e=>e.code==='ENOENT');
+ const remove={kind:'project',id:p.projectId,action:'remove'};
+ await assert.rejects(service.manage('Bearer wrong',remove));await assert.rejects(service.manage('Bearer synthetic',remove));
+ await assert.rejects(readFile(projectsPath),e=>e.code==='ENOENT');active=false;
+ await assert.rejects(service.manage('Bearer synthetic',{...remove,id:'00000000-0000-0000-0000-000000000000'}));
+ await service.manage('Bearer synthetic',remove);await service.manage('Bearer synthetic',remove);
+ assert.deepEqual(await service.projects('Bearer synthetic'),[]);
+ assert.equal((await service.navigation('Bearer synthetic')).removed[0].id,p.projectId);
+ await service.manage('Bearer synthetic',{...remove,action:'restore'});
+ await service.manage('Bearer synthetic',{...remove,action:'rename',name:'내 프로젝트'});
+ const restored=(await service.projects('Bearer synthetic'))[0];assert.equal(restored.projectId,p.projectId);assert.equal(restored.label,'내 프로젝트');assert.equal(restored.path,path);
+});

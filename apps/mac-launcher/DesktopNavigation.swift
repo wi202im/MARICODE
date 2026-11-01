@@ -2,7 +2,7 @@ import Foundation
 
 func desktopCommandAllowed(scheme: String, host: String, port: Int, mainFrame: Bool, action: String) -> Bool {
     mainFrame && scheme == "http" && host == "127.0.0.1" && port == 61192 &&
-        ["connect", "add-project", "codex", "claude", "configure", "add-agent", "change-project", "remote-settings"].contains(action)
+        ["quit-ready", "connect", "add-project", "codex", "claude", "configure", "add-agent", "change-project", "remote-settings"].contains(action)
 }
 
 func desktopMachineOrigin(_ url: URL) -> String? {

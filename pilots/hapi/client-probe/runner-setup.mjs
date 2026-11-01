@@ -1,5 +1,5 @@
 import {workspaceChoices,workspaceRequest,createWorkspacePlans} from './workspace-plans.mjs';
-import {projectRegistry} from './project-registry.mjs';
+import {projectRegistry,legacyProjectId} from './project-registry.mjs';
 import {randomUUID} from 'node:crypto';
 import {createRunnerWorkspace} from './runner-workspace.mjs';
 import {readFile,readdir,stat,mkdir,rm,writeFile,rename} from 'node:fs/promises';
@@ -94,7 +94,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   const registry=projectRegistry(c.projectsPath);const registered=await registry.list();const availability=new Map();for(const p of registered){try{await registry.get(p.id);availability.set(p.id,true);}catch{availability.set(p.id,false);}}
   const rows=registered.map(p=>({key:p.id,label:p.name,path:p.path,available:availability.get(p.id),projectId:p.projectId,projectLabel:p.projectLabel,workspaceId:p.workspaceId,workspaceLabel:p.workspaceLabel,...(p.parentId?{parentKey:p.parentId,worktree:p.worktree===true}:{})}));
   const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
-  if(!cfg.cwd.endsWith('/local-setup/working-directory')&&!(await registry.list({includeRemoved:true})).some(p=>p.path===cfg.cwd))rows.unshift({key:'',label:cfg.cwd.split('/').at(-1),path:cfg.cwd});
+  if(!cfg.cwd.endsWith('/local-setup/working-directory')&&!(await registry.list({includeRemoved:true})).some(p=>p.path===cfg.cwd))rows.unshift({key:'',label:cfg.cwd.split('/').at(-1),path:cfg.cwd,projectId:legacyProjectId(cfg.cwd)});
   return rows;
  }
  async function launchCurrent(){
@@ -167,6 +167,9 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    return exclusive(async()=>{
     if(!c.projectsPath)throw Error('목록 관리 미지원');
     const registry=projectRegistry(c.projectsPath),rows=await registry.list({includeRemoved:true});
+    const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
+    const legacyPath=typeof cfg.cwd==='string'&&!cfg.cwd.endsWith('/local-setup/working-directory')?cfg.cwd:undefined;
+    if(legacyPath&&!rows.some(r=>r.path===legacyPath))rows.push({projectId:legacyProjectId(legacyPath),path:legacyPath});
     const data=await authorize(authorization);if(!Array.isArray(data.sessions))throw Error('세션 상태를 확인하지 못했습니다.');
     let affected;
     if(input?.kind==='session'){
@@ -183,7 +186,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      let records=[];try{records=await readdir(slot+'.workspace-plans');}catch(e){if(e.code!=='ENOENT')throw e;}
      for(const name of records.filter(f=>/^[a-f0-9-]{36}\.json$/.test(f)))if(JSON.parse(await readFile(join(slot+'.workspace-plans',name),'utf8')).state!=='ready')throw Error('미확인 작업공간 준비 결과를 먼저 확인하세요.');
     }
-    await registry.edit(input);return {ok:true};
+    await registry.edit(input,{legacyPath});return {ok:true};
    });
   },
   async workspaceChoices(authorization,key){const p=await selectedProject(authorization,key);return workspaceChoices(p.path);},
