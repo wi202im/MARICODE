@@ -2,7 +2,7 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Release preparation: 1.0.0.** The product source is ready for review. A public DMG release has not been published. The local candidate includes HAPI 0.33.3 and Node; final bundled dependency notices remain under review.
+**Release preparation: 1.0.0.** The product source is ready for review. A public DMG release has not been published. The candidate includes HAPI 0.33.3 and Node. Distribution notices and source/build instructions are prepared; the final DMG must be regenerated with the latest fixes and materials.
 
 ## What it does
 
@@ -20,7 +20,7 @@ Apple Silicon Mac; build target macOS 14 or newer. The planned DMG is ad-hoc sig
 - [Installation, first session and remote access](apps/mac-launcher/USER-GUIDE.txt)
 - [Build from source](apps/mac-launcher/BUILDING.txt)
 - [Architecture and packaging](apps/mac-launcher/README.md)
-- [Third-party notices and outstanding redistribution checks](apps/mac-launcher/NOTICES.txt)
+- [Third-party notices and source delivery](apps/mac-launcher/NOTICES.txt)
 
 No public relay or internet-facing server is provided. Do not put access tokens in URLs, issues or chat messages. Updating the app preserves its external data directory; unsent text and attachment drafts are only held in the current window.
 
@@ -44,7 +44,7 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 - No QR pairing, multiple account selection for the same AI, or cross-machine native session migration.
 - AI settings and approval choices are limited to the capabilities exposed by the provider and HAPI; not every upstream AI feature is supported.
 - Actual Codex question UI, full sub-agent lifecycle, a clean second Mac installation and long sleep/wake behavior have not all been verified.
-- The current DMG's native first-launch window remains unverified; mounted app signature, copied-bundle startup and restart checks are tracked separately.
+- The release app has been tested for native local connection and a Codex session through response, stop and resume. The final updated DMG and a clean second Mac installation remain separate checks.
 
 ## License
 

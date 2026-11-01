@@ -1,48 +1,50 @@
-MARICODE 1.0.0
+MARICODE 1.0.0 — distribution notices
 
-MARICODE product code is licensed under AGPL-3.0-only.
-The license text is MARICODE-LICENSE.txt in this directory.
-This designation covers apps/mac-launcher and pilots/hapi/client-probe,
-except third-party material carrying its own notices. It does not relicense
-unrelated legacy projects in the private development repository.
-The software is provided without warranty; see the complete license.
+MARICODE product code: AGPL-3.0-only. Full text: MARICODE-LICENSE.txt
+in the app, LICENSE in the source repository and release attachments.
+Source repository: https://github.com/wi202im/MARICODE
+Release source: MARICODE-1.0.0-source.tar.gz, supplied beside the DMG.
+No warranty is provided; see the respective license texts.
 
-Included components
-- Node.js: Node-LICENSE.txt contains the upstream license and dependency notices.
-- HAPI 0.33.3: hapi/LICENSE (AGPL-3.0-only), hapi/NOTICE (happy-cli attribution).
-  Original upstream: https://github.com/tiann/hapi
-  Exact upstream source and build scripts: hapi/source.tar.gz
-  Commit: d9acc0c31e0d9115e09429fd788a414a522bd5c7
-  JavaScript dependency text: hapi/DEPENDENCY-NOTICES.txt (review in progress).
-  This covers the installed dependency/optional/peer closure of cli, hub,
-  shared and web, not an exact binary inventory. 25 missing license texts were supplemented from upstream release commits;
-  10 of 1008 package versions still have unresolved text. Subcomponent and
-  asset obligations also remain under review.
-  Additional upstream tool notices: hapi/ripgrep-LICENSE,
-  hapi/difftastic-LICENSE, hapi/tunwg-LICENSE.
-- Embedded Bun runtime: 1.4.4+38afee6c8, observed from this exact HAPI binary
-  using BUN_BE_BUN=1 and --revision. hapi/Bun-LICENSE.md is the unmodified
-  upstream license/credits at commit 38afee6c8.
-  Source: https://github.com/oven-sh/bun/tree/38afee6c8
-  Bun itself is MIT-licensed; its JavaScriptCore/WebKit and other components
-  carry separate terms. The upstream notice explains source/relink steps.
-  Matching Bun/WebKit source acquisition is documented in BUILDING.txt,
-  including an exact-commit Git fallback for blocked WebKit archive downloads.
-  DMG packaging can provide both pinned source archives in upstream-sources/
-  beside the DMG (see BUILDING.txt). They are not inside the installed app.
-  Complete relink materials and dependency review remain unfinished.
-- Claude/Codex and Tailscale are not included or relicensed by MARICODE.
+Distribution inventory (paths below are relative to Contents/Resources)
 
-MARICODE runtime/web code, native Swift sources and packaging scripts are
-in source/. Public releases must additionally provide the complete selected
-product source, instructions and dependency notices alongside the DMG.
-The public source repository URL is not yet assigned.
-DMG packaging also produces MARICODE-1.0.0-source.tar.gz, its SHA-256
-and BUILDING.txt beside the disk image for same-release source delivery.
+- MARICODE native launcher and web client: source/apps/mac-launcher and
+  source/pilots/hapi/client-probe. The source archive includes their build
+  and packaging scripts. Paseo design adaptations are attributed below.
+- Node.js 26.12.1: node and Node-LICENSE.txt (upstream dependency notices
+  included). Upstream source: https://nodejs.org/dist/v26.12.1/
+- Unmodified HAPI 0.33.3 darwin-arm64: hapi/hapi, hapi/LICENSE
+  (AGPL-3.0-only), hapi/NOTICE (happy-cli attribution), hapi/source.tar.gz.
+  Upstream: https://github.com/tiann/hapi
+  Source commit: d9acc0c31e0d9115e09429fd788a414a522bd5c7
+  Exact artifact/source checksums are enforced by package-hapi.mjs.
+- HAPI JavaScript dependencies and supplemental native notices:
+  hapi/DEPENDENCY-NOTICES.txt. This conservatively retains dependency/peer
+  notices; inclusion in that file is not an assertion of binary inclusion.
+  Package declarations, historical texts and supplemental current-upstream
+  texts are distinguished. Spline's unused UI-peer dependency is excluded.
+- Native tools embedded by HAPI: hapi/ripgrep-LICENSE,
+  hapi/difftastic-LICENSE and hapi/tunwg-LICENSE. The full ripgrep 14.1.1
+  MIT/Unlicense and bundled PCRE2 10.43 terms additionally appear in
+  hapi/DEPENDENCY-NOTICES.txt; the upstream ripgrep stub alone is not the
+  complete license. HAPI's source snapshot includes its native-tool archives.
+- Embedded Bun 1.4.4+38afee6c8: hapi/Bun-LICENSE.md preserves the exact
+  upstream runtime credits, including JavaScriptCore/WebKit and linked
+  libraries. Bun itself is MIT; component terms remain separate.
+  The release also supplies these matching source archives:
+  bun-38afee6c84fcf48c0edb2466aa4b27d287a59c30.tar.gz
+  webkit-d6375c72affe0f70222cdcb45012b10f0bf3a9d5.tar.gz
+  BUILDING.txt explains building with modified WebKit and selecting the
+  resulting Bun executable for HAPI compilation, then replacing/re-signing
+  the local app copy. Source archives are beside the DMG, not in the app.
+- Claude/Codex CLI and Tailscale are not included or relicensed.
 
-This is still a local test candidate. Review of all bundled HAPI runtime
-dependencies and corresponding-source completeness is not yet finished.
-Do not treat this notice inventory as clearance for public redistribution.
+Publish the DMG together with product source, the two matching runtime
+source archives, BUILDING.txt, this file, LICENSE and SHA256SUMS.
+HAPI's matching source is also inside the app; preserve it when repackaging.
+A checksum proves artifact identity, not byte-for-byte build reproducibility.
+Bun/WebKit rebuilding has not been executed as part of MARICODE testing;
+that test limitation is separate from supplying sources and build instructions.
 
 Paseo UI reference and adapted design tokens
 - Copyright (c) 2025-present Mohamed Boudra. Apache License 2.0.

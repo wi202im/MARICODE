@@ -22,11 +22,11 @@ export async function createDmg(app,output,upstreamSources){
  execFileSync('/usr/bin/codesign',['--force','--sign','-',copy],{stdio:'pipe'});
  execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',copy],{stdio:'pipe'});
  await symlink('/Applications',join(stage,'Applications'));
- await writeFile(join(stage,'READ-ME.txt'),`MARICODE 1.0.0 — local installation test candidate
+ await writeFile(join(stage,'READ-ME.txt'),`MARICODE 1.0.0 — installation
 
 Copy MARICODE.app to Applications, then eject this disk image.
 This build has an ad-hoc signature, not a Developer ID signature or notarization.
-Public redistribution is pending license/source-notice review.
+Keep the matching product/runtime sources, BUILDING.txt, NOTICES.txt and checksums with this release.
 HAPI 0.33.3 and Node are included. Claude/Codex installation and official login are separate.
 Quit active work and stop the app before replacing an existing copy.
 Keep application data outside the app; replacing the app does not migrate or delete it.

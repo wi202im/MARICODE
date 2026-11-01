@@ -108,13 +108,69 @@ notice remains included. The extractor is tied to this exact HAPI artifact;
 review its offsets and both hashes when upgrading HAPI. As before, the official binary stays pinned
 in MARICODE and has NOT been replaced by the test rebuild.
 
-Actual Bun/WebKit recompiling and relinking remain unverified. The pinned
-Bun CONTRIBUTING.md requires LLVM 23.1.1 and rust-toolchain.toml specifies
-nightly-2026-09-15. These toolchains were not installed in this test.
-Source delivery alone does not establish complete relink materials. Rebuilding the HAPI
-binary byte-for-byte and completeness of bundled dependency notices have
-not been established. A successful MARICODE rebuild does not certify those
-separate upstream redistribution requirements.
+Rebuilding HAPI with a modified JavaScriptCore/WebKit
 
-This is a local test candidate, not a published release. Read USER-GUIDE.txt
-and NOTICES.txt under apps/mac-launcher for usage and current limitations.
+The supplied Bun source contains CONTRIBUTING.md, scripts/build.ts,
+scripts/build/deps/webkit.ts and package.json. Follow that pinned
+CONTRIBUTING.md for prerequisites, including LLVM 23.1.1 and the Rust version
+in rust-toolchain.toml (nightly-2026-09-15). The upstream build may fetch its
+pinned third-party build dependencies; this is not an offline build kit.
+Extract the supplied matching WebKit source into vendor/WebKit in the Bun
+source tree, or use the exact Git commit above. Apply your WebKit changes
+there and use the local-JSC build profile, not the default prebuilt JSC:
+
+  bun run build:release:local
+
+The package script selects profile=release-local and build/release-local.
+Use the resulting executable build/release-local/bun as CUSTOM_BUN below.
+Bun's original notice also documents the debug alternative, bun run build:local.
+
+In the extracted HAPI source, install its locked build dependencies with
+Bun 1.4.4 and prepare the embedded web assets:
+
+  bun install --frozen-lockfile --ignore-scripts
+  bun run build:web
+  (cd hub && bun run generate:embedded-web-assets)
+
+Prepare the pinned tunwg input with the extractor documented above. The
+ripgrep/difftastic platform archives are already in the HAPI source snapshot.
+From the HAPI cli directory, use the modified Bun BOTH as compiler and as
+the runtime embedded in the result (do not silently download stock Bun):
+
+  CUSTOM_BUN=/absolute/path/to/bun-source/build/release-local/bun
+  "$CUSTOM_BUN" build --compile --no-compile-autoload-dotenv \
+    --feature=HAPI_TARGET_DARWIN_ARM64 --target=bun-darwin-arm64 \
+    --compile-executable-path="$CUSTOM_BUN" \
+    --outfile=/new/output/hapi src/bootstrap.ts
+
+The exact shipped Bun runtime advertises --compile-executable-path in
+`build --help`; HAPI's pinned build-executable.ts supplies the other flags.
+For a distributable modified MARICODE bundle, update package-hapi.mjs to pin
+your new HAPI binary and corresponding modified source archive, and retain
+all applicable notices. This is an intentional source change: the standard
+packager rejects modified vendor artifacts until their hashes are updated.
+Alternatively, to test your replacement in a private writable app copy:
+
+  cp /new/output/hapi /path/to/MARICODE.app/Contents/Resources/hapi/hapi
+  codesign --force --sign - /path/to/MARICODE.app/Contents/Resources/hapi/hapi
+  codesign --force --sign - /path/to/MARICODE.app
+  codesign --verify --deep --strict /path/to/MARICODE.app
+
+Quit that app before replacing its executable; do not alter its Application
+Support data. No MARICODE signing key, subscription or paid Developer ID is
+needed to re-sign a local modified copy. macOS's normal launch policies still
+apply. These commands describe a source rebuild/replacement path; a full
+Bun/WebKit compilation and byte-for-byte reproduction have not been tested.
+
+Release materials
+
+Source repository: https://github.com/wi202im/MARICODE
+Publish the matching product source, Bun/WebKit archives, BUILDING.txt,
+NOTICES.txt, LICENSE and SHA256SUMS with each DMG. GitHub release attachments
+are flat; local dmg.mjs puts the two runtime archives in upstream-sources/.
+The HAPI matching source archive is in the installed app at
+Contents/Resources/hapi/source.tar.gz. Its digest is recorded in
+Contents/Resources/hapi/release.json. Node source is available from
+https://nodejs.org/dist/v26.12.1/ and its complete notices are bundled.
+
+Read USER-GUIDE.txt for installation and current product limitations.

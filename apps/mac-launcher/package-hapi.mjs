@@ -14,7 +14,7 @@ export async function packageHapi(source,resources){
   if(createHash('sha256').update(await readFile(p)).digest('hex')!==expected)throw Error('HAPI artifact digest mismatch: '+name);
  }
  const dependencyNotices=await readFile(new URL('./HAPI-DEPENDENCY-NOTICES.txt',import.meta.url));
- if(createHash('sha256').update(dependencyNotices).digest('hex')!=='2478c3853c1d1bd01d17d22fae167a05bb6a413795c8621243d47634109d18fe')throw Error('HAPI dependency notice digest mismatch');
+ if(createHash('sha256').update(dependencyNotices).digest('hex')!=='cba47389fc6a7bc9fce2a857d3ff8c518e6ac2d19e649268db78df1cf040d7e8')throw Error('HAPI dependency notice digest mismatch');
  const target=join(resources,'hapi');await mkdir(target);
  await writeFile(join(target,'Bun-LICENSE.md'),bunLicense);
  await writeFile(join(target,'DEPENDENCY-NOTICES.txt'),dependencyNotices);
@@ -26,7 +26,7 @@ export async function packageHapi(source,resources){
  }
  await chmod(join(target,'hapi'),0o755);
  await writeFile(join(target,'release.json'),JSON.stringify({...hapiRelease,hashes},null,2)+'\n');
- await writeFile(join(target,'README.txt'),'HAPI '+hapiRelease.version+' (AGPL-3.0-only)\nUpstream: https://github.com/tiann/hapi\nSource commit: '+hapiRelease.commit+'\nOfficial unmodified binary. License: LICENSE. Source snapshot: source.tar.gz.\nDevelopment bundle only: complete third-party notices/source completeness must be reviewed before public distribution.\n');
+ await writeFile(join(target,'README.txt'),'HAPI '+hapiRelease.version+' (AGPL-3.0-only)\nUpstream: https://github.com/tiann/hapi\nSource commit: '+hapiRelease.commit+'\nOfficial unmodified binary. License: LICENSE. Source snapshot: source.tar.gz.\nThird-party notices: DEPENDENCY-NOTICES.txt and Bun-LICENSE.md. See the accompanying MARICODE BUILDING.txt for matching runtime source and rebuild instructions.\n');
 }
 
 // Build input extraction for the exact pinned, unmodified darwin-arm64 HAPI.
