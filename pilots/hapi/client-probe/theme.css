@@ -1,0 +1,6 @@
+/* Paseo zinc theme/type/density adapted for MARICODE.
+ * Copyright (c) 2025-present Mohamed Boudra, Apache-2.0.
+ * Reference commit 86c60d367c9dcc2edbfee29a06ee49ab6b77f28f.
+ * Modified: higher secondary-text contrast; CSS semantic names and layout tokens.
+ * Full license: apps/mac-launcher/Paseo-LICENSE.txt. */
+:root{color-scheme:dark;--surface0:#18181b;--surface1:#1f1f22;--surface2:#27272a;--surface3:#3f3f46;--sidebar:#131316;--foreground:#f4f4f5;--muted:#a1a1aa;--dim:#8b8b94;--border:#27272a;--border-strong:#3f3f46;--accent:#e4e4e7;--accent-fg:#18181b;--success:#6cb17b;--warning:#c09664;--danger:#d8847b;--content-width:820px;--sidebar-width:250px;--inspector-width:350px;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}

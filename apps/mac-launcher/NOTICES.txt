@@ -1,0 +1,70 @@
+MARICODE 1.0.0
+
+MARICODE product code is licensed under AGPL-3.0-only.
+The license text is MARICODE-LICENSE.txt in this directory.
+This designation covers apps/mac-launcher and pilots/hapi/client-probe,
+except third-party material carrying its own notices. It does not relicense
+unrelated legacy projects in the private development repository.
+The software is provided without warranty; see the complete license.
+
+Included components
+- Node.js: Node-LICENSE.txt contains the upstream license and dependency notices.
+- HAPI 0.33.3: hapi/LICENSE (AGPL-3.0-only), hapi/NOTICE (happy-cli attribution).
+  Original upstream: https://github.com/tiann/hapi
+  Exact upstream source and build scripts: hapi/source.tar.gz
+  Commit: d9acc0c31e0d9115e09429fd788a414a522bd5c7
+  JavaScript dependency text: hapi/DEPENDENCY-NOTICES.txt (review in progress).
+  This covers the installed dependency/optional/peer closure of cli, hub,
+  shared and web, not an exact binary inventory. 25 missing license texts were supplemented from upstream release commits;
+  10 of 1008 package versions still have unresolved text. Subcomponent and
+  asset obligations also remain under review.
+  Additional upstream tool notices: hapi/ripgrep-LICENSE,
+  hapi/difftastic-LICENSE, hapi/tunwg-LICENSE.
+- Embedded Bun runtime: 1.4.4+38afee6c8, observed from this exact HAPI binary
+  using BUN_BE_BUN=1 and --revision. hapi/Bun-LICENSE.md is the unmodified
+  upstream license/credits at commit 38afee6c8.
+  Source: https://github.com/oven-sh/bun/tree/38afee6c8
+  Bun itself is MIT-licensed; its JavaScriptCore/WebKit and other components
+  carry separate terms. The upstream notice explains source/relink steps.
+  Matching Bun/WebKit source acquisition is documented in BUILDING.txt,
+  including an exact-commit Git fallback for blocked WebKit archive downloads.
+  DMG packaging can provide both pinned source archives in upstream-sources/
+  beside the DMG (see BUILDING.txt). They are not inside the installed app.
+  Complete relink materials and dependency review remain unfinished.
+- Claude/Codex and Tailscale are not included or relicensed by MARICODE.
+
+MARICODE runtime/web code, native Swift sources and packaging scripts are
+in source/. Public releases must additionally provide the complete selected
+product source, instructions and dependency notices alongside the DMG.
+The public source repository URL is not yet assigned.
+DMG packaging also produces MARICODE-1.0.0-source.tar.gz, its SHA-256
+and BUILDING.txt beside the disk image for same-release source delivery.
+
+This is still a local test candidate. Review of all bundled HAPI runtime
+dependencies and corresponding-source completeness is not yet finished.
+Do not treat this notice inventory as clearance for public redistribution.
+
+Paseo UI reference and adapted design tokens
+- Copyright (c) 2025-present Mohamed Boudra. Apache License 2.0.
+  Full upstream license: Paseo-LICENSE.txt in this directory.
+  Source: https://github.com/getpaseo/paseo/tree/86c60d367c9dcc2edbfee29a06ee49ab6b77f28f
+  Adapted: packages/app/src/styles/theme.ts zinc colors, type scale, density,
+  and content width in MARICODE theme.css, workspace/style.css and workspace/chat.css.
+  Reference: composer/dock/index.tsx; composer/agent-controls/control.tsx;
+  components/sidebar/sidebar-workspace-row-content.tsx; components/user-message/index.tsx;
+  packages/website/src/components/mockup/right-panel.tsx;
+  components/left-sidebar.tsx (fixed host footer), hosts/host-picker.tsx,
+  sidebar/sidebar-popover.tsx and sidebar/sidebar-footer-icon-highlight.tsx;
+  headers/sidebar-menu-toggle.tsx and screens/workspace/workspace-explorer-toggle.tsx
+  (paired full-height panels, shared toggle affordances).
+  screens/settings-screen.tsx (back-to-workspace navigation);
+  screens/workspace/explorer-sidebar.tsx (tabs scoped to the supporting pane).
+  MARICODE uses native AppKit host menus and in-window management navigation; saved roles
+  determine which local/server/remote controls are visible.
+  Additional flow references: screens/new-workspace-initial-context.ts,
+  screens/new-workspace-picker-state.ts, hooks/use-active-worktree-new-action.ts,
+  components/sidebar/display-preferences/model.ts and row-items.ts.
+  MARICODE implements its own creation draft, Git preparation and local view preferences.
+  MARICODE rewrites the layout in HTML/CSS for HAPI. Paseo React Native components,
+  logos, provider icons, runtime, plugins and branding are not bundled.
+  These modifications do not imply endorsement by Paseo.

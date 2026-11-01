@@ -1,0 +1,46 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,rm,symlink,realpath} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
+import {projectRegistry} from './project-registry.mjs';
+test('projects start empty; explicit folder registration is idempotent and cannot authorize arbitrary paths',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'maricode-projects-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const registry=projectRegistry(join(root,'projects.json'));assert.deepEqual(await registry.list(),[]);
+ const folder=join(root,'source');await mkdir(folder);await symlink(folder,join(root,'link'));
+ const p=await registry.add(folder);assert.equal(p.path,await realpath(folder));assert.equal((await registry.add(join(root,'link'))).id,p.id);
+ assert.equal((await registry.list()).length,1);assert.equal((await registry.get(p.id)).path,await realpath(folder));
+ await assert.rejects(registry.get('/etc'));await assert.rejects(registry.add(join(root,'missing')));
+});
+test('projects own stable workspaces independently of sessions and legacy execution keys survive migration',async t=>{
+ const {writeFile,readFile}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'maricode-workspaces-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const base=join(root,'source'),child=join(root,'checkout');await mkdir(base);await mkdir(child);
+ const id='11111111-1111-4111-8111-111111111111',childId='22222222-2222-4222-8222-222222222222',file=join(root,'projects.json');
+ await writeFile(file,JSON.stringify({version:1,projects:[{id,name:'source',path:await realpath(base)},{id:childId,name:'feature',path:await realpath(child),parentId:id,worktree:true}]}));
+ const registry=projectRegistry(file),rows=await registry.list();
+ assert.equal(rows[0].projectId,id);assert.equal(rows[1].projectId,id);assert.notEqual(rows[0].workspaceId,rows[1].workspaceId);
+ assert.equal(rows[0].workspaceLabel,'기본 작업공간');assert.equal(rows[1].workspaceLabel,'feature');
+ assert.equal((await registry.get(id)).path,await realpath(base));assert.equal((await registry.get(childId)).path,await realpath(child));
+ const next=join(root,'next');await mkdir(next);await registry.add(next);
+ const saved=JSON.parse(await readFile(file));assert.equal(saved.version,2);assert.equal(saved.projects.length,2);assert.equal(saved.workspaces.length,3);
+ assert.deepEqual((await projectRegistry(file).list()).slice(0,2),rows);
+ assert.equal((await registry.add(child,{parentId:id,worktree:true})).workspaceId,rows[1].workspaceId);
+ await assert.rejects(registry.add(root,{parentId:'unknown',worktree:true}));
+});
+
+test('navigation edits retain identities and source files; unregister and restore are reversible',async t=>{
+ const {writeFile,readFile}=await import('node:fs/promises');const root=await mkdtemp(join(tmpdir(),'maricode-edit-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const a=join(root,'source'),b=join(root,'checkout');await mkdir(a);await mkdir(b);await writeFile(join(b,'keep'),'source');
+ const registry=projectRegistry(join(root,'registry.json')),p=await registry.add(a),w=await registry.add(b,{parentId:p.id,worktree:true});
+ await registry.edit({kind:'project',id:p.projectId,action:'rename',name:'새 프로젝트'});
+ await registry.edit({kind:'workspace',id:w.workspaceId,action:'rename',name:'작업 A'});
+ assert.equal((await registry.get(w.id)).projectLabel,'새 프로젝트');assert.equal((await registry.get(w.id)).workspaceLabel,'작업 A');
+ await assert.rejects(registry.edit({kind:'workspace',id:p.workspaceId,action:'remove'}));
+ await registry.edit({kind:'workspace',id:w.workspaceId,action:'remove'});await registry.edit({kind:'workspace',id:w.workspaceId,action:'remove'});
+ await assert.rejects(registry.get(w.id));assert.equal(await readFile(join(b,'keep'),'utf8'),'source');
+ assert.equal((await registry.navigation()).removed.length,1);
+ await registry.edit({kind:'workspace',id:w.workspaceId,action:'restore'});assert.equal((await registry.get(w.id)).workspaceId,w.workspaceId);
+ await registry.edit({kind:'project',id:p.id,action:'remove'});assert.equal((await registry.list()).length,0);
+ await registry.add(a);assert.equal((await registry.list()).length,2);
+ for(const name of ['', 'a\nb', 'x'.repeat(121)])await assert.rejects(registry.edit({kind:'project',id:p.id,action:'rename',name}));
+ await registry.edit({kind:'session',id:'11111111-1111-4111-8111-111111111111',action:'rename',name:'대화 A'});
+ assert.equal((await registry.navigation()).sessions['11111111-1111-4111-8111-111111111111'].name,'대화 A');
+});

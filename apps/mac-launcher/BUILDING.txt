@@ -1,0 +1,120 @@
+MARICODE 1.0.0 — source build
+
+This product source archive contains only apps/mac-launcher and
+pilots/hapi/client-probe. It excludes private Git history, execution data,
+credentials and unrelated legacy projects. License: AGPL-3.0-only.
+
+Requirements: Apple Silicon Mac, Xcode Command Line Tools (swiftc),
+Node.js 26.7+ distribution containing bin/node and its full LICENSE.
+The tested Node version is 26.12.1. Obtain it from nodejs.org and verify
+the official distribution checksum. No npm dependencies are needed for
+MARICODE's own build; the web client uses Node built-ins and browser APIs.
+
+Prepare a HAPI artifact directory containing:
+- hapi: official @twsxtd/hapi-darwin-arm64 0.33.3 binary from npm
+- LICENSE: HAPI license at the commit below
+- source.tar.gz: GitHub source archive for that same commit
+Upstream: https://github.com/tiann/hapi
+Commit: d9acc0c31e0d9115e09429fd788a414a522bd5c7
+apps/mac-launcher/package-hapi.mjs pins all three SHA-256 hashes and rejects
+different artifacts. Existing app bundles include these files under
+Contents/Resources/hapi. Node's license is Contents/Resources/Node-LICENSE.txt.
+
+Extract MARICODE-1.0.0-source.tar.gz into an empty directory and run from it:
+
+/path/to/node/bin/node apps/mac-launcher/build.mjs /path/to/node /new/app-output /path/to/hapi-artifacts --release
+/path/to/node/bin/node apps/mac-launcher/dmg.mjs /new/app-output/MARICODE.app /new/dmg-output /path/to/upstream-sources
+
+Both output directories must not already exist. These commands build local
+artifacts; they do not install software, sign with a developer identity,
+publish a release, log in to AI accounts or modify application data.
+DMG packaging ad-hoc signs a copy and includes a source archive plus hashes.
+The app uses ~/Library/Application Support/MARICODE; development builds
+without --release retain the separate Merry Development directory.
+
+HAPI itself is a separately built, unmodified upstream binary. Its source
+archive contains bun.lock, build scripts and the upstream release workflow.
+That workflow uses setup-bun without a version argument; the root
+package.json declares packageManager bun@1.4.4. The supplied HAPI
+binary reports Bun 1.4.4+38afee6c8 via BUN_BE_BUN=1 hapi --revision.
+Bun-LICENSE.md preserves the upstream notice for that exact runtime commit.
+Matching upstream source acquisition (no installation required):
+- Bun commit: 38afee6c84fcf48c0edb2466aa4b27d287a59c30
+  https://codeload.github.com/oven-sh/bun/tar.gz/38afee6c84fcf48c0edb2466aa4b27d287a59c30
+  Download SHA-256: 64c0d268a6fa9f5e6e5ac40761dacb6b0825b2092f02cd07d772a9018f39e520
+- Bun scripts/build/deps/webkit.ts pins WebKit commit:
+  d6375c72affe0f70222cdcb45012b10f0bf3a9d5
+  The official autobuild tag points to that same commit. GitHub archive
+  downloads returned HTTP 422 (Content creation is blocked) on 2026-11-01,
+  but fetching the exact commit over Git succeeded. From an empty directory:
+
+  git init --bare webkit.git
+  git -C webkit.git fetch --depth=1 https://github.com/oven-sh/WebKit.git d6375c72affe0f70222cdcb45012b10f0bf3a9d5
+  git -C webkit.git rev-parse FETCH_HEAD 'FETCH_HEAD^{tree}'
+
+  Expected commit: d6375c72affe0f70222cdcb45012b10f0bf3a9d5
+  Expected tree: 26b64acb953715409b4b484443baec30789eee75
+  Verify objects and create a source archive with a shell supporting pipefail:
+
+  git -C webkit.git fsck --full --no-dangling FETCH_HEAD
+  set -o pipefail
+  git -C webkit.git archive --format=tar --prefix=WebKit-d6375c72affe0f70222cdcb45012b10f0bf3a9d5/ d6375c72affe0f70222cdcb45012b10f0bf3a9d5 | gzip -n -1 > webkit-d6375c72affe0f70222cdcb45012b10f0bf3a9d5.tar.gz
+
+  Use a new output filename. This is a locally generated archive, not the
+  GitHub archive byte stream. Upstream export-ignore omits .gitignore and
+  .gitattributes; the bare Git repository retains the complete tracked tree.
+  Prebuilt assets on the WebKit autobuild release are not source substitutes.
+
+Pass the directory containing the two exact source archives above as the
+optional final dmg.mjs argument. Packaging verifies pinned SHA-256 hashes,
+copies only those two files into upstream-sources/ beside the DMG, and writes
+SHA256SUMS after rechecking the copies. Publish that directory together with
+the DMG, product source archive and this build guide. Without that argument,
+the output is only a local test candidate with upstream sources omitted.
+The archive bytes are pinned; another gzip encoding requires a reviewed hash
+update even when the Git commit is identical. Source archives are separate
+from the installed app and do not change application data.
+
+The upstream relink instructions are preserved in Bun-LICENSE.md. Bun source
+includes its build scripts and WebKit source includes JavaScriptCore, WTF,
+bmalloc, WebCore and Tools/Scripts/build-webkit. HAPI source build was exercised on Apple Silicon using the embedded Bun
+1.4.4 runtime: frozen-lockfile install with --ignore-scripts, build:web,
+hub generate:embedded-web-assets and cli build:exe:allinone. The resulting
+CLI reported HAPI 0.33.3 and embedded Bun 1.4.4+38afee6c8. The rebuilt Hub authenticated and its Runner connected in an isolated local
+trial. After normal shutdown, the same token and Runner connection worked
+on restart using the supported reprepare/start sequence. AI conversations
+and byte-for-byte reproduction were not tested for this rebuild.
+The source lockfile was unchanged.
+
+Important build input: build:single-exe calls download:tunwg, whose URLs use
+latest rather than a pinned release. Do not treat that download as reproducing
+the shipped executable. Our test reused the arm64 tunwg file extracted by an
+earlier official HAPI run, verified its entire byte sequence exists inside
+the pinned official HAPI binary, and copied it into
+shared/tools/tunwg/tunwg-arm64-darwin before compiling. Its SHA-256 is
+4ff96e3ff7271a1bb940c8e7e071900d2135b483baab387d4f8ba8dc2ddd333a.
+That native tool was not rebuilt. package-hapi.mjs exports
+extractBundledTunwg(Buffer), which verifies the full official HAPI SHA-256,
+extracts the fixed byte range and verifies the tool SHA-256 before returning
+it. From the MARICODE source root, with an existing empty destination path:
+
+node --input-type=module -e 'import {readFile,writeFile} from "node:fs/promises"; import {extractBundledTunwg} from "./apps/mac-launcher/package-hapi.mjs"; await writeFile(process.argv[2],extractBundledTunwg(await readFile(process.argv[1])),{flag:"wx",mode:0o600});' /path/to/hapi /path/to/hapi-source/shared/tools/tunwg/tunwg-arm64-darwin
+
+This avoids downloading an unpinned latest tool or starting a Hub merely to
+extract it. Its embedded build information lists source revision
+122a6d0e43585bed8782ceb893394104b6640589 and vcs.modified=true, so that revision
+alone does not establish byte-for-byte source reproduction. The tool's MIT
+notice remains included. The extractor is tied to this exact HAPI artifact;
+review its offsets and both hashes when upgrading HAPI. As before, the official binary stays pinned
+in MARICODE and has NOT been replaced by the test rebuild.
+
+Actual Bun/WebKit recompiling and relinking remain unverified. The pinned
+Bun CONTRIBUTING.md requires LLVM 23.1.1 and rust-toolchain.toml specifies
+nightly-2026-09-15. These toolchains were not installed in this test.
+Source delivery alone does not establish complete relink materials. Rebuilding the HAPI
+binary byte-for-byte and completeness of bundled dependency notices have
+not been established. A successful MARICODE rebuild does not certify those
+separate upstream redistribution requirements.
+
+This is a local test candidate, not a published release. Read USER-GUIDE.txt
+and NOTICES.txt under apps/mac-launcher for usage and current limitations.

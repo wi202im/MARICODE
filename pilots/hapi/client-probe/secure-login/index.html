@@ -1,0 +1,9 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>보안 입력 연결 시험</title><link rel="stylesheet" href="/style.css"><main>
+<p class="tag">개발 연결 시험 · 로컬 전용</p><h1>로그인이 필요할 때</h1>
+<p>AI 대화와 입력을 분리하는 시제품입니다. 실제 Claude·Codex 및 외부 브라우저에는 아직 연결하지 않았습니다.</p>
+<aside><strong>실제 비밀번호를 입력하지 마세요.</strong><br>시험 비밀번호 <code>demo-only</code> · 인증번호 <code>123456</code>만 받습니다.</aside>
+<section><h2>1. 요청 만들기</h2><p>엔진별 연결을 가정한 시험 요청입니다.</p><button id="claude">Claude 시험 요청</button><button id="codex">Codex 시험 요청</button><button id="refresh">상태 다시 확인</button></section>
+<section><h2>2. 요청 선택</h2><div id="requests"></div></section>
+<section id="entry" hidden><h2>3. 별도 입력</h2><p id="binding"></p><p>대상은 이 프로그램의 내장 시험 사이트로 고정됩니다. 제출 후 입력칸은 지워집니다.</p><form id="form" autocomplete="off"><label>시험 비밀번호<input id="password" type="password" autocomplete="off" required maxlength="32"></label><label>시험 인증번호<input id="otp" type="password" inputmode="numeric" autocomplete="off" required maxlength="6"></label><button id="submit" type="submit">이 요청에 한 번 제출</button><button id="cancel" type="button">취소</button></form></section>
+<section><h2>AI에 전달할 상태</h2><p>비밀값 없이 요청 대상·상태만 표시합니다. 실제 AI 전송은 하지 않습니다.</p><pre id="result">아직 요청 없음</pre><a href="/target">내장 시험 사이트의 로그인 상태 열기</a></section><p id="notice" role="status"></p>
+</main><script type="module" src="/app.js"></script></html>

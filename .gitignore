@@ -1,0 +1,10 @@
+.DS_Store
+.runtime/
+node_modules/
+dist/
+*.dmg
+*.tar.gz
+.env
+.env.*
+*.private
+*.private.*

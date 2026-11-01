@@ -1,0 +1,47 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import {execFileSync} from 'node:child_process';
+test('native setup bridge only trusts the exact local main frame and fixed actions',{skip:process.platform!=='darwin'},async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'maricode-navigation-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ await writeFile(join(dir,'main.swift'),`import Foundation
+assert(desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:true,action:"configure"))
+assert(!desktopCommandAllowed(scheme:"https",host:"remote.example",port:61192,mainFrame:true,action:"configure"))
+assert(!desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61193,mainFrame:true,action:"configure"))
+assert(!desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:false,action:"configure"))
+assert(!desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:true,action:"shell"))
+assert(desktopMachineOrigin(URL(string:"https://mini.tail123.ts.net:8444/workspace")!) == "https://mini.tail123.ts.net:8444")
+assert(desktopMachineOrigin(URL(string:"https://192.168.1.12/workspace")!) != nil)
+assert(desktopMachineOrigin(URL(string:"https://public.example/workspace")!) == nil)
+assert(desktopMachineOrigin(URL(string:"https://10.bad.0.0.1/workspace")!) == nil)
+assert(desktopMachineOrigin(URL(string:"https://user:secret@mini.local/workspace")!) == nil)
+assert(desktopMachineOrigin(URL(string:"http://mini.local/workspace")!) == nil)
+assert(desktopHostActions(roles:["local":true], localSelected:true) == ["settings", "agent", "reconnect"])
+assert(desktopHostActions(roles:["local":true,"server":true,"remote":true], localSelected:true) == ["connections", "settings", "agent", "remote-address", "remote-info", "remote-start", "remote-stop", "reconnect"])
+assert(desktopHostActions(roles:["remote":true], localSelected:true) == ["connections", "settings", "reconnect"])
+assert(desktopHostActions(roles:["local":true,"server":true,"remote":true], localSelected:false) == ["connections", "settings", "reconnect"])
+assert(desktopHostActions(roles:[:], localSelected:true) == ["settings", "reconnect"])
+assert(desktopWorkspacePath("/desktop-connect"))
+assert(desktopWorkspacePath("/workspace"))
+assert(!desktopWorkspacePath("/setup"))
+assert(!desktopWorkspacePath(nil))
+var trail = DesktopUtilityTrail()
+trail.open("settings"); trail.open("connections"); trail.open("connections")
+assert(trail.current == "connections")
+trail.back(); assert(trail.current == "settings")
+trail.back(); assert(trail.current == nil)
+trail.back(); assert(trail.current == nil)
+trail.open("settings"); trail.open("arbitrary"); assert(trail.current == "settings")
+trail.clear(); assert(trail.current == nil)
+assert(desktopConnectionTone("live") == "green")
+assert(desktopConnectionTone("empty") == "green")
+assert(desktopConnectionTone("connecting") == "amber")
+assert(desktopConnectionTone("paused") == "amber")
+assert(desktopConnectionTone("unavailable") == "red")
+assert(desktopConnectionTone("expired") == "red")
+assert(desktopConnectionTone("login-needed") == "gray")
+assert(desktopConnectionTone(nil) == "gray")
+assert(desktopConnectionTone("unrecognized") == "gray")
+print("PASS")
+`);
+ execFileSync('/usr/bin/swiftc',[resolve('apps/mac-launcher/DesktopNavigation.swift'),join(dir,'main.swift'),'-o',join(dir,'check')],{stdio:'pipe'});
+ assert.equal(execFileSync(join(dir,'check'),{encoding:'utf8'}).trim(),'PASS');
+});

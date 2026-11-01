@@ -1,0 +1,40 @@
+import http from 'node:http';
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,rm,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {remoteOrigin,saveRemoteOrigin,readRemoteOrigin} from './remote-config.mjs';
+test('remote endpoint accepts only explicit Tailscale HTTPS origins without credentials or paths',()=>{
+ assert.equal(remoteOrigin('https://mini.tail123.ts.net:8445/'),'https://mini.tail123.ts.net:8445');
+ for(const value of ['http://mini.tail123.ts.net','https://evil.example','https://mini.tail123.ts.net/path','https://x:secret@mini.tail123.ts.net','https://mini.tail123.ts.net/?token=x','https://mini.tail123.ts.net/#x'])assert.throws(()=>remoteOrigin(value));
+});
+test('endpoint changes require stopped runtime and matching prior value, and can be disabled',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'merry-remote-'));try{
+ assert.equal(await readRemoteOrigin(directory),null);
+ const origin='https://mini.tail123.ts.net:8445';
+ await saveRemoteOrigin({directory,origin,expected:null});assert.equal(await readRemoteOrigin(directory),origin);
+ await assert.rejects(saveRemoteOrigin({directory,origin:null,expected:null}));
+ await mkdir(join(directory,'web.lock'));await assert.rejects(saveRemoteOrigin({directory,origin:null,expected:origin}));await rm(join(directory,'web.lock'),{recursive:true});
+ await saveRemoteOrigin({directory,origin:null,expected:origin});assert.equal(await readRemoteOrigin(directory),null);
+ assert.equal(JSON.parse(await readFile(join(directory,'remote.json'),'utf8')).origin,null);
+ }finally{await rm(directory,{recursive:true,force:true});}
+});
+test('desktop forwards only the saved origin and keeps remote machine APIs disabled in local mode',async()=>{
+ const {startDesktopWeb}=await import('./runtime.mjs');const {createEnvironment}=await import('../../pilots/hapi/client-probe/environment.mjs');
+ const directory=await mkdtemp(join(tmpdir(),'merry-origin-'));let runtime;
+ try{
+ const origin='https://mini.tail123.ts.net:8445';await saveRemoteOrigin({directory,origin,expected:null});
+ await createEnvironment(join(directory,'environment.json')).save({revision:0,roles:{local:true,server:false,remote:false}});
+ runtime=await startDesktopWeb({directory,port:0});
+ const request=(path,headers)=>new Promise((resolve,reject)=>{http.get(runtime.url+path,{headers},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));}).on('error',reject);});
+ assert.equal(await request('/workspace',{host:new URL(origin).host}),403);
+ assert.equal(await request('/workspace',{host:'other.tail123.ts.net:8445'}),403);
+ assert.equal(await request('/api/sessions',{host:new URL(origin).host,origin}),403);
+ assert.equal(await request('/api/environment',{host:new URL(origin).host,origin}),403);
+ await createEnvironment(join(directory,'environment.json')).save({revision:1,roles:{local:true,server:true,remote:false}});
+ assert.equal(await request('/workspace',{host:new URL(origin).host}),200);
+ assert.equal(await request('/workspace',{host:'other.tail123.ts.net:8445'}),403);
+ assert.equal(await request('/api/environment',{host:new URL(origin).host,origin}),403);
+ }finally{await runtime?.close();await rm(directory,{recursive:true,force:true});}
+});
