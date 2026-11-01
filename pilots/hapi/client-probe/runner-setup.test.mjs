@@ -148,15 +148,15 @@ test('one workspace request prepares a linked checkout and spawns exactly one se
  const git=(...args)=>execFileSync('git',['-C',repo,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']});git('init','-b','main');git('-c','user.name=Test','-c','user.email=test@example.invalid','-c','commit.gpgsign=false','commit','--allow-empty','-m','fixture');
  const projectsPath=join(root,'projects.json'),registry=projectRegistry(projectsPath),project=await registry.add(repo);
  const accountConfig=join(root,'accounts.json');await writeFile(join(root,'env.json'),JSON.stringify({PATH:'/usr/bin:/bin'}));await writeFile(accountConfig,JSON.stringify({cwd:repo,environment:join(root,'env.json'),binaries:{codex:'/bin/echo'}}));await writeFile(join(root,'token'),'synthetic');
- let spawns=0,spawned;const id='90000000-0000-0000-0000-000000000001';
+ let spawns=0,spawned,connectionChecks=0;const id='90000000-0000-0000-0000-000000000001';
  const hub=createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer synthetic')return res.writeHead(401).end('{}');
  if(req.url==='/api/sessions')return res.end('{"sessions":[]}');if(req.url==='/api/machines')return res.end('{"machines":[{"id":"own"}]}');if(req.url.endsWith('/agent-availability'))return res.end('{"agents":[{"agent":"codex","available":true}]}');
  if(req.url.endsWith('/spawn')){let raw='';for await(const p of req)raw+=p;spawned=JSON.parse(raw);spawns++;return res.end(JSON.stringify({type:'success',sessionId:id}));}
  res.end(JSON.stringify({session:{id,metadata:{machineId:'own',path:spawned.directory,flavor:'codex'}}}));});await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});
- const api=createRunnerSetup({directory:join(root,'runner'),accountConfig,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:'http://127.0.0.1:'+hub.address().port,projectsPath},{connection:async()=>true,hasActive:async()=>false,launch:async({prepared})=>{await mkdir(join(prepared,'runner-home'));await writeFile(join(prepared,'runner-home/settings.json'),'{"machineId":"own"}');return {running:true,stop:async()=>{}};}});
+ const api=createRunnerSetup({directory:join(root,'runner'),accountConfig,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:'http://127.0.0.1:'+hub.address().port,projectsPath},{connection:async()=>{if(++connectionChecks===1){assert.equal(spawns,0);throw Object.assign(Error('identity not written yet'),{code:'ENOENT'});}return true;},hasActive:async()=>false,launch:async({prepared})=>{await mkdir(join(prepared,'runner-home'));await writeFile(join(prepared,'runner-home/settings.json'),'{"machineId":"own"}');return {running:true,stop:async()=>{}};}});
  const input={requestId:'80000000-0000-0000-0000-000000000001',agent:'codex',project:project.id,workspace:{mode:'new',branch:'main',name:'feature/test'}};
  await assert.rejects(api.task(input,'Bearer wrong'));assert.equal(spawns,0);
- const result=await api.task(input,'Bearer synthetic');assert.equal(result.state,'created');assert.notEqual(spawned.directory,repo);assert.equal(git('branch','--show-current').trim(),'main');
+ const result=await api.task(input,'Bearer synthetic');assert.equal(result.state,'created');assert.ok(connectionChecks>=2);assert.notEqual(spawned.directory,repo);assert.equal(git('branch','--show-current').trim(),'main');
  assert.equal((await api.task(input,'Bearer synthetic')).session.id,id);assert.equal(spawns,1);assert.equal((await api.task(input,'Bearer synthetic',true)).state,'created');
  assert.equal((await api.projects('Bearer synthetic')).filter(p=>p.parentKey===project.id).length,1);
 });
