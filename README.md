@@ -2,7 +2,7 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**MARICODE 1.0.0 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.0/MARICODE-1.0.0-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.0). HAPI 0.33.3 and Node are included.
+**MARICODE 1.0.1 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.1/MARICODE-1.0.1-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.1). HAPI 0.33.3 and Node are included.
 
 ## What it does
 
@@ -24,6 +24,8 @@ Apple Silicon Mac; build target macOS 14 or newer. The DMG is ad-hoc signed, **n
 
 No public relay or internet-facing server is provided. Do not put access tokens in URLs, issues or chat messages. Updating the app preserves its external data directory; unsent text and attachment drafts are only held in the current window.
 
+Version 1.0.0 does not have the in-app update check; download this patch from the link above. See the release notes for changes and exact verification limits.
+
 ## Develop
 
 Node.js 26.7+ is required; the tested version is 26.12.1. There are no npm dependencies for MARICODE's own source or tests.
@@ -40,11 +42,11 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 
 ## Current limitations
 
-- No Intel Mac build, App Store release, Developer ID notarization or automatic updater.
+- No Intel Mac build, App Store release or Developer ID notarization. The app checks for updates and downloads a verified DMG; app replacement is manual.
 - No QR pairing, multiple account selection for the same AI, or cross-machine native session migration.
 - AI settings and approval choices are limited to the capabilities exposed by the provider and HAPI; not every upstream AI feature is supported.
 - Actual Codex question UI, full sub-agent lifecycle, a clean second Mac installation and long sleep/wake behavior have not all been verified.
-- The release app has been tested for native local connection and a Codex session through response, stop and resume. The latest DMG passed image and mounted-app signature verification, and its installation disk contents were confirmed in Finder. A clean second Mac installation remains unverified.
+- Version 1.0.0 was tested for native local connection and a Codex session through response, stop and resume. Version 1.0.1 passed 242 automated tests, DMG image verification and signing checks during packaging. Its new quit flow was tested in native WebView with a synthetic Hub; replacing an installed app and closing a real AI session with 1.0.1 remain unverified. The new image could not be mounted on the test Mac due to OS permissions.
 
 ## License
 
