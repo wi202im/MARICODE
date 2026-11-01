@@ -2,7 +2,7 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Release preparation: 1.0.0.** The product source is ready for review. A public DMG release has not been published. The candidate includes HAPI 0.33.3 and Node. The latest private release draft contains the updated DMG, matching product/runtime sources, notices and build instructions. Public publication is pending.
+**MARICODE 1.0.0 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.0/MARICODE-1.0.0-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.0). HAPI 0.33.3 and Node are included.
 
 ## What it does
 
@@ -15,7 +15,7 @@ A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
 ## Install and use
 
-Apple Silicon Mac; build target macOS 14 or newer. The planned DMG is ad-hoc signed, **not notarized**. Claude/Codex CLI installation and official subscription login are separate. Tailscale is optional for same-LAN access and required for the Tailscale connection path.
+Apple Silicon Mac; build target macOS 14 or newer. The DMG is ad-hoc signed, **not notarized**. Claude/Codex CLI installation and official subscription login are separate. Tailscale is optional for same-LAN access and required for the Tailscale connection path.
 
 - [Installation, first session and remote access](apps/mac-launcher/USER-GUIDE.txt)
 - [Build from source](apps/mac-launcher/BUILDING.txt)
