@@ -2,7 +2,7 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Release preparation: 1.0.0.** The product source is ready for review. A public DMG release has not been published. The candidate includes HAPI 0.33.3 and Node. Distribution notices and source/build instructions are prepared; the final DMG must be regenerated with the latest fixes and materials.
+**Release preparation: 1.0.0.** The product source is ready for review. A public DMG release has not been published. The candidate includes HAPI 0.33.3 and Node. The latest private release draft contains the updated DMG, matching product/runtime sources, notices and build instructions. Public publication is pending.
 
 ## What it does
 
@@ -44,7 +44,7 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 - No QR pairing, multiple account selection for the same AI, or cross-machine native session migration.
 - AI settings and approval choices are limited to the capabilities exposed by the provider and HAPI; not every upstream AI feature is supported.
 - Actual Codex question UI, full sub-agent lifecycle, a clean second Mac installation and long sleep/wake behavior have not all been verified.
-- The release app has been tested for native local connection and a Codex session through response, stop and resume. The final updated DMG and a clean second Mac installation remain separate checks.
+- The release app has been tested for native local connection and a Codex session through response, stop and resume. The latest DMG passed image verification; mounting its installation window on the current Mac and a clean second Mac installation remain unverified.
 
 ## License
 
