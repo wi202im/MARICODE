@@ -90,3 +90,12 @@ test('sidebar retains lifecycle facts when stale and puts approvals before idle 
  const idle=sessionPresentation({id:'three',label:'Idle'},{active:true});
  assert.equal(ended.active,false);assert.equal(pending.active,true);assert.ok(pending.priority>idle.priority);assert.ok(idle.priority>ended.priority);
 });
+
+test('catalog titles survive missing detail reads and placeholders never hide meaningful titles',()=>{
+ const c={id:'12345678-rest',label:'목록에 담긴 원래 제목'};
+ assert.equal(sessionPresentation(c,null).title,c.label);
+ assert.equal(sessionPresentation(c,{metadata:{name:'Claude 작업',summary:{text:'결제 오류 수정'}}}).title,'결제 오류 수정');
+ assert.equal(sessionPresentation({...c,displayName:'직접 지정한 이름'},{metadata:{summary:{text:'다른 제목'}}}).title,'직접 지정한 이름');
+ assert.equal(sessionPresentation({id:'aaaa1111-rest',label:'Claude 작업'},null).title,'새 대화 · aaaa1111');
+ assert.notEqual(sessionPresentation({id:'aaaa1111-rest',label:'Claude 작업'},null).title,sessionPresentation({id:'bbbb2222-rest',label:'Claude 작업'},null).title);
+});

@@ -64,12 +64,13 @@ test('changed account configuration blocks start and scopes workspace to exact m
  await writeFile(join(root,'env.json'),JSON.stringify({PATH:'/usr/bin:/bin'}));const c={cwd:root,environment:join(root,'env.json'),binaries:{}};await writeFile(accountConfig,JSON.stringify(c));
  await prepareRunner(accountConfig,directory);await writeFile(accountConfig,JSON.stringify({...c,cwd:tmpdir()}));
  const own='00000000-0000-0000-0000-000000000001',other='00000000-0000-0000-0000-000000000002';let starts=0;
- const hub=createServer((req,res)=>{if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end();return;}res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessions:[{id:own,metadata:{machineId:'own',path:root,flavor:'codex'}},{id:other,metadata:{machineId:'other',path:root}},{id:other,metadata:{machineId:'own',path:'/other'}}]}));});
+ const hub=createServer((req,res)=>{if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end();return;}res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessions:[{id:own,metadata:{machineId:'own',path:root,flavor:'codex',summary:{text:'목록의 실제 대화 제목'}}},{id:other,metadata:{machineId:'other',path:root}},{id:other,metadata:{machineId:'own',path:'/other'}}]}));});
  await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
  const s=createRunnerSetup({directory,accountConfig,binary:'/bin/echo',hubUrl:`http://127.0.0.1:${hub.address().port}`,tokenFile:join(root,'token')},{launch:async()=>{starts++;}});
  assert.equal((await s.status()).configuration,'changed');await assert.rejects(()=>s.start());assert.equal(starts,0);
  await mkdir(join(directory,'runner-home'));await writeFile(join(directory,'runner-home/settings.json'),JSON.stringify({machineId:'own'}));
  assert.deepEqual((await s.workspace('Bearer synthetic')).map(x=>x.id),[own]);
+ assert.equal((await s.workspace('Bearer synthetic'))[0].label,'목록의 실제 대화 제목');
  await assert.rejects(()=>s.workspace('Bearer wrong'),e=>e.status===401);await assert.rejects(()=>s.workspace(''));
 });
 test('owned stop and new preparation preserve machine identity without overwriting old generation',async t=>{

@@ -119,12 +119,12 @@
 @media(max-width:760px){.inspector-statusbar{height:calc(var(--statusbar-height) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom)}}
 /* Workspace creation is a central draft, independent of the selected chat. */
 .creating-workspace .conversation>.topbar,.creating-workspace #chat,.creating-workspace #empty-workspace,.creating-workspace #approval-guidance,.creating-workspace #permissions{display:none!important}
-.conversation>.task-create{width:min(600px,100%);margin:0 auto;border:0;border-radius:0;background:transparent;padding:36px 36px 48px;max-height:none;flex:1;min-height:0;overflow:auto}
+.conversation>.task-create{display:flex;flex-direction:column;width:min(640px,100%);margin:0 auto;border:0;border-radius:0;background:transparent;padding:24px 28px 0;max-height:none;flex:1;min-height:0;overflow:hidden}
 .conversation>.task-create h2{font-size:23px;font-weight:550;margin-top:6px}.conversation>.task-create label{font-size:12px;margin-top:19px}.conversation>.task-create select,.conversation>.task-create input{width:100%;height:38px;background:var(--surface1);border:1px solid var(--border-strong);border-radius:7px;padding:0 10px;color:var(--foreground)}
 .draft-project-row,.draft-ai-actions{display:flex;align-items:center;gap:8px}.draft-project-row select{flex:1;min-width:0}.draft-project-row button{width:auto;white-space:nowrap;margin:0}.draft-ai-actions button{width:auto;padding:0 10px}.draft-target{white-space:pre-line;overflow-wrap:anywhere;border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:18px;font-size:12px;color:var(--muted)}.task-create #create-task{margin-top:18px;min-height:40px}.task-create #draft-workspace-refresh{width:auto;border:0;color:var(--muted);padding:0}.task-create #task-status{font-size:12px;color:var(--foreground)}
 .project-toolbar #new-task-toggle{width:26px;min-height:28px;margin:0;padding:0;font-size:20px}.project-toolbar{position:relative}#display-preferences>summary{display:grid;place-items:center;width:26px;height:28px;cursor:pointer;color:var(--muted);list-style:none}#display-preferences>summary::-webkit-details-marker{display:none}.display-menu{position:absolute;top:34px;right:0;z-index:70;width:220px;padding:14px;background:var(--surface1);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 12px 40px #0008}.display-menu label{display:flex;align-items:center;gap:8px;font-size:12px;margin-top:12px}.display-menu select{flex:1;min-width:0}.display-menu input{width:14px;height:14px;min-height:0}.display-menu small{display:block;margin-top:12px;color:var(--muted);font-size:11px}
 .sidebar-bottom #add-project{width:28px;height:28px;min-height:28px;padding:5px;flex-shrink:0}.sidebar-bottom #add-project .glyph{width:16px;height:16px}.workspace-child{margin-left:13px;padding-left:9px;border-left:1px solid var(--border)}.workspace-child>.project-row .project-choice:before{content:'\2442';color:var(--muted);margin-right:3px}.compact-workspaces .project-sessions .task{min-height:32px;padding-block:5px}.hide-workspace-details .task small{display:none}.empty-filter{font-size:11px;padding:8px;color:var(--muted)}
-@media(max-width:760px){.conversation>.task-create{padding:22px 18px}.creating-workspace .conversation{display:flex!important}}
+@media(max-width:760px){.conversation>.task-create{padding:18px 16px 0}.creating-workspace .conversation{display:flex!important}}
 
 #draft-git-options{margin-top:20px;border-top:1px solid var(--border);padding-top:14px}#draft-git-options>summary{cursor:pointer;font-size:12px;color:var(--muted)}
 /* Project owns execution workspaces; each workspace owns AI conversations. */
@@ -162,3 +162,24 @@
 
 .claude-history-picker{display:flex;align-items:center;gap:8px}
 .claude-history-picker select{flex:1;min-width:0}.task-create .claude-history-picker button{display:grid;place-items:center;flex:none;width:38px;height:38px;min-height:38px;margin:0;padding:0}
+
+/* Keep the chosen entry route and action visible while optional fields scroll. */
+.task-create-heading,#session-entry-modes,#session-entry-note,.draft-footer{flex-shrink:0}
+.draft-body{flex:1;min-height:0;overflow:auto;padding:0 2px 16px;scrollbar-gutter:stable}
+.task-create .draft-footer{border-top:1px solid var(--border);padding:8px 0 12px;background:var(--surface0)}
+.task-create .draft-footer button{margin-top:4px;min-height:38px}
+.task-create #create-task{margin-top:0}
+.task-create #claude-import-start{background:var(--accent);color:var(--accent-fg);border:0;flex:1}
+.task-create .draft-footer p[role=status]{font-size:12px;color:var(--foreground);max-height:96px;overflow:auto}
+.task-create .draft-footer p:empty{display:none}
+.draft-server{font-size:10px!important;color:var(--dim)!important}
+.draft-agent-row{display:flex;align-items:center;gap:12px}.draft-agent-row select{flex:1;min-width:0}.draft-agent-row #draft-account-state{flex:1;margin:0}
+#draft-account-state[data-state=connected]{color:var(--success,#80c9a4)}
+#draft-scope-modes{margin-top:8px}#session-entry-modes{margin-top:18px}
+.task-create #task-project{font:11px/1.6 var(--mono);color:var(--dim)}
+#claude-import-panel{margin-top:18px;border-top:1px solid var(--border);padding-top:12px}
+#claude-import-panel h3{font-size:13px;margin:0 0 8px}
+.import-source-options{margin-top:16px}.import-source-options summary,.technical-details summary{font-size:11px;color:var(--muted);cursor:pointer}
+.technical-details{margin:16px 0}.session-info .account-panel{margin:20px 0 0;border-color:var(--border)}
+.session-info #imported-history-status{font-size:12px;color:var(--foreground)}
+body:has(.live-notice:not(:empty)) .conversation>.task-create{padding-bottom:48px}

@@ -12,7 +12,7 @@ export function nativeClaudeSourcePicker(view=globalThis.window){
  });
 }
 export function createClaudeImportPanel({element,api,context,opened,changed,pickSource=nativeClaudeSourcePicker()}){
- const $=id=>element.querySelector('#'+id),key='maricode-claude-import-pending';
+ const $=id=>element.querySelector('#'+id)??element.ownerDocument.getElementById(id),key='maricode-claude-import-pending';
  let supported=false,loading=false,selection=null,owner=null,serial=0,searchedOwner=null,lastChecked=null;
  const freshness=()=>{const label=$('claude-import-updated');if(label)label.textContent=lastChecked?'마지막 확인 '+new Date(lastChecked).toLocaleString()+' · 원본 작업을 마친 뒤 새로고침하세요.':'목록을 확인한 적이 없습니다.';};
  let pending;try{pending=JSON.parse(sessionStorage.getItem(key)||'null');}catch{}
@@ -105,25 +105,26 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
  return {render,get pending(){return !!pending;},get pendingProject(){return pending?.project;},get blocksCreation(){return !!pending||context().mode==='import';},configure(enabled){supported=enabled;render();}};
 }
 
-export function createImportedHistory({element,api,scroller}){
- let owner='',serial=0,before,rows=[];
+export function createImportedHistory({element,api,scroller,changed=()=>{}}){
+ let owner='',serial=0,before,rows=[],state={imported:false,shown:0,total:0,loading:false,error:false};
  const summary=element.querySelector('summary'),list=element.querySelector('.imported-records'),more=element.querySelector('button'),note=element.querySelector('p');
  async function load(id,enabled,older=false){
   const ticket=++serial,top=scroller?.scrollTop??0,height=scroller?.scrollHeight??0;
-  if(!older){owner=id;rows=[];before=undefined;element.hidden=true;list.replaceChildren();element.open=false;}
-  if(!enabled||!id)return;more.disabled=true;
+  if(!older){owner=id;rows=[];before=undefined;element.hidden=true;list.replaceChildren();element.open=false;state={imported:false,shown:0,total:0,loading:false,error:false};}
+  if(!enabled||!id){changed();return;}more.disabled=true;state={...state,loading:true,error:false};changed();
   try{
    const r=await api('/api/sessions/'+encodeURIComponent(id)+'/import-history'+(older?'?before='+before:''));
    if(ticket!==serial||owner!==id||!r.imported)return;
    rows=older?[...r.messages,...rows]:r.messages;before=r.before;element.hidden=false;if(!older)element.open=true;
+   state={imported:true,shown:rows.length,total:r.total,loading:false,error:false};
    summary.textContent=`가져온 이전 기록 · ${rows.length}/${r.total}개`;
    note.textContent='가져온 시점의 이전 대화입니다. 내용을 확인한 뒤 같은 세션을 재개하세요. 도구·첨부는 요약 표시하며 과거 승인은 실행하지 않습니다. 이후 대화는 아래에 이어집니다.';
    more.hidden=!r.hasMore;
    list.replaceChildren(...rows.map(row=>{const article=document.createElement('article'),label=document.createElement('strong'),text=document.createElement('p');label.textContent=(row.role==='user'?'사용자':'Claude')+(row.timestamp?' · '+new Date(row.timestamp).toLocaleString():'');text.textContent=row.text+(row.truncated?'\n[화면 표시 일부 생략]':'');article.append(label,text);return article;}));
    if(scroller)scroller.scrollTop=older?top+(scroller.scrollHeight-height):scroller.scrollHeight;
-  }catch{if(ticket===serial){element.hidden=false;element.open=true;summary.textContent='가져온 기록 확인 필요';note.textContent='이전 기록을 읽지 못했습니다. 세션을 다시 선택해 확인하세요. 원래 대화와 실행 상태는 변경하지 않았습니다.';}}
-  finally{if(ticket===serial)more.disabled=false;}
+  }catch{if(ticket===serial){state={...state,error:true};element.hidden=false;element.open=true;summary.textContent='가져온 기록 확인 필요';note.textContent='이전 기록을 읽지 못했습니다. 세션을 다시 선택해 확인하세요. 원래 대화와 실행 상태는 변경하지 않았습니다.';}}
+  finally{if(ticket===serial){more.disabled=false;state={...state,loading:false};changed();}}
  }
  more.onclick=()=>load(owner,true,true);
- return {load};
+ return {load,get status(){return {...state};}};
 }

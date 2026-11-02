@@ -94,3 +94,10 @@ test('refresh replaces stale rows and fingerprints while retaining a still-prese
  generation++;await f.get('claude-import-find').onclick();assert.equal(f.get('claude-import-select').value,'same');assert.match(f.get('claude-import-select').rows[0].textContent,/Latest 1/);
  assert.match(f.get('claude-import-updated').textContent,/마지막 확인/);assert.equal(f.requests.length,2);
 });
+
+test('imported counts distinguish prior history, failed reads and ordinary sessions',async()=>{
+ let fail=false;const f=historyFixture(async()=>{if(fail)throw Error('read failed');return {imported:true,total:54,messages:[{role:'user',text:'prior'}],before:53,hasMore:true};});
+ await f.history.load('import',true);assert.deepEqual(f.history.status,{imported:true,shown:1,total:54,loading:false,error:false});
+ fail=true;await f.history.load('broken',true);assert.equal(f.history.status.error,true);assert.equal(f.history.status.shown,0);
+ await f.history.load('ordinary',false);assert.deepEqual(f.history.status,{imported:false,shown:0,total:0,loading:false,error:false});
+});

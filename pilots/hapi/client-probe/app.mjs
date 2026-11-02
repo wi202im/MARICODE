@@ -8,7 +8,7 @@ import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool} from './chat-presentation.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
-import {recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts} from './workspace-entry.mjs';
+import {draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts} from './workspace-entry.mjs';
 import {createReadRecovery,connectionFailure} from './reconnect.mjs';
 import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace} from './workspace.mjs';
 import {createHistory} from './history.mjs';
@@ -24,7 +24,7 @@ function navigationIcon(name){
 const workspaceLayout=document.body.dataset.layout==='workspace';
 const chatDrafts=createChatDrafts(),questionDrafts=new Map();let permissionRenderKey='';
 function rememberChat(){chatDrafts.save(sessionId,{text:$('prompt').value,note:$('handoff-note').textContent});}
-const sessionCards=new Map();let catalogSerial=0,catalogBusy=false,catalogChecked=null,cardSignature='';
+const sessionCards=new Map(),firstPrompts=new Map();let catalogSerial=0,catalogBusy=false,catalogChecked=null,cardSignature='';
 const collapsedProjects=new Set();
 let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JSON.parse(localStorage.getItem('maricode-display-preferences')));}catch{}
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
@@ -41,6 +41,13 @@ connectionBanner.append(serverLabel,connectionLabel,reconnectButton);if(workspac
 function showConnection(state){connectionState=state;connectionLabel.textContent=connectionLabels[state]??state;if($('connection')){$('connection').textContent=connectionLabel.textContent;$('connection').dataset.connectionState=state;}reconnectButton.disabled=!token||['restoring','connecting'].includes(state);}
 const pendingKey=()=>`hapi-d1-pending:${sessionId}`;
 const notice=text=>{$('notice').textContent=text;};
+function renderHistorySummary(){
+ const imported=importedHistory?.status;
+ $('history-status').textContent=(imported?.imported?'이 앱에서 이어간 기록 ':'현재 대화 기록 ')+messages.length+'개'+(history.limited||messages.length>=1000?' · 표시 상한 1,000개':history.hasMore?' · 이전 기록 더 있음':'');
+ if(!workspaceLayout)return;
+ const label=$('imported-history-status');label.hidden=!imported?.imported&&!imported?.loading&&!imported?.error;
+ label.textContent=imported?.error?'가져온 이전 기록: 조회 실패':imported?.loading?'가져온 이전 기록 확인 중…':`가져온 이전 기록 ${imported?.shown??0}/${imported?.total??0}개 표시`;
+}
 function storedPending(){try{return JSON.parse(sessionStorage.getItem(pendingKey()));}catch{return null;}}
 async function api(path,{method='GET',body,signal}={}){
   const usedToken=token;
@@ -60,10 +67,11 @@ function render(){
   $('check-handoff').hidden=!handoffEnabled||!['pending','verifying'].includes(handoffState);
   $('check-handoff').disabled=busy||!connected;
   $('new-handoff').disabled=!!session?.resumeUnconfirmed||handoffEnabled&&!['none','created'].includes(handoffState)||busy||!connected||!session||session.thinking||!!actions?.pending||Object.keys(session?.agentState?.requests??{}).length>0;
-  $('parent-session').hidden=!relation?.parentId;$('parent-session').disabled=busy;
+  if(workspaceLayout)$('handoff-controls').hidden=!handoffEnabled&&!relation?.parentId;
+ $('parent-session').hidden=!relation?.parentId;$('parent-session').disabled=busy;
   $('lineage').textContent=relation?.parentId?`별도 인계 세션 · 출처: ${trialSessions.find(s=>s.id===relation.parentId)?.label??relation.parentId}. 원래 native 세션을 이어가는 것이 아닙니다. 맥락 전송은 별도입니다.`:'';
   $('older').disabled=loadingHistory||!connected||!history.hasMore||history.limited||messages.length>=1000;
-  $('history-status').textContent=`불러온 기록 ${messages.length}개 · 텍스트 ${messages.filter(m=>messageView(m)?.text).length}개 · ${history.limited||messages.length>=1000?'표시 상한 1,000개':history.hasMore?'이전 이력 있음':'처음까지 조회함'}`;
+  renderHistorySummary();
   $('handoff').disabled=!!session?.resumeUnconfirmed||busy||!connected||!session||session.thinking||!!actions?.pending;
   $('title').textContent=session?.metadata?.name??'시험 세션';
   const waiting=Object.keys(session?.agentState?.requests??{}).length;
@@ -153,6 +161,7 @@ async function refresh(){
   const [s,m,h]=await Promise.all([api(base()),api(base()+'/messages?limit=50'),handoffEnabled?api(base()+'/handoff'):null]);
   if(mine!==refreshSerial||authEpoch!==epoch)return false;
   handoffState=h?.state??null;session=s.session;sessionCards.set(sessionId,{snapshot:session,stale:false});const historyReset=history.latest(m);messages=history.messages;
+  if(!history.hasMore&&!firstPrompts.has(sessionId)){const first=messages.map(messageView).find(v=>v?.role==='user'&&v.text?.trim());if(first)firstPrompts.set(sessionId,first.text.trim().replace(/\s+/g,' ').slice(0,80));}
   if(confirmedDraft(messages,actions.pending,$('prompt').value.trim())){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}
   const previousPending=actions.pending;actions.reconcile(messages,session.active,session.resumeUnconfirmed);
   permissionActions?.reconcile(session?.agentState?.requests??{});
@@ -250,7 +259,7 @@ function clearLogin(message,state='login-needed'){
   attachmentComposer?.clearAll();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
   recovery?.stop();
   saveTabToken(sessionStorage,'',false);clearDeviceLogin(deviceStorage);deviceServerId='';
-  catalogSerial++;sessionCards.clear();catalogChecked=null;cardSignature='';
+  catalogSerial++;sessionCards.clear();firstPrompts.clear();catalogChecked=null;cardSignature='';
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;token='';session=null;messages=[];connected=false;permissionActions=null;
   if(workspaceLayout){$('account-list').replaceChildren();$('account-host').textContent='연결 상태를 조회해 주세요.';$('account-notice').textContent='';}
   $('workspace').hidden=true;$('login').hidden=false;$('messages').replaceChildren();$('file-content').textContent='';$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();showConnection(state);render();notice(message);
@@ -438,10 +447,10 @@ function renderWorkspace(){
  document.body.classList.toggle('compact-workspaces',sidebarDisplay.compact);document.body.classList.toggle('hide-workspace-details',!sidebarDisplay.details);
  renderGit();
  const empty=!sessionId;document.body.classList.toggle('without-session',empty);
- if($('empty-workspace')){$('empty-workspace').hidden=!empty;$('empty-description').textContent=projectCatalog.length?'새 작업에서 프로젝트와 작업공간을 고른 뒤 AI와 대화를 시작하세요.':draftGeneralSupported?'프로젝트 없이 일반 대화를 시작하거나, 작업할 프로젝트 폴더를 추가하세요.':'프로젝트 폴더를 추가하면 이곳에서 AI와 작업할 수 있습니다.';$('empty-action').textContent=projectCatalog.length?'새 작업 시작':'프로젝트 폴더 추가';$('empty-action').hidden=!projectCatalog.length&&!window.webkit?.messageHandlers?.maricode;}
+ if($('empty-workspace')){$('empty-workspace').hidden=!empty;$('empty-description').textContent=projectCatalog.length?'프로젝트에서 새 대화를 시작하거나 기존 대화를 가져오세요.':draftGeneralSupported?'프로젝트 없이 일반 대화를 시작하거나, 작업할 프로젝트 폴더를 추가하세요.':'프로젝트 폴더를 추가하면 이곳에서 AI와 작업할 수 있습니다.';$('empty-action').textContent=projectCatalog.length?'대화 추가':'프로젝트 폴더 추가';$('empty-action').hidden=!projectCatalog.length&&!window.webkit?.messageHandlers?.maricode;}
 
  const config=trialSessions.find(s=>s.id===sessionId)??{id:sessionId,label:'작업 세션'};
- const current=sessionPresentation(config,session,{stale:!!session&&!connected});
+ const current=sessionPresentation({...config,firstPrompt:firstPrompts.get(sessionId)},session,{stale:!!session&&!connected});
  $('title').textContent=sessionId?current.title:'새 작업을 시작하세요';$('session-status').textContent=actions?.pending?.kind==='archive'?'종료 결과 확인 필요':current.state;
  $('project-name').textContent=current.project;$('model-name').textContent=current.engine;
  $('selected-short-id').textContent=current.shortId;
@@ -449,15 +458,15 @@ function renderWorkspace(){
  $('info-id').textContent=sessionId||'확인 중';$('info-path').textContent=session?.metadata?.path??'확인 중';
  $('info-host').textContent=session?.metadata?.host??'확인 중';$('host-name').textContent=session?.metadata?.host??'서버 확인 중';
  $('execution-target').textContent=`실행 서버 · ${current.host||'확인 중'}`;
- $('send-target').textContent=`${current.host||'확인 중'} / ${current.project} / ${current.workspace}에 전송`;
+ $('send-target').textContent=`${current.host||'확인 중'} · ${current.project}`;
  $('file-server').textContent=`파일 위치 · ${current.host||'확인 중'}`;
- $('new-task-server').textContent=`생성 서버 · ${sessionCards.get(trialSessions[0]?.id)?.snapshot?.metadata?.host||'현재 연결 서버'}`;
+ $('new-task-server').textContent=`실행 컴퓨터 · ${sessionCards.get(trialSessions[0]?.id)?.snapshot?.metadata?.host||'현재 연결 서버'}`;
  $('approval-guidance').textContent=`${current.host||'확인 중'} / ${current.project}의 요청입니다. 표시된 한 건만 허용하거나 거절합니다.`;
  $('approval-guidance').hidden=true;
  if(empty){$('session-status').textContent='세션 없음';$('host-name').textContent=window.webkit?.messageHandlers?.maricode?'이 Mac':'연결된 컴퓨터';$('execution-target').textContent=$('host-name').textContent;$('project-name').textContent=projectCatalog.find(p=>p.key===selectedProject)?.label??'프로젝트를 추가하세요';}
 
  const query=$('search').value.trim().toLowerCase();
- const cards=trialSessions.map(c=>({config:c,...sessionPresentation(c,sessionCards.get(c.id)?.snapshot,{stale:sessionCards.get(c.id)?.stale}),selected:c.id===sessionId}));
+ const cards=trialSessions.map(c=>({config:c,...sessionPresentation({...c,firstPrompt:firstPrompts.get(c.id)},sessionCards.get(c.id)?.snapshot,{stale:sessionCards.get(c.id)?.stale}),selected:c.id===sessionId}));
 
  const groups=workspaceHierarchy(projectCatalog,cards);groups.sort((a,b)=>a.label.localeCompare(b.label));
  $('server-summary').textContent='프로젝트 '+groups.length+' · 작업공간 '+projectCatalog.length+' · 세션 '+trialSessions.length;
@@ -487,20 +496,20 @@ function renderWorkspace(){
     const label=(sidebarDisplay.group==='flat'?project.label+' / ':'')+w.label+(w.project?.available===false?' · 폴더 확인 필요':'')+(w.kind==='worktree'?' · 워크트리':'')+(w.host?' · '+w.host:'');
     const onselect=async()=>{try{if(w.project)await chooseProject(w.project);else if(w.cards.length)await selectSession(w.cards[0].config.id);}catch(e){notice(e.message);}};
     const content=inline?document.createElement('div'):null;
-    const {section,children}=inline?{section:content,children:content}:header(w.key,label,w.path,w.cards.length,w.project?.key===selectedProject,onselect,w.project?()=>openNewWorkspace(w.project.key):null,w.label+'에 세션 추가','workspace',w.project?.workspaceId?{kind:'workspace',id:w.project.workspaceId,name:w.label,path:w.path,default:!w.project.parentKey}:null);
+    const {section,children}=inline?{section:content,children:content}:header(w.key,label,w.path,w.cards.length,w.project?.key===selectedProject,onselect,w.project?()=>openNewWorkspace(w.project.key):null,w.label+'에 대화 추가','workspace',w.project?.workspaceId?{kind:'workspace',id:w.project.workspaceId,name:w.label,path:w.path,default:!w.project.parentKey}:null);
     for(const c of matches){
      const button=document.createElement('button');button.className='task';button.dataset.sessionId=c.config.id;button.title=c.engine+' · '+c.state+' · '+c.config.id;button.setAttribute('aria-current',String(c.selected));button.disabled=busy||taskCreating;
      const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' green':'');
      const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state;text.append(title,state);button.append(dot,text);
      button.onclick=()=>{workspaceDrawer(false);selectSession(c.config.id).catch(e=>notice(e.message));};const row=document.createElement('div');row.className='session-row';row.append(button);if(navigationEnabled)row.append(navigationMenu({kind:'session',id:c.config.id,name:c.title,path:w.path}));children.append(row);
     }
-    if(!matches.length){const empty=document.createElement('p');empty.className='project-no-sessions';empty.textContent=query?'일치하는 세션 없음':w.cards.length?'보기 설정으로 세션이 숨겨져 있습니다':'세션을 추가해 대화를 시작하세요';children.append(empty);}
+    if(!matches.length){const empty=document.createElement('p');empty.className='project-no-sessions';empty.textContent=query?'일치하는 세션 없음':w.cards.length?'보기 설정으로 세션이 숨겨져 있습니다':'＋로 대화를 추가하세요';children.append(empty);}
     workspaceNodes.push(section);
    }
    if(!workspaceNodes.length)continue;
    if(sidebarDisplay.group==='flat'&&!inline){nodes.push(...workspaceNodes);continue;}
    const projectLabel=project.label+(inline&&project.workspaces[0].project.available===false?' · 폴더 확인 필요':'');
-   const {section,children}=header(project.key,projectLabel,project.path,inline?project.workspaces[0].cards.length:project.workspaces.length,project.workspaces.some(w=>w.project?.key===selectedProject),()=>{if(collapsedProjects.has(project.key))collapsedProjects.delete(project.key);else collapsedProjects.add(project.key);renderWorkspace();},project.project?()=>openNewWorkspace(project.project.key):null,project.label+'에서 새 작업','project',project.project?.projectId?{kind:'project',id:project.project.projectId,name:project.label,path:project.path}:null);
+   const {section,children}=header(project.key,projectLabel,project.path,inline?project.workspaces[0].cards.length:project.workspaces.length,project.workspaces.some(w=>w.project?.key===selectedProject),()=>{if(collapsedProjects.has(project.key))collapsedProjects.delete(project.key);else collapsedProjects.add(project.key);renderWorkspace();},inline&&project.project?()=>openNewWorkspace(project.project.key):null,project.label+'에 대화 추가','project',project.project?.projectId?{kind:'project',id:project.project.projectId,name:project.label,path:project.path}:null);
    if(inline){children.className='project-sessions';children.append(...workspaceNodes[0].childNodes);}else children.append(...workspaceNodes);
    nodes.push(section);
   }
@@ -591,7 +600,8 @@ restoreLogin();
 const taskPendingKey='hapi-trial-new-task';
 let taskCreating=false,taskProjectsReady=false,projectCatalog=[],selectedProject='';
 let importHistorySupported=false,draftSessionMode='new';
-const importedHistory=workspaceLayout?createImportedHistory({element:$('imported-history'),api,scroller:$('conversation-history')}):null;
+const importedHistory=workspaceLayout?createImportedHistory({element:$('imported-history'),api,scroller:$('conversation-history'),changed:renderHistorySummary}):null;
+let draftAccount=null;
 let draftProject=null,draftOptions=null,draftLoading=false,draftSerial=0,draftMessage='',draftContinue=false,draftSupportsGit=false,draftAccountSerial=0,draftGeneralSupported=false,draftDefaultsSerial=0,draftDefaultsLoading=false;
 try{selectedProject=sessionStorage.getItem('maricode-project')||'';}catch{}
 const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('claude-import-panel'),api,
@@ -631,6 +641,7 @@ function renderDraftLocations(){
  const workspaces=chosen?projectCatalog.filter(p=>rootId(p)===rootId(chosen)):[];
  $('task-workspace-select').replaceChildren(...workspaces.map(p=>{const o=document.createElement('option');o.value=p.key;o.textContent=p.workspaceLabel??(p.parentKey?p.label:'기본 작업공간');return o;}));
  $('task-workspace-select').value=chosen?.key??'';
+ $('draft-workspace-field').hidden=workspaces.length<=1;
 }
 async function openNewWorkspace(project=selectedProject){
  if(taskCreating||busy)return;
@@ -665,17 +676,17 @@ function draftWorkspace(){
  return draftOptions?.kind==='git'&&$('task-branch').value&&$('task-branch').value!==draftOptions.branch?{mode:'branch',branch:$('task-branch').value}:{mode:'current'};
 }
 async function inheritDraftDefaults(){
- if(taskPending())return;
+ if(taskPending()||draftSessionMode==='import')return;
  const project=projectCatalog.find(p=>p.key===draftProject),owner=draftProject,auth=token,ticket=++draftDefaultsSerial;
  const recent=recentWorkspaceSession(trialSessions.map(c=>{const s=sessionCards.get(c.id)?.snapshot;return {...c,agent:s?.metadata?.flavor??c.agent,updatedAt:s?.updatedAt??c.updatedAt};}),project?.path);
  draftInherited=null;draftDefaultsLoading=false;
- if(!recent){$('draft-defaults').textContent='최근 세션 없음 · 사용할 AI를 선택하세요.';return;}
- draftDefaultsLoading=true;$('task-agent').value=recent.agent;$('draft-defaults').textContent='이 작업공간의 최근 세션에서 '+(recent.agent==='claude'?'Claude':'Codex')+' 선택을 가져왔습니다.';renderTaskCreation();
+ if(!recent){$('draft-defaults').textContent='';return;}
+ draftDefaultsLoading=true;$('task-agent').value=recent.agent;$('draft-defaults').textContent='최근 대화의 '+(recent.agent==='claude'?'Claude':'Codex')+' 설정 사용';renderTaskCreation();
  try{const data=await api('/api/sessions/'+encodeURIComponent(recent.id));if(ticket!==draftDefaultsSerial||owner!==draftProject||auth!==token||$('task-agent').value!==recent.agent)return;const s=data.session;
   if(s?.metadata?.path!==project.path||s.metadata.flavor!==recent.agent)return;
   draftInherited={agent:recent.agent,model:s.model??null,effort:(recent.agent==='codex'?s.modelReasoningEffort:s.effort)??null};
-  $('draft-defaults').textContent+=' 모델 '+(draftInherited.model??'자동')+' / 추론 '+(draftInherited.effort??'자동')+'. 새 세션에서 지원하는 값만 적용합니다. 승인·접근 권한은 가져오지 않습니다.';
- }catch{if(ticket===draftDefaultsSerial&&owner===draftProject)$('draft-defaults').textContent+=' 모델·추론은 조회하지 못해 기본값을 사용합니다.';}
+  $('draft-defaults').textContent+=' · 모델 '+(draftInherited.model??'자동')+' / 추론 '+(draftInherited.effort??'자동')+'.';
+ }catch{if(ticket===draftDefaultsSerial&&owner===draftProject)$('draft-defaults').textContent+=' · 모델·추론 조회 실패, 기본값 사용';}
  finally{if(ticket===draftDefaultsSerial){draftDefaultsLoading=false;renderTaskCreation();}}
 }
 let draftInherited=null;
@@ -686,10 +697,12 @@ function renderTaskCreation(){
  $('claude-import-panel').open=importing;claudeImportPanel?.render();
  $('session-entry-new').setAttribute('aria-pressed',String(!importing));$('session-entry-import').setAttribute('aria-pressed',String(importing));
  $('session-entry-new').disabled=taskCreating||importPending;
- $('session-entry-import').disabled=taskCreating||!!taskPending()||!importHistorySupported||$('task-agent').value!=='claude';
- $('session-entry-note').textContent=importing?'기존 대화를 복사한 뒤 이전 기록을 확인하고 같은 세션을 재개합니다. 새 대화는 만들지 않습니다.':$('task-agent').value==='claude'?'새 대화를 시작합니다. 이전 CLI 대화를 이어가려면 기존 세션 가져오기를 선택하세요.':'새 대화를 시작합니다. 기존 CLI 대화 가져오기는 현재 Claude를 지원합니다.';
+ $('session-entry-import').disabled=taskCreating||!!taskPending()||!importHistorySupported||!projectCatalog.some(p=>!p.general);
+ $('session-entry-import').title=!importHistorySupported?'이 실행 환경은 기존 대화 가져오기를 지원하지 않습니다.':!projectCatalog.some(p=>!p.general)?'먼저 원래 대화의 프로젝트 폴더를 등록하세요.':'';
+ $('session-entry-note').textContent=importing?'이 컴퓨터에서 진행했던 Claude 대화를 이어갑니다.':'새로운 주제로 AI와 대화를 시작합니다.';
+ $('draft-new-actions').hidden=importing;$('draft-import-actions').hidden=!importing;
+ $('draft-scope-modes').hidden=importing||!draftGeneralSupported;
  $('create-task').hidden=importing||importPending;$('draft-defaults').hidden=importing;
- $('claude-import-panel').open=importing;
  const pending=taskPending();if(pending)$('task-agent').value=pending.agent;
  const project=projectCatalog.find(p=>p.key===draftProject),mode=$('task-mode').value,git=!project?.general&&draftOptions?.kind==='git';
  $('draft-project-fields').hidden=!!project?.general;$('draft-general-note').hidden=!project?.general;
@@ -705,14 +718,16 @@ function renderTaskCreation(){
  $('draft-branch-field').hidden=!git||mode==='existing';$('draft-worktree-field').hidden=mode!=='existing';$('draft-name-field').hidden=mode!=='new';
  const valid=mode==='new'?!!$('task-worktree-name').value.trim()&&!!$('task-branch').value:mode==='existing'?!!$('task-worktree').value:!git||!!$('task-branch').value||!draftOptions?.branches.length;
  $('create-task').disabled=draftDefaultsLoading||taskCreating||importPending||!!pending&&!draftContinue||!taskProjectsReady||draftLoading||!draftOptions||!valid;
- $('create-task').textContent=draftContinue?'준비된 작업에서 세션 만들기':project?.general?'대화 시작':'세션 만들고 채팅 시작';
- document.querySelector('.task-create-heading h2').textContent=importing?'어떤 대화를 이어갈까요?':project?.general?'무엇을 이야기할까요?':'어디에서 작업할까요?';
+ $('create-task').textContent=draftContinue?'준비된 폴더에서 대화 시작':'새 대화 시작';
+ document.querySelector('.task-create-heading h2').textContent=importing?'기존 대화 가져오기':'새 대화';
  $('draft-workspace-refresh').disabled=taskCreating||draftLoading||!!pending;
  $('draft-add-project').disabled=taskCreating||importPending||!!pending;
- $('task-status').textContent=taskCreating?'작업 공간과 세션을 준비하고 있습니다…':pending?(draftContinue?'작업 공간은 준비됐고 세션 생성은 아직 시작되지 않았습니다. 같은 요청으로 계속할 수 있습니다.':'이전 요청의 결과 확인이 필요합니다. 작업 대상은 고정해 두었습니다.')+(draftMessage?'\n'+draftMessage:''):draftMessage;
+ $('task-status').textContent=taskCreating?'대화를 준비하고 있습니다…':pending?(draftContinue?'작업 공간은 준비됐고 세션 생성은 아직 시작되지 않았습니다. 같은 요청으로 계속할 수 있습니다.':'이전 요청의 결과 확인이 필요합니다. 작업 대상은 고정해 두었습니다.')+(draftMessage?'\n'+draftMessage:''):draftMessage;
  $('draft-workspace-note').textContent=draftLoading?'브랜치와 워크트리를 확인하고 있습니다…':mode==='new'?'선택한 브랜치의 커밋에서 새 작업 폴더를 만듭니다. 미커밋 변경은 옮기지 않습니다.':mode==='existing'?'기존 작업 폴더와 브랜치를 그대로 사용합니다. 기존 세션은 왼쪽 목록에서 이어갈 수 있습니다.':git&&$('task-branch').value!==draftOptions.branch?'선택한 브랜치로 현재 폴더를 전환합니다. 실행 중인 작업이나 미커밋 변경이 있으면 중단합니다.':draftOptions?.note??'현재 폴더의 파일과 작업 상태를 그대로 사용합니다.';
  const target=mode==='existing'?draftOptions?.worktrees.find(w=>w.key===$('task-worktree').value)?.path:mode==='new'?'앱 전용 폴더에 새 워크트리':project?.path;
- $('draft-target').hidden=importing||!!project?.general;
+ $('draft-target').hidden=importing||!!project?.general||(mode==='current'&&draftWorkspace().mode==='current');
+ $('task-agent').disabled=importing||taskCreating||importPending||!!pending;
+ renderDraftAccount();
  $('draft-target').textContent=(project?.projectLabel??project?.label??'프로젝트 미선택')+' → '+(mode==='new'?'새 작업공간':mode==='existing'?'기존 워크트리':project?.workspaceLabel??'기본 작업공간')+' → '+($('task-agent').value==='claude'?'Claude':'Codex')+'\n'+(target??'작업 위치 확인 중')+(git?'\n브랜치: '+(mode==='new'?$('task-worktree-name').value.trim()||'이름 입력':mode==='existing'?draftOptions?.worktrees.find(w=>w.key===$('task-worktree').value)?.branch:$('task-branch').value||'분리된 HEAD'):'');
 }
 async function createTask(checkOnly){
@@ -753,15 +768,26 @@ async function createTask(checkOnly){
   draftMessage=error.message;if(error.reason==='AI_SETUP')await refreshDraftAccount();
  }finally{taskCreating=false;busy=false;$('prompt').disabled=false;$('logout').disabled=false;render();renderTaskCreation();}
 }
+function renderDraftAccount(){
+ const state=draftAccount?.agent===$('task-agent').value?draftAccount:null;
+ const loading=!state||state.loading;
+ const view=draftAccountView(state?.provider,{local:!!window.webkit?.messageHandlers?.maricode,localLogin:!!state?.localLogin});
+ $('draft-account-state').textContent=loading?'연결 확인 중…':view.label;
+ $('draft-account-state').dataset.state=state?.provider?.state??'unknown';
+ $('prepare-task-agent').hidden=loading||!view.setup;
+ $('draft-account-check').hidden=loading||!view.check;$('draft-account-check').disabled=taskCreating;
+ $('draft-account-login').hidden=loading||!view.login;$('draft-account-login').disabled=taskCreating;
+ $('prepare-task-agent').disabled=taskCreating;
+}
 async function refreshDraftAccount(){
  const serial=++draftAccountSerial,agent=$('task-agent').value,auth=token;
- $('draft-account-state').textContent='AI 로그인 상태 확인 중…';$('draft-account-login').hidden=true;
+ draftAccount={agent,loading:true};renderDraftAccount();
  try{const data=await api('/api/accounts');if(serial!==draftAccountSerial||auth!==token||agent!==$('task-agent').value)return;
-  const provider=data.providers.find(p=>p.agent===agent);
-  $('draft-account-state').textContent=({connected:'구독 로그인 연결됨','signed-out':'공식 로그인이 필요합니다.','not-configured':'AI 실행 파일을 먼저 연결하세요.','not-installed':'AI 실행 파일을 찾지 못했습니다.'})[provider?.state]??'로그인 상태를 확인하지 못했습니다.';
-  $('draft-account-login').hidden=!(data.localLogin&&provider?.state==='signed-out'&&!provider.loginPending);
- }catch{if(serial===draftAccountSerial)$('draft-account-state').textContent='계정 상태를 확인하지 못했습니다. 이 화면에서 다시 확인할 수 있습니다.';}
+  draftAccount={agent,provider:data.providers.find(p=>p.agent===agent),localLogin:data.localLogin};
+ }catch{if(serial===draftAccountSerial&&auth===token)draftAccount={agent,provider:{state:'unknown'}};}
+ finally{if(serial===draftAccountSerial)renderDraftAccount();}
 }
+
 if(workspaceLayout){
  $('draft-general-mode').onclick=$('empty-general').onclick=async()=>{
  if(busy||taskCreating||taskPending()||claudeImportPanel?.pending)return;busy=true;render();
@@ -777,12 +803,12 @@ if(workspaceLayout){
   try{sessionStorage.setItem('hapi-trial-held-task:'+request.requestId,JSON.stringify(request));sessionStorage.removeItem(taskPendingKey);draftMessage='기존 기록은 보존했습니다.';renderTaskCreation();}catch{draftMessage='보관하지 못했습니다.';renderTaskCreation();}
  };
  $('session-entry-new').onclick=()=>{if(taskCreating||claudeImportPanel?.pending)return;draftSessionMode='new';renderTaskCreation();};
- $('session-entry-import').onclick=()=>{if($('session-entry-import').disabled)return;draftSessionMode='import';renderTaskCreation();};
+ $('session-entry-import').onclick=()=>{if($('session-entry-import').disabled)return;draftSessionMode='import';$('task-agent').value='claude';draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;if(projectCatalog.find(p=>p.key===draftProject)?.general){draftProject=projectCatalog.find(p=>!p.general).key;renderDraftLocations();loadWorkspaceChoices();}renderTaskCreation();refreshDraftAccount();};
  $('create-task').onclick=()=>createTask(false);$('check-task').onclick=()=>createTask(true);
  for(const id of ['task-mode','task-branch','task-worktree','task-worktree-name'])$(id).addEventListener(id==='task-worktree-name'?'input':'change',renderTaskCreation);
  $('draft-workspace-refresh').onclick=loadWorkspaceChoices;$('draft-account-check').onclick=refreshDraftAccount;
- $('task-agent').onchange=()=>{if($('task-agent').value!=='claude')draftSessionMode='new';draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;$('draft-defaults').textContent='선택한 AI로 새 세션을 만듭니다.';renderTaskCreation();refreshDraftAccount();};
- $('draft-account-login').onclick=async()=>{const agent=$('task-agent').value;$('draft-account-login').disabled=true;try{await api('/api/accounts/'+agent+'/login',{method:'POST',body:{}});$('draft-account-state').textContent='공식 로그인 창에서 완료한 뒤 로그인 상태 확인을 눌러 주세요.';}catch{$('draft-account-state').textContent='로그인 시작 상태를 확인하세요. 자동으로 다시 실행하지 않습니다.';}finally{$('draft-account-login').disabled=false;}};
+ $('task-agent').onchange=()=>{if($('task-agent').value!=='claude')draftSessionMode='new';draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;$('draft-defaults').textContent='선택한 AI로 새 대화를 시작합니다.';renderTaskCreation();refreshDraftAccount();};
+ $('draft-account-login').onclick=async()=>{const agent=$('task-agent').value;$('draft-account-login').disabled=true;try{await api('/api/accounts/'+agent+'/login',{method:'POST',body:{}});$('draft-account-state').textContent='공식 로그인 창에서 완료한 뒤 연결 다시 확인을 눌러 주세요.';}catch{$('draft-account-state').textContent='로그인 시작 상태를 확인하세요. 자동으로 다시 실행하지 않습니다.';}finally{$('draft-account-login').disabled=false;}};
  for(const field of ['group','sort','ended','details','compact']){
   const el=$('display-'+field);if(el.type==='checkbox')el.checked=sidebarDisplay[field];else el.value=sidebarDisplay[field];
   el.onchange=()=>{sidebarDisplay=displayPreferences({...sidebarDisplay,[field]:el.type==='checkbox'?el.checked:el.value});try{localStorage.setItem('maricode-display-preferences',JSON.stringify(sidebarDisplay));}catch{}renderWorkspace();};
@@ -898,7 +924,7 @@ if(workspaceLayout){
  const bridge=window.webkit?.messageHandlers?.maricode;
  try{const agent=sessionStorage.getItem('maricode-new-session-agent');if(['codex','claude'].includes(agent))$('task-agent').value=agent;}catch{}
  if(bridge){$('add-project').hidden=false;$('add-project').onclick=()=>bridge.postMessage('add-project');
-  $('prepare-task-agent').hidden=false;$('prepare-task-agent').onclick=()=>{try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
+  $('prepare-task-agent').onclick=()=>{try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
  }
  window.addEventListener('maricode-projects-changed',async event=>{await loadTaskProjects();const added=projectCatalog.find(p=>p.path===event.detail?.path);if(added)await openNewWorkspace(added.key);else renderWorkspace();});
  $('empty-action').onclick=()=>openNewWorkspace();

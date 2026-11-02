@@ -1,3 +1,4 @@
+import {sessionTitle} from './workspace.mjs';
 import {workspaceChoices,workspaceRequest,createWorkspacePlans} from './workspace-plans.mjs';
 import {projectRegistry,legacyProjectId} from './project-registry.mjs';
 import {randomUUID} from 'node:crypto';
@@ -343,7 +344,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    if(!r.ok)throw Object.assign(Error('Workspace unavailable'),{status:r.status});
    const data=await r.json();if(!Array.isArray(data.sessions))throw Error('Workspace unavailable');
    return data.sessions.filter(s=>/^[a-f0-9-]{36}$/.test(s.id)&&s.metadata?.machineId===settings.machineId&&(allowed?allowed.some(p=>p.path===s.metadata?.path):s.metadata?.path===plan.cwd))
-    .map(s=>({id:s.id,...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),agent:s.metadata?.flavor,updatedAt:s.updatedAt,createdAt:s.createdAt,label:s.metadata?.flavor==='claude'?'Claude 작업':'Codex 작업',project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
+    .map(s=>({id:s.id,...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),agent:s.metadata?.flavor,updatedAt:s.updatedAt,createdAt:s.createdAt,label:sessionTitle({id:s.id},s),project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
   },
   prepare:()=>action('unprepared','preparing',async()=>{await prepare(c.accountConfig,c.directory);phase='prepared';}),
   start:()=>action('prepared','starting',async()=>{if((await snapshot()).configuration!=='matched')throw Error('Prepared configuration changed');await launchCurrent();}),

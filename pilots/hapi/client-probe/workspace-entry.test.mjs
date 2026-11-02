@@ -39,3 +39,16 @@ test('new sessions inherit the newest supported AI only from the exact workspace
  assert.equal(recentWorkspaceSession(rows,'/empty'),null);
  assert.equal(recentWorkspaceSession([...rows,{id:'unsupported',project:'/a',agent:'other',updatedAt:40}],'/a').id,'latest');
 });
+
+test('connected AI hides setup actions; missing, signed-out and unknown remain actionable without assuming access',async()=>{
+ const {draftAccountView}=await import('./workspace-entry.mjs');
+ assert.deepEqual(draftAccountView({state:'connected'},{local:true}),{setup:false,login:false,check:false,label:'연결됨'});
+ assert.equal(draftAccountView({state:'not-installed'},{local:true}).setup,true);
+ assert.equal(draftAccountView({state:'not-installed'},{local:false}).setup,false);
+ assert.equal(draftAccountView({state:'signed-out'},{local:true,localLogin:true}).login,true);
+ assert.equal(draftAccountView({state:'signed-out',loginPending:true},{local:true,localLogin:true}).login,false);
+ assert.equal(draftAccountView({state:'unknown'},{local:true}).check,true);
+ assert.equal(draftAccountView({state:'unknown'},{local:true}).setup,true);
+ assert.equal(draftAccountView({state:'unknown'},{local:false}).setup,false);
+ assert.equal(draftAccountView({state:'other-auth'},{local:true}).login,false);
+});

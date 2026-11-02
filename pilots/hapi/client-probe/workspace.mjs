@@ -1,6 +1,14 @@
 import {worktreePresentation} from './git-status.mjs';
+// Titles come from the catalog as well as live detail, so an unavailable detail
+// request cannot turn every row back into the same provider placeholder.
+export function sessionTitle(config,snapshot){
+ const m=snapshot?.metadata??{};
+ const meaningful=v=>typeof v==='string'&&v.trim()&&!/^(Claude 작업|Codex 작업|작업 세션|새 대화 · .+)$/.test(v.trim());
+ if(typeof config.displayName==='string'&&config.displayName.trim())return config.displayName;
+ return [m.name,m.summary?.text,config.label,config.firstPrompt].find(meaningful)?.trim()??('새 대화 · '+config.id.slice(0,8));
+}
 export function sessionPresentation(config,snapshot,{stale=false}={}){
- const m=snapshot?.metadata??{},title=config.displayName|| (typeof m.name==='string'&&m.name.trim()?m.name:typeof m.summary?.text==='string'&&m.summary.text.trim()?m.summary.text:config.label);
+ const m=snapshot?.metadata??{},title=sessionTitle(config,snapshot);
  const worktree=worktreePresentation({...m,worktree:m.worktree??config.worktree});
  if(worktree&&config.worktree?.worktreePath===m.path&&config.workspaceLabel)worktree.name=config.workspaceLabel;
  const state=stale?'상태 확인 필요':!snapshot?'확인 중':!snapshot.active?'실행 종료':Object.keys(snapshot.agentState?.requests??{}).length?'승인 필요':snapshot.thinking?'작업 중':'입력 대기';
