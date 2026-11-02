@@ -253,3 +253,25 @@ test('general chat can start beside an active project without changing its folde
  assert.equal((await api.task(req,'Bearer synthetic')).state,'created');assert.equal((await api.task(req,'Bearer synthetic',true)).state,'created');assert.equal(spawns,1);assert.equal(starts,1);assert.equal(stops,0);
  assert.notEqual(spawned.directory,root);assert.equal(spawned.yolo,false);assert.ok((JSON.parse(await readFile(join(c.directory,'prepared.json')))).workspaceRoots.includes(spawned.directory));
 });
+test('a resume that never started is released after a settle window without replay',async t=>{
+ const {createServer}=await import('node:http'),{prepareRunner}=await import('./machine-setup.mjs');
+ const root=await mkdtemp(join(tmpdir(),'maricode-resume-fail-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),binary:'/bin/echo',tokenFile:join(root,'token')};
+ await writeFile(join(root,'env'),'{"PATH":"/usr/bin:/bin"}');await writeFile(c.accountConfig,JSON.stringify({cwd:root,environment:join(root,'env'),binaries:{}}));await writeFile(c.tokenFile,'synthetic');
+ const session={id:'10000000-0000-4000-8000-000000000002',active:false,metadata:{machineId:'own',path:root,flavor:'codex',codexSessionId:'native'}};
+ let clock=1000,running=true,online=true,writes=0,result=structuredClone(session);
+ const hub=createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.url==='/api/auth')return res.end('{"token":"synthetic"}');if(req.url==='/api/sessions')return res.end('{"sessions":[]}');res.end(JSON.stringify({session:result}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
+ const api=createRunnerSetup(c,{prepare:prepareRunner,now:()=>clock,connection:async()=>online,launch:async({prepared})=>{await mkdir(join(prepared,'runner-home'));await writeFile(join(prepared,'runner-home/settings.json'),'{"machineId":"own"}');return {get running(){return running;}};}});
+ await api.prepare();await api.start();
+ const fail=()=>api.runSessionMutation(async()=>{writes++;throw Error('engine failed');},{resume:session});
+ await assert.rejects(fail());
+ clock+=14000;assert.equal(await api.reconcileResume(session.id,'Bearer synthetic'),false);
+ clock+=2000;online=false;assert.equal(await api.reconcileResume(session.id,'Bearer synthetic'),false);online=true;
+ result={...session,active:true,metadata:{...session.metadata,codexSessionId:'someone-else'}};assert.equal(await api.reconcileResume(session.id,'Bearer synthetic'),false);
+ result=structuredClone(session);assert.equal(await api.reconcileResume(session.id,'Bearer synthetic'),true);
+ assert.equal((await api.status()).phase,'running');await assert.rejects(access(join(c.directory,'session-operation.json')));assert.equal(writes,1);
+ // If the owned Runner itself exited, the generation is released as exited rather than running.
+ await assert.rejects(fail());running=false;clock+=16000;
+ assert.equal(await api.reconcileResume(session.id,'Bearer synthetic'),true);assert.equal((await api.status()).phase,'exited');assert.equal(writes,2);
+});

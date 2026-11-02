@@ -29,11 +29,13 @@ export function createSSEDecoder(receive) {
 const sendContent=(text,attachments)=>attachments?.length?JSON.stringify({text,attachments}):text;
 const sendBody=(text,id,attachments)=>({text,localId:id,...(attachments?.length?{attachments}:{})});
 async function textDigest(text){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
-export function createActions({post,save,pending=null}) {
+export function createActions({post,save,pending=null,now=Date.now}) {
   let locked=false;
   const api={
     get pending(){return pending;},
     reconcile(messages,active,resumeUnconfirmed=false){
+      // The server releases a resume that never became active; mirror it only when no request is in flight.
+      if(pending?.kind==='resume'&&active===false&&!resumeUnconfirmed&&!locked&&Number.isFinite(pending.at)&&now()-pending.at>=20000){pending=null;save(null);return 'resume-not-started';}
       if(pending?.kind==='send'&&messages.some(m=>m.localId===pending.id)||pending?.kind==='resume'&&active&&!resumeUnconfirmed||pending?.kind==='archive'&&active===false){pending=null;save(null);}
     },
     async send(text,attachments=[]){return execute('send',text,attachments);},
@@ -58,7 +60,7 @@ export function createActions({post,save,pending=null}) {
     if(locked||pending)throw Error('이전 요청의 결과를 먼저 확인해 주세요.');
     locked=true;
     try {
-      pending={kind,id:globalThis.crypto.randomUUID(),...(kind==='send'?{digest:await textDigest(sendContent(text,attachments))}:{})};save(pending);
+      pending={kind,id:globalThis.crypto.randomUUID(),at:now(),...(kind==='send'?{digest:await textDigest(sendContent(text,attachments))}:{})};save(pending);
       return await post(kind,kind==='send'?sendBody(text,pending.id,attachments):kind==='archive'?{requestId:pending.id,expected:text}:{});
     }catch(error){if(['archive','resume'].includes(kind)&&error.rejected===true){pending=null;save(null);}throw error;
     }finally{locked=false;}

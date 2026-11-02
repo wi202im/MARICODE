@@ -35,7 +35,7 @@ async function runnerHasActive(config){
  if(!r.ok)throw Error();const data=await r.json();if(!Array.isArray(data.sessions))throw Error();
  return data.sessions.some(s=>s.active&&s.metadata?.machineId===id);
 }
-export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRunner,connection=runnerConnected,hasActive=runnerHasActive}={}){
+export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRunner,connection=runnerConnected,hasActive=runnerHasActive,now=Date.now}={}){
  const url=new URL(config.hubUrl);
  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('Local Hub required');
  if(['directory','accountConfig','binary','tokenFile'].some(k=>typeof config[k]!=='string'||!isAbsolute(config[k])))throw Error('Absolute launcher paths required');
@@ -320,11 +320,16 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     const pending=resumePending;if(!pending||pending.id!==id)return true;
     // Only this owner's failed resume is recoverable here. A restart, failed
     // stop, or online machine alone never grants process ownership/readiness.
-    if(phase!=='unknown'||child!==pending.child||!child?.running||c.directory!==pending.directory||!pending.nativeId)return false;
+    if(phase!=='unknown'||child!==pending.child||c.directory!==pending.directory)return false;
+    // A resume that never became active is released only after a settle window, and never replayed.
+    const settled=now()-pending.failedAt>=15000,release=async next=>{if(next==='exited')await writeFile(join(c.directory,'runner-stopped.json'),'{}',{mode:0o600,flag:'wx'}).catch(e=>{if(e.code!=='EEXIST')throw e;});await rm(join(c.directory,'session-operation.json'),{force:true});resumePending=null;phase=next;return true;};
+    if(!child?.running)return settled?release('exited'):false;
     try{
      if(await machineId(c)!==pending.machineId||!await connection(c))return false;
      const r=await fetch(c.hubUrl+'/api/sessions/'+encodeURIComponent(id),{headers:{authorization},redirect:'error',signal:AbortSignal.timeout(5000)});
      if(!r.ok)return false;const s=(await r.json()).session,m=s?.metadata;
+     if(s?.id===id&&s.active===false&&m?.machineId===pending.machineId)return settled?release('running'):false;
+     if(!pending.nativeId)return false;
      if(s?.id!==id||s.active!==true||m?.machineId!==pending.machineId||m?.path!==pending.path||m?.flavor!==pending.flavor||m?.[pending.nativeKey]!==pending.nativeId||!child.running)return false;
      await rm(join(c.directory,'session-operation.json'));
      resumePending=null;phase='running';return true;
@@ -347,7 +352,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     try{
      await writeFile(marker,JSON.stringify({version:1,kind:resume?'resume':'session'}),{flag:'wx',mode:0o600,flush:true});recorded=true;
      const result=await fn();await rm(marker);return result;
-    }catch{resumePending=recorded?pending:null;phase='unknown';throw Error('Session mutation unconfirmed');}
+    }catch{resumePending=recorded&&pending?{...pending,failedAt:now()}:null;phase='unknown';throw Error('Session mutation unconfirmed');}
    });
   },
   async target(auth){await current();return createRunnerWorkspace(c).target(auth);},

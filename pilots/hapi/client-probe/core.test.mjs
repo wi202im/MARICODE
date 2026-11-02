@@ -139,3 +139,13 @@ test('attachment retries keep exact payload and reject a changed attachment',asy
  await assert.rejects(actions.retry('',[{...file,path:'/other'}]));assert.equal(sent.length,1);
  await assert.rejects(actions.retry('',[file]));assert.equal(sent.at(-1).body.localId,sent[0].body.localId);assert.deepEqual(sent.at(-1).body.attachments,[file]);
 });
+test('a resume the server no longer tracks and that stayed inactive is released after a settle window, never resent', async()=>{
+  let clock=0,posts=0;const actions=createActions({post:async()=>{posts++;throw new Error('lost');},save:()=>{},now:()=>clock});
+  await assert.rejects(actions.resume());
+  clock=19000;assert.equal(actions.reconcile([],false),undefined);assert.equal(actions.pending.kind,'resume');
+  clock=21000;assert.equal(actions.reconcile([],false,true),undefined);assert.equal(actions.pending.kind,'resume');
+  assert.equal(actions.reconcile([],false),'resume-not-started');assert.equal(actions.pending,null);assert.equal(posts,1);
+  // Older saved markers without a timestamp are left for the existing active-session confirmation.
+  const legacy=createActions({post:async()=>({}),save:()=>{},pending:{kind:'resume',id:'x'},now:()=>1e12});
+  legacy.reconcile([],false);assert.equal(legacy.pending.kind,'resume');
+});
