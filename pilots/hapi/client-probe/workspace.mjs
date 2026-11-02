@@ -51,3 +51,9 @@ export function workspaceHierarchy(projects,cards){
  }
  return [...result.values()];
 }
+// Decide from the complete hierarchy, before search or ended-session filtering.
+// A child worktree or multiple execution machines must keep its location row.
+export function inlineDefaultWorkspace(project){
+ const w=project.workspaces?.[0];
+ return project.workspaces?.length===1&&!!w.project&&!w.project.parentKey&&w.kind!=='worktree'&&w.path===project.path;
+}

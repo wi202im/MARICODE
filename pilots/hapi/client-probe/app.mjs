@@ -8,7 +8,7 @@ import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,device
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts} from './workspace-entry.mjs';
 import {createReadRecovery,connectionFailure} from './reconnect.mjs';
-import {sessionPresentation,workspaceHierarchy,workspaceChrome} from './workspace.mjs';
+import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace} from './workspace.mjs';
 import {createHistory} from './history.mjs';
 import {toolViews,requestSnapshot,createPermissionActions,permissionChoices} from './workflow.mjs';
 import {archiveSnapshot,archiveMatches,createActions,messageView,relativePath,createSSEDecoder,buildHandoff,confirmedDraft,handoffExcerpt,readTabToken,saveTabToken} from './core.mjs';
@@ -475,6 +475,7 @@ function renderWorkspace(){
    const children=document.createElement('div');children.className=kind==='project'?'project-workspaces':'project-sessions';children.hidden=!expanded;section.append(row,children);return {section,children};
   }
   for(const project of groups){
+   const inline=inlineDefaultWorkspace(project);
    const projectMatch=(project.label+' '+project.path).toLowerCase().includes(query),workspaceNodes=[];
    for(const w of project.workspaces){
     const workspaceMatch=projectMatch||(w.label+' '+w.path+' '+w.host).toLowerCase().includes(query);
@@ -483,7 +484,8 @@ function renderWorkspace(){
     if(query&&!workspaceMatch&&!matches.length)continue;
     const label=(sidebarDisplay.group==='flat'?project.label+' / ':'')+w.label+(w.project?.available===false?' · 폴더 확인 필요':'')+(w.kind==='worktree'?' · 워크트리':'')+(w.host?' · '+w.host:'');
     const onselect=async()=>{try{if(w.project)await chooseProject(w.project);else if(w.cards.length)await selectSession(w.cards[0].config.id);}catch(e){notice(e.message);}};
-    const {section,children}=header(w.key,label,w.path,w.cards.length,w.project?.key===selectedProject,onselect,w.project?()=>openNewWorkspace(w.project.key):null,w.label+'에 세션 추가','workspace',w.project?.workspaceId?{kind:'workspace',id:w.project.workspaceId,name:w.label,path:w.path,default:!w.project.parentKey}:null);
+    const content=inline?document.createElement('div'):null;
+    const {section,children}=inline?{section:content,children:content}:header(w.key,label,w.path,w.cards.length,w.project?.key===selectedProject,onselect,w.project?()=>openNewWorkspace(w.project.key):null,w.label+'에 세션 추가','workspace',w.project?.workspaceId?{kind:'workspace',id:w.project.workspaceId,name:w.label,path:w.path,default:!w.project.parentKey}:null);
     for(const c of matches){
      const button=document.createElement('button');button.className='task';button.dataset.sessionId=c.config.id;button.title=c.engine+' · '+c.state+' · '+c.config.id;button.setAttribute('aria-current',String(c.selected));button.disabled=busy||taskCreating;
      const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' green':'');
@@ -494,9 +496,11 @@ function renderWorkspace(){
     workspaceNodes.push(section);
    }
    if(!workspaceNodes.length)continue;
-   if(sidebarDisplay.group==='flat'){nodes.push(...workspaceNodes);continue;}
-   const {section,children}=header(project.key,project.label,project.path,project.workspaces.length,project.workspaces.some(w=>w.project?.key===selectedProject),()=>{if(collapsedProjects.has(project.key))collapsedProjects.delete(project.key);else collapsedProjects.add(project.key);renderWorkspace();},project.project?()=>openNewWorkspace(project.project.key):null,project.label+'에서 새 작업','project',project.project?.projectId?{kind:'project',id:project.project.projectId,name:project.label,path:project.path}:null);
-   children.append(...workspaceNodes);nodes.push(section);
+   if(sidebarDisplay.group==='flat'&&!inline){nodes.push(...workspaceNodes);continue;}
+   const projectLabel=project.label+(inline&&project.workspaces[0].project.available===false?' · 폴더 확인 필요':'');
+   const {section,children}=header(project.key,projectLabel,project.path,inline?project.workspaces[0].cards.length:project.workspaces.length,project.workspaces.some(w=>w.project?.key===selectedProject),()=>{if(collapsedProjects.has(project.key))collapsedProjects.delete(project.key);else collapsedProjects.add(project.key);renderWorkspace();},project.project?()=>openNewWorkspace(project.project.key):null,project.label+'에서 새 작업','project',project.project?.projectId?{kind:'project',id:project.project.projectId,name:project.label,path:project.path}:null);
+   if(inline){children.className='project-sessions';children.append(...workspaceNodes[0].childNodes);}else children.append(...workspaceNodes);
+   nodes.push(section);
   }
   if(!nodes.length&&query){const empty=document.createElement('p');empty.className='list-state';empty.textContent='검색 결과가 없습니다.';nodes.push(empty);}
   $('project-list').replaceChildren(...nodes);

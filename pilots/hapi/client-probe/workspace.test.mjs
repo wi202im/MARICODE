@@ -1,6 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {sessionPresentation} from './workspace.mjs';
+test('only a sole default workspace is flattened, without merging folders or machines',async()=>{
+ const {workspaceHierarchy,inlineDefaultWorkspace}=await import('./workspace.mjs');
+ const base={key:'p',projectId:'p',label:'shop',path:'/shop',workspaceId:'default',workspaceLabel:'renamed default'};
+ const child={key:'wt',projectId:'p',parentKey:'p',label:'feature',path:'/wt',worktree:true};
+ const card=(id,machineId)=>({config:{id,project:'/shop'},projectPath:'/shop',machineId,host:machineId});
+ assert.equal(inlineDefaultWorkspace(workspaceHierarchy([base],[])[0]),true);
+ assert.equal(inlineDefaultWorkspace(workspaceHierarchy([base],[card('one','mac'),card('two','mac')])[0]),true);
+ assert.equal(inlineDefaultWorkspace(workspaceHierarchy([base,child],[])[0]),false);
+ assert.equal(inlineDefaultWorkspace(workspaceHierarchy([child],[])[0]),false);
+ assert.equal(inlineDefaultWorkspace(workspaceHierarchy([base],[card('one','mac'),card('two','linux')])[0]),false);
+ assert.equal(inlineDefaultWorkspace(workspaceHierarchy([], [card('unknown','mac')])[0]),false);
+ assert.equal(inlineDefaultWorkspace({path:'/elsewhere',workspaces:[{project:base,path:'/shop',kind:'directory'}]}),false);
+});
 test('compact chrome keeps actionable state and hides exhausted history controls',async()=>{
  const {workspaceChrome}=await import('./workspace.mjs');
  const base={session:{active:true},connected:true,history:{hasMore:false},messageCount:4};
