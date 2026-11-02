@@ -121,7 +121,7 @@ function renderWorkflow(){
   const expanded=new Set([...$('permission-list').querySelectorAll('details[open]')].map(x=>x.dataset.requestId));
   const nodes=Object.entries(requests).map(([id,request])=>{
     const card=document.createElement('article');card.className='permission-card';
-    const title=document.createElement('h3');title.textContent=`${request.tool} 실행 허용`;
+    const title=document.createElement('h3');title.textContent=`${String(request.tool).replace(/^Codex(?=[A-Z])/,'Codex ')} 실행 허용`;
     const summary=document.createElement('p');summary.className='permission-summary';
     summary.textContent=String(request.arguments?.command??request.arguments?.file_path??request.arguments?.path??request.arguments?.message??'AI가 다음 작업의 허용을 요청했습니다.');
     const detail=document.createElement('details');detail.dataset.requestId=id;detail.open=expanded.has(id);
@@ -207,7 +207,7 @@ async function openWorkspace(){
   epoch++;streamController?.abort();connected=false;sessionId='';session=null;messages=[];actions=null;permissionActions=null;
   $('login').hidden=true;$('workspace').hidden=false;showConnection('empty');render();
   notice(config.newTask?.generalChat?'프로젝트 작업 또는 일반 대화를 선택하고 AI와 대화를 시작하세요.':'프로젝트를 선택하고 새 세션에서 사용할 AI를 고르세요.');
-  if(workspaceLayout){await configureTasks(config);renderWorkspace();}workspaceOpened=true;return;
+  if(workspaceLayout){await configureTasks(config);refreshCatalog();}workspaceOpened=true;return;
  }
  let last;try{last=sessionStorage.getItem('hapi-trial-selected-session');}catch{}
  let restored;try{restored=workspaceSelection(trialSessions,location.hash,last);}catch(error){notice(error.message);throw error;}

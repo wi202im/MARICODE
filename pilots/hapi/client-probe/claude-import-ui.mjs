@@ -118,7 +118,7 @@ export function createImportedHistory({element,api,scroller,changed=()=>{}}){
    rows=older?[...r.messages,...rows]:r.messages;before=r.before;element.hidden=false;if(!older)element.open=true;
    state={imported:true,shown:rows.length,total:r.total,loading:false,error:false};
    summary.textContent=`가져온 이전 기록 · ${rows.length}/${r.total}개`;
-   note.textContent='가져온 시점의 이전 대화입니다. 내용을 확인한 뒤 같은 세션을 재개하세요. 도구·첨부는 요약 표시하며 과거 승인은 실행하지 않습니다. 이후 대화는 아래에 이어집니다.';
+   note.textContent='가져온 시점의 이전 대화입니다. 같은 세션으로 이어서 대화합니다. 도구·첨부는 요약 표시하며 과거 승인은 실행하지 않습니다. 이후 대화는 아래에 이어집니다.';
    more.hidden=!r.hasMore;
    list.replaceChildren(...rows.map(row=>{const article=document.createElement('article'),label=document.createElement('strong'),text=document.createElement('p');label.textContent=(row.role==='user'?'사용자':'Claude')+(row.timestamp?' · '+new Date(row.timestamp).toLocaleString():'');text.textContent=row.text+(row.truncated?'\n[화면 표시 일부 생략]':'');article.append(label,text);return article;}));
    if(scroller)scroller.scrollTop=older?top+(scroller.scrollHeight-height):scroller.scrollHeight;
