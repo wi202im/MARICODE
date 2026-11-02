@@ -165,7 +165,7 @@
 
 /* Keep the chosen entry route and action visible while optional fields scroll. */
 .task-create-heading,#session-entry-modes,#session-entry-note,.draft-footer{flex-shrink:0}
-.draft-body{flex:1;min-height:0;overflow:auto;padding:0 2px 16px;scrollbar-gutter:stable}
+.draft-body{flex:1;min-height:0;overflow:auto;padding:0 2px 16px}
 .task-create .draft-footer{border-top:1px solid var(--border);padding:8px 0 12px;background:var(--surface0)}
 .task-create .draft-footer button{margin-top:4px;min-height:38px}
 .task-create #create-task{margin-top:0}
@@ -173,7 +173,7 @@
 .task-create .draft-footer p[role=status]{font-size:12px;color:var(--foreground);max-height:96px;overflow:auto}
 .task-create .draft-footer p:empty{display:none}
 .draft-server{font-size:10px!important;color:var(--dim)!important}
-.draft-agent-row{display:flex;align-items:center;gap:12px}.draft-agent-row select{flex:1;min-width:0}.draft-agent-row #draft-account-state{flex:1;margin:0}
+.draft-agent-row{display:flex;align-items:center;gap:12px}.draft-agent-row select{flex:1;min-width:0}.draft-agent-row #draft-account-state{flex:none;margin:0}
 #draft-account-state[data-state=connected]{color:var(--success,#80c9a4)}
 #draft-scope-modes{margin-top:8px}#session-entry-modes{margin-top:18px}
 .task-create #task-project{font:11px/1.6 var(--mono);color:var(--dim)}
@@ -186,3 +186,9 @@ body:has(.live-notice:not(:empty)) .conversation>.task-create{padding-bottom:48p
 
 /* Override the import panel button margin so refresh shares the select baseline. */
 .task-create #claude-import-find{margin:0;align-self:center;box-sizing:border-box}
+
+/* summary{list-style:none} above hides the native marker; give plain disclosures a visible chevron. */
+:where(details:not(.activity-group,.activity-tool,#display-preferences,.connection-menu,#tools details))>summary::before{content:"›";display:inline-block;width:1em;color:var(--dim);transition:transform .12s}
+:where(details[open]:not(.activity-group,.activity-tool,#display-preferences,.connection-menu,#tools details))>summary::before{transform:rotate(90deg)}
+.git-info h3{font-size:13px;margin-bottom:8px}
+#claude-import-panel>label{margin-top:0}#claude-import-panel details>summary{font-size:11px;font-weight:400;color:var(--muted)}#claude-import-panel details+details{margin-top:6px}

@@ -42,6 +42,8 @@ connectionBanner.append(serverLabel,connectionLabel,reconnectButton);if(workspac
 function showConnection(state){connectionState=state;connectionLabel.textContent=connectionLabels[state]??state;if($('connection')){$('connection').textContent=connectionLabel.textContent;$('connection').dataset.connectionState=state;}reconnectButton.disabled=!token||['restoring','connecting'].includes(state);}
 const pendingKey=()=>`hapi-d1-pending:${sessionId}`;
 const notice=text=>{$('notice').textContent=text;};
+// Success confirmations would otherwise sit in the status strip long after the reply arrives.
+const briefNotice=text=>{notice(text);setTimeout(()=>{if($('notice').textContent===text)notice('');},5000);};
 function renderHistorySummary(){
  const imported=importedHistory?.status;
  $('history-status').textContent=(imported?.imported?'이 앱에서 이어간 기록 ':'현재 대화 기록 ')+messages.length+'개'+(history.limited||messages.length>=1000?' · 표시 상한 1,000개':history.hasMore?' · 이전 기록 더 있음':'');
@@ -167,7 +169,7 @@ async function refresh(){
   const previousPending=actions.pending;actions.reconcile(messages,session.active,session.resumeUnconfirmed);
   permissionActions?.reconcile(session?.agentState?.requests??{});
   if(actions.pending)notice('이전 요청의 접수 여부를 확인 중입니다. 자동으로 다시 보내지 않습니다.');
-  else if(previousPending)notice(previousPending.kind==='resume'?'같은 세션을 다시 열었습니다. 대화를 이어가세요.':previousPending.kind==='archive'?'실행을 종료했습니다. 대화 기록과 파일은 보존됩니다.':'메시지 접수를 확인했습니다.');
+  else if(previousPending)briefNotice(previousPending.kind==='resume'?'같은 세션을 다시 열었습니다. 대화를 이어가세요.':previousPending.kind==='archive'?'실행을 종료했습니다. 대화 기록과 파일은 보존됩니다.':'메시지 접수를 확인했습니다.');
   else if(historyReset)notice('이력이 변경되거나 연결 공백이 있어 최근 이력부터 다시 불러왔습니다.');
   render();if(workspaceLayout)loadGit();return true;
 }
