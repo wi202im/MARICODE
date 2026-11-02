@@ -8,6 +8,7 @@ import {mkdir,readFile} from 'node:fs/promises';
 import {isAbsolute,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createServer} from '../../pilots/hapi/client-probe/server.mjs';
+import {createPairing} from '../../pilots/hapi/client-probe/pairing.mjs';
 import {startBackend} from './backend.mjs';
 import {createDesktopAccess} from './desktop-access.mjs';
 import {checkDataFormat} from './data-format.mjs';
@@ -38,7 +39,7 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
   }
   if(backend)desktopAccess=createDesktopAccess({directory,authenticate:()=>backend.authenticate()});
   stage='web';
-  web=createServer({origins:remote?[remote]:[],desktopAccess,...(backend?{upstream:backend.upstream,accountConfig:backend.accountConfig,runnerService:backend.runnerService}:{upstream:`http://127.0.0.1:${unconfiguredHub.address().port}`}),sessions:[],environmentPath:join(directory,'environment.json')});
+  web=createServer({origins:remote?[remote]:[],desktopAccess,pairing:backend?createPairing({authenticate:()=>backend.authenticate()}):undefined,...(backend?{upstream:backend.upstream,accountConfig:backend.accountConfig,runnerService:backend.runnerService}:{upstream:`http://127.0.0.1:${unconfiguredHub.address().port}`}),sessions:[],environmentPath:join(directory,'environment.json')});
   await new Promise((resolve,reject)=>{web.once('error',reject);web.listen(port,'127.0.0.1',resolve);});
   return {url:`http://127.0.0.1:${web.address().port}`,get remotePhase(){return forward.phase;},
   async startRemote(expected){

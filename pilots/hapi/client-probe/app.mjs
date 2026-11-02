@@ -34,7 +34,7 @@ const collapsedProjects=new Set();
 let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JSON.parse(localStorage.getItem('maricode-display-preferences')));}catch{}
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
-let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null;
+let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null,pairingEnabled=false;
 let commandSuggest=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
@@ -61,8 +61,8 @@ async function api(path,{method='GET',body,signal}={}){
   const usedToken=token;
   const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
-  if(r.status===401){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(r.status===401&&path!=='/api/pair'){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
+  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
@@ -215,7 +215,7 @@ async function stream(authEpoch){
   }
 }
 async function openWorkspace(){
- const auth=token;const config=await api('/config');if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
+ const auth=token;const config=await api('/config');if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;pairingEnabled=config.pairing===true;if(workspaceLayout)$('pairing-open').hidden=!pairingEnabled;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
  $('session-select').replaceChildren(...trialSessions.map(s=>{const option=document.createElement('option');option.value=s.id;option.textContent=s.label;return option;}));
  if(!trialSessions.length){
   rememberChat();$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();
@@ -240,7 +240,8 @@ $('login-form').addEventListener('submit',async e=>{
    const id=(await identity.json()).serverId;if(attempt!==epoch)return;if(!validServerId(id))throw Error('서버 신원을 확인할 수 없습니다.');
    deviceServerId=id;
   }
-  const result=await api('/api/auth',{method:'POST',body:{accessToken:credential}});
+  // An 8-character XXXX-XXXX value is a one-time pairing code, never an access token.
+  const result=/^[A-Za-z0-9]{4}[-\s]?[A-Za-z0-9]{4}$/.test(credential.trim())?await api('/api/pair',{method:'POST',body:{code:credential.trim()}}):await api('/api/auth',{method:'POST',body:{accessToken:credential}});
   if(attempt!==epoch)return;
   if(typeof result.token!=='string'||!result.token)throw Error('로그인 응답을 확인하지 못했습니다.');
   token=result.token;
@@ -577,6 +578,17 @@ async function forkAt(localId){
  }catch(e){if(sessionId===from)notice(`분기하지 못했습니다(${e.message}). 다시 보내기 전에 대화 목록에서 새 세션이 생겼는지 확인하세요.`);await refreshCatalog().catch(()=>{});}
  finally{busy=false;render();}
 }
+let pairingTimer=null,pairingExpires=0;
+function renderPairingExpiry(){const left=Math.max(0,Math.round((pairingExpires-Date.now())/1000));$('pairing-expiry').textContent=pairingExpires?(left?`${Math.floor(left/60)}분 ${left%60}초 남음`:'만료됐습니다. 새 코드를 만드세요.'):'';if(!left){clearInterval(pairingTimer);pairingTimer=null;}}
+async function pairingAction(action){
+ try{const r=await api('/api/pairing-code',{method:'POST',body:{action}});
+  if(action==='issue'){$('pairing-code').textContent=r.code;pairingExpires=r.expiresAt;clearInterval(pairingTimer);pairingTimer=setInterval(renderPairingExpiry,1000);}
+  else{$('pairing-code').textContent='----';pairingExpires=0;clearInterval(pairingTimer);pairingTimer=null;$('pairing-expiry').textContent='코드를 취소했습니다.';return;}
+  renderPairingExpiry();
+ }catch{$('pairing-expiry').textContent='코드를 만들지 못했습니다. 이 Mac의 앱에서 로그인한 상태인지 확인하세요.';}
+}
+function openPairing(){if(!pairingEnabled)return;$('pairing-dialog').showModal();pairingAction('issue');}
+if(workspaceLayout){$('pairing-open').onclick=openPairing;$('pairing-new').onclick=()=>pairingAction('issue');$('pairing-cancel').onclick=()=>pairingAction('cancel');$('pairing-close').onclick=()=>$('pairing-dialog').close();}
 async function refreshCatalog(){
  if(!workspaceLayout||!token||catalogBusy)return;
  const mine=++catalogSerial,usedToken=token;catalogBusy=true;renderWorkspace();
@@ -1032,6 +1044,7 @@ if(workspaceLayout){
   {group:'동작',label:'상세 패널 보이기/숨기기',keywords:'inspector 세션 정보',run:click('info-tab')},
   {group:'동작',label:'AI 계정·로그인 상태',keywords:'account login 계정',run:click('accounts-tab')},
   {group:'동작',label:'세션 목록 새로고침',keywords:'refresh',run:click('refresh-list')},
+  ...(pairingEnabled?[{group:'동작',label:'다른 기기 연결 코드 만들기',keywords:'pair qr 연결 원격 remote',run:()=>openPairing()}]:[]),
   ...trialSessions.map(s=>({group:'대화',label:s.displayName??s.label,detail:[s.agent==='claude'?'Claude':s.agent==='codex'?'Codex':'',s.projectLabel].filter(Boolean).join(' · '),run:()=>selectSession(s.id)})),
   ...shortcuts.map(([k,l])=>({group:'단축키',label:l,hint:k,keywords:'shortcut 단축키',run:()=>{}}))]});
  // Shortcuts only open existing UI; IME composition and modifier-less keys are left alone.

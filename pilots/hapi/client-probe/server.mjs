@@ -50,7 +50,7 @@ export function allowedRoute(method,url,sessionId) {
   if(method==='POST'&&p.startsWith(base+'/permissions/')&&/^\/api\/sessions\/[^/]+\/permissions\/(?:[A-Za-z0-9_-]|%3[Aa]|:)+\/(approve|deny)$/.test(p))return true;
   return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork'].some(x=>p===base+x);
 }
-export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
+export function createServer({pairing,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
   if(runnerConfig&&(runnerConfig.accountConfig!==accountConfig||new URL(runnerConfig.hubUrl).origin!==new URL(upstream).origin))throw Error('Runner must use the displayed account configuration and Hub');
   if(runnerConfig&&(handoffTarget||taskTarget))throw Error('Runner workspace cannot use a different fixed task target');
   const environment=environmentPath?createEnvironment(environmentPath):null;
@@ -212,6 +212,22 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
       let available=[...sessions,...children,...(trialTasks?await trialTasks.list():[]),...(taskTarget?[...await tasks.list(),...await projectHandoffs.list()].map(r=>({...r,project:r.project??taskTarget.project,scope:'personal'})):[])];
       const runnerWorkspace=typeof runnerService?.workspace==='function';
       const localImport=isLocal&&host===`127.0.0.1:${server.address().port}`&&['127.0.0.1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)&&!req.headers.forwarded&&!Object.keys(req.headers).some(k=>k.startsWith('x-forwarded-')||k.startsWith('tailscale-'));
+      if(pairing&&u.pathname==='/api/pairing-code'){
+        // Only the server Mac's own signed-in app may show or cancel a code.
+        if(!localImport||u.search||!['GET','POST'].includes(req.method)){res.writeHead(403).end();return;}
+        try{const check=await fetch(new URL('/api/sessions',target),{headers:{authorization:req.headers.authorization??''},redirect:'error',signal:AbortSignal.timeout(5000)});if(!check.ok){res.writeHead(check.status===401?401:403).end();return;}}catch{res.writeHead(503).end();return;}
+        let action='status';if(req.method==='POST'){let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>256){res.writeHead(413).end();return;}}try{action=JSON.parse(raw).action;}catch{res.writeHead(400).end();return;}}
+        const result=action==='issue'?pairing.issue():action==='cancel'?(pairing.cancel(),{active:false}):action==='status'?pairing.status:null;
+        if(!result){res.writeHead(400).end();return;}
+        res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify(result));return;
+      }
+      if(pairing&&u.pathname==='/api/pair'){
+        if(req.method!=='POST'||u.search){res.writeHead(405).end();return;}
+        let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>256){res.writeHead(413).end();return;}}
+        try{const token=await pairing.redeem(JSON.parse(raw).code);if(typeof token!=='string'||!token)throw Error('Login unavailable');res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify({token}));}
+        catch(error){res.writeHead(error.status===401?401:503,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.status===401,error:error.status===401?error.message:'로그인을 발급하지 못했습니다. 서버 Mac의 상태를 확인하세요.'}));}
+        return;
+      }
       if(u.pathname==='/api/conversations/prepare'){
         if(req.method!=='POST'||u.search||!runnerService?.generalChat){res.writeHead(405).end();return;}
         let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>128){res.writeHead(413).end();return;}}
@@ -298,7 +314,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
           res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
         }catch(error){res.writeHead([400,401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,reason:error.reason,error:error.reason==='RUNNER_SETUP'?'작업 폴더 선택은 보존했습니다. 실행 환경 준비를 확인하지 못했습니다. 생성 결과 확인을 눌러 같은 요청으로 계속하세요.':error.rejected?error.message:'결과를 확인하지 못했습니다. 같은 요청의 결과 확인을 눌러 주세요.'}));}return;
       }
-      if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,claudeImport:localImport&&!!runnerService?.claudeImport,codexImport:localImport&&!!runnerService?.codexImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{generalChat:!!runnerService.generalChat,workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
+      if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,pairing:localImport&&!!pairing,claudeImport:localImport&&!!runnerService?.claudeImport,codexImport:localImport&&!!runnerService?.codexImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{generalChat:!!runnerService.generalChat,workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
       if(req.method==='GET'&&assets.has(u.pathname)) {
         const name=assets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.webmanifest')?'application/manifest+json':name.endsWith('.png')?'image/png':name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');
         let asset=await readPresentationAsset(name);

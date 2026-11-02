@@ -417,3 +417,20 @@ test('forking is a POST-only session route without query parameters',()=>{
  assert.equal(allowedRoute('GET',new URL('http://x/api/sessions/s1/fork'),'s1'),false);
  assert.equal(allowedRoute('POST',new URL('http://x/api/sessions/other/fork'),'s1'),false);
 });
+
+test('pairing codes are issued only to the signed-in local app and redeem once for a Hub login',async t=>{
+ const {createPairing}=await import('./pairing.mjs');
+ const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.writeHead(req.headers.authorization==='Bearer fixture'?200:401).end('{"sessions":[]}');});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));
+ const pairing=createPairing({authenticate:async()=>'issued-jwt'});
+ const server=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,pairing});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(()=>{server.closeAllConnections();server.close();hub.closeAllConnections();hub.close();});
+ const url=`http://127.0.0.1:${server.address().port}`,post=(path,body,headers={})=>fetch(url+path,{method:'POST',headers:{origin:url,'content-type':'application/json',...headers},body:JSON.stringify(body)});
+ assert.equal((await post('/api/pairing-code',{action:'issue'})).status,401);
+ assert.equal((await post('/api/pairing-code',{action:'issue'},{authorization:'Bearer fixture','x-forwarded-for':'10.0.0.9'})).status,403);
+ const issued=await post('/api/pairing-code',{action:'issue'},{authorization:'Bearer fixture'});assert.equal(issued.status,200);const {code}=await issued.json();
+ assert.equal((await post('/api/pair',{code:'AAAA-AAAA'})).status,401);
+ const ok=await post('/api/pair',{code});assert.equal(ok.status,200);assert.deepEqual(await ok.json(),{token:'issued-jwt'});
+ assert.equal((await post('/api/pair',{code})).status,401);
+ assert.equal((await post('/api/pair',{code},{origin:'https://untrusted.example'})).status,403);
+});
