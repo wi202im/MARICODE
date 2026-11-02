@@ -75,6 +75,8 @@ Paseo `835bc49`(2026-11-02, Apache-2.0)를 참고용으로 `.runtime/paseo-refer
 - 대화 되감기(`rewind/`), 슬래시 명령·스킬(`client-slash-commands/`, `agent-skills/`).
 - 제외 권장: 예약 실행(`schedules/`, goals 범위 밖), 음성 입력(`voice/`), 모바일 네이티브 앱.
 
+**2026-11-02 사용자 결정:** 통합 MCP 관리(6)와 Computer Use·보안 입력 통합은 뒤로 미룬다. Git 쓰기 자동화와 다중 계정은 설명 후 결정 대기.
+
 **권장 순서:** 2 Codex 가져오기 → B의 컨텍스트 사용량 → 4 diff 검토 → 3 모델 세부 옵션.
 
 ## 1.0.10 포함 수정 — 다기기(iCloud 공유) 세션 가져오기의 cwd 경계 오탐
