@@ -137,7 +137,7 @@ final class AppUpdateController: NSObject, URLSessionDownloadDelegate {
     @objc private func openChanges() { if let release { NSWorkspace.shared.open(release.page) } }
     @objc private func openSecurity() {
         let alert = NSAlert(); alert.messageText = "설치·업데이트 후 실행이 차단됐나요?"
-        alert.informativeText = "설치한 앱을 한 번 실행한 뒤, 개인정보 보호 및 보안에서 Maricode의 ‘그래도 열기’를 직접 선택하세요. 이 배포본은 Apple 공증을 받지 않아 업데이트 후에도 확인이 필요할 수 있습니다. 앱이 대신 승인하거나 전체 보안 설정을 해제하지 않습니다."
+        alert.informativeText = "다운로드한 DMG의 ‘처음 실행 안내.html’에서 해당 버전의 설치 절차를 확인하세요. 공증본은 일반적인 다운로드 앱 확인창이 나올 수 있습니다. 공증 없는 이전 버전은 개인정보 보호 및 보안의 ‘그래도 열기’가 필요할 수 있습니다. ‘손상된 앱’이나 악성 코드 경고가 나오면 실행을 중단하고 공식 배포 파일을 확인하세요. 앱이 대신 승인하거나 전체 보안 설정을 해제하지 않습니다."
         alert.addButton(withTitle: "보안 설정 열기"); alert.addButton(withTitle: "닫기")
         if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension")!) }
     }

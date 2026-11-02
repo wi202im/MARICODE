@@ -2,6 +2,12 @@
 
 상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다.
 
+## 1.0.10 공증 공개 배포 — 준비 중
+
+- 사용자가 최신 main을1.0.10 정식 공증 배포본으로 만들고 GitHub에 공개하도록 요청했다. 기존1.0.9 첨부/태그는 보존한다.
+- 버전과 배포 문서를1.0.10으로 올리고 업데이트 화면의 무조건적인 ‘공증을 받지 않았다’ 안내를 배포본별 안내로 수정했다. Maricode 표시 이름·제목 버전·공증 패키저·명시적 키체인 복구 코드가 포함된다.
+- **다음:** 자동 검사 → 새 release 빌드 → Developer ID 앱/DMG 공증·티켓·Gatekeeper → 소스/고지/체크섬 검증 → GitHub draft 첨부 검증 → v1.0.10 공개 및 latest 다운로드 확인. 기존 앱·계정·세션은 교체하지 않는다.
+
 ## Developer ID 서명·공증 — 검증 완료, 새 공개 버전 준비 전
 
 - **된다 — 앱과 DMG:** 기존에 Accepted를 받은 `pipeline-dmg/stage/Maricode.app`을 다시 서명/제출하지 않고 티켓 부착 → 티켓 검증 → deep/strict 서명 → Gatekeeper 실행 검사를 통과했다. 이 앱으로 DMG를 만들고 Developer ID 서명 후 별도 공증을 제출해 **Accepted**, DMG 티켓 부착/검증·서명·Gatekeeper open 검사·디스크 이미지 검증까지 통과했다. DMG 서명 시 사용자가 codesign 키 사용을 직접 허용했다.
