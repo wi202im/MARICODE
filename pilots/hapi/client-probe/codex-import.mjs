@@ -43,8 +43,9 @@ async function titles(source){
 const fingerprint=stat=>`${stat.size}:${stat.mtimeMs}`;
 export function codexImports({project,destination}){
  project=resolve(project);
- // shortcut: only threads started exactly in the project root are listed; subfolder starts are not, add if users ask.
- const mine=head=>head&&!head.subagent&&resolve(head.cwd)===project;
+ // Threads started in a subfolder belong to the project too; they are registered and resumed at the project root.
+ const inside=cwd=>{const rel=relative(project,resolve(cwd));return rel===''||!rel.startsWith('..')&&!isAbsolute(rel)?rel:null;};
+ const mine=head=>head&&!head.subagent&&inside(head.cwd)!==null;
  async function list(source,offset=0){
   source=sourcePath(source);
   if(destination&&resolve(destination)===source)reject('Maricode 전용 Codex 프로필이 아닌 원래 Codex 기록 폴더를 선택하세요.');
@@ -54,7 +55,7 @@ export function codexImports({project,destination}){
   const names=await titles(source),rows=[];
   for(const r of await rollouts(searched.records)){
    const {data,stat}=await read(r.path,headBytes),head=codexSessionHead(data.toString('utf8'),r.id);if(!mine(head))continue;
-   rows.push({id:r.id,title:(names.get(r.id)??head.first??'제목 없는 Codex 대화').replace(/\s+/g,' ').slice(0,80),modifiedAt:stat.mtimeMs,size:stat.size,fingerprint:fingerprint(stat),...(stat.size>limit?{importable:false,warning:'가져오기 한도(256MiB)를 넘습니다'}:{})});
+   rows.push({id:r.id,title:(names.get(r.id)??head.first??'제목 없는 Codex 대화').replace(/\s+/g,' ').slice(0,80),modifiedAt:stat.mtimeMs,size:stat.size,fingerprint:fingerprint(stat),...(stat.size>limit?{importable:false,warning:'가져오기 한도(256MiB)를 넘습니다'}:inside(head.cwd)?{warning:`하위 폴더 ${inside(head.cwd)}에서 시작 · 프로젝트 폴더에서 이어갑니다`}:{})});
   }
   rows.sort((a,b)=>b.modifiedAt-a.modifiedAt);
   const start=Math.max(0,Number.isInteger(offset)?offset:0),sessions=rows.slice(start,start+page);

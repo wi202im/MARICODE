@@ -25,38 +25,51 @@ export function accountProfiles(configPath){
   }
   return {...p,env,agents};
  }
- const view=s=>Object.fromEntries(Object.entries(s.agents).map(([agent,a])=>[agent,{active:a.active,accounts:a.accounts.map(({id,alias})=>({id,alias,active:id===a.active}))}]));
+ // Removed accounts stay in the registry (hidden) so resume can still name the account a conversation belongs to.
+ const view=s=>Object.fromEntries(Object.entries(s.agents).map(([agent,a])=>[agent,{active:a.active,accounts:a.accounts.filter(x=>!x.removed).map(({id,alias})=>({id,alias,active:id===a.active}))}]));
+ const cleanAlias=alias=>{alias=typeof alias==='string'?alias.trim().replace(/\s+/g,' '):'';if(!alias||alias.length>40)throw rejected('계정 이름을 1~40자로 입력하세요.');return alias;};
  async function save(s){await writeJson(s.registry,{version:1,agents:Object.fromEntries(Object.entries(s.agents).map(([agent,a])=>[agent,{accounts:a.accounts}]))});}
  async function locked(fn){const lock=configPath+'.register-lock';try{await mkdir(lock,{mode:0o700});}catch(e){if(e.code==='EEXIST')throw rejected('다른 설정 작업이 진행 중입니다. 잠시 후 다시 시도하세요.');throw e;}try{return await fn();}finally{await rm(lock,{recursive:true});}}
  return {
   async list(){return view(await load());},
   async add(agent,alias){
    if(!keys[agent])throw rejected('지원하지 않는 AI입니다.');
-   alias=typeof alias==='string'?alias.trim().replace(/\s+/g,' '):'';if(!alias||alias.length>40)throw rejected('계정 이름을 1~40자로 입력하세요.');
+   alias=cleanAlias(alias);
    return locked(async()=>{
     const s=await load(),a=s.agents[agent];if(!a)throw rejected('이 AI의 전용 프로필이 설정되지 않았습니다.');
-    if(a.accounts.some(x=>x.alias===alias))throw rejected('같은 이름의 계정이 이미 있습니다.');
+    if(a.accounts.some(x=>!x.removed&&x.alias===alias))throw rejected('같은 이름의 계정이 이미 있습니다.');
     const id=randomUUID(),path=join(dirname(a.activePath),`${agent}-${id}`);await mkdir(path,{mode:0o700});
     a.accounts.push({id,alias,path});await save(s);return {id,...view(s)};
    });
   },
   async activate(agent,id){
    return locked(async()=>{
-    const s=await load(),a=s.agents[agent],target=a?.accounts.find(x=>x.id===id);if(!target)throw rejected('등록된 계정을 선택하세요.');
+    const s=await load(),a=s.agents[agent],target=a?.accounts.find(x=>x.id===id&&!x.removed);if(!target)throw rejected('등록된 계정을 선택하세요.');
     if(a.active===id)return {changed:false,...view(s)};
     if(!(await stat(target.path)).isDirectory())throw rejected('계정 프로필 폴더를 찾지 못했습니다.');
     await save(s);await writeJson(s.environment,{...s.env,[keys[agent]]:target.path});
     a.active=id;a.activePath=resolve(target.path);return {changed:true,...view(s)};
    });
   },
+  async rename(agent,id,alias){
+   alias=cleanAlias(alias);
+   return locked(async()=>{const s=await load(),a=s.agents[agent],target=a?.accounts.find(x=>x.id===id&&!x.removed);if(!target)throw rejected('등록된 계정을 선택하세요.');
+    if(a.accounts.some(x=>x!==target&&!x.removed&&x.alias===alias))throw rejected('같은 이름의 계정이 이미 있습니다.');target.alias=alias;await save(s);return view(s);});
+  },
+  async remove(agent,id){
+   return locked(async()=>{const s=await load(),a=s.agents[agent],target=a?.accounts.find(x=>x.id===id&&!x.removed);if(!target)throw rejected('등록된 계정을 선택하세요.');
+    if(id==='default')throw rejected('기본 계정은 삭제할 수 없습니다.');if(a.active===id)throw rejected('사용 중인 계정은 삭제할 수 없습니다. 다른 계정으로 전환한 뒤 삭제하세요.');
+    // The login folder is kept; only the list entry is hidden.
+    target.removed=true;await save(s);return view(s);});
+  },
   // Which account's profile holds this native session. null = no profile has it (e.g. not started yet).
   async owner(agent,nativeId,cwd){
    if(!keys[agent]||typeof nativeId!=='string'||!/^[\w-]{8,80}$/.test(nativeId))return null;
    const s=await load(),a=s.agents[agent];if(!a)return null;
    for(const account of a.accounts){
-    if(agent==='claude'){try{await stat(join(account.path,'projects',resolve(cwd).replace(/[^a-zA-Z0-9]/g,'-'),nativeId+'.jsonl'));return {...account,active:account.id===a.active};}catch{}}
+    if(agent==='claude'){try{await stat(join(account.path,'projects',resolve(cwd).replace(/[^a-zA-Z0-9]/g,'-'),nativeId+'.jsonl'));return {...account,active:account.id===a.active,removed:!!account.removed};}catch{}}
     // Codex moves a thread's rollout to archived_sessions when the session is archived.
-    else if(await hasRollout(join(account.path,'sessions'),nativeId)||await hasRollout(join(account.path,'archived_sessions'),nativeId))return {...account,active:account.id===a.active};
+    else if(await hasRollout(join(account.path,'sessions'),nativeId)||await hasRollout(join(account.path,'archived_sessions'),nativeId))return {...account,active:account.id===a.active,removed:!!account.removed};
    }
    return null;
   }

@@ -46,3 +46,12 @@ test('reads the first prompt from the Codex 0.166 item_completed shape',async()=
  const text=[JSON.stringify({type:'session_meta',payload:{id,cwd:'/p',source:'exec'}}),JSON.stringify({type:'event_msg',payload:{type:'item_completed',item:{type:'UserMessage',content:[{type:'text',text:'단어는 KIWI88'}]}}})].join('\n');
  assert.equal(codexSessionHead(text,id).first,'단어는 KIWI88');
 });
+test('threads started in a project subfolder are listed and marked, outside folders are not',async()=>{
+ const f=await fixture(),sub='01a19ca6-2c4a-7d82-87dc-a1b14d35a980',out='01a19ca6-2c4a-7d82-87dc-a1b14d35a981';
+ await writeFile(join(f.day,`rollout-2026-11-02T23-26-00-${sub}.jsonl`),rollout(sub,join(f.project,'pkg','app')));
+ await writeFile(join(f.day,`rollout-2026-11-02T23-26-01-${out}.jsonl`),rollout(out,f.project+'-other'));
+ const imports=codexImports({project:f.project,destination:f.destination}),rows=(await imports.list(f.source)).sessions;
+ assert.deepEqual(rows.map(r=>r.id).sort(),[id,sub].sort());
+ assert.match(rows.find(r=>r.id===sub).warning,/pkg\/app/);assert.equal(rows.find(r=>r.id===id).warning,undefined);
+ const row=rows.find(r=>r.id===sub);assert.equal((await imports.copy(f.source,sub,row.fingerprint)).copied,true);
+});

@@ -19,7 +19,7 @@ export async function workspaceChoices(path){
  return {kind:'git',path,branch,head,branches,worktrees};
 }
 export function workspaceRequest(input){
- if(!input||Array.isArray(input)||Object.keys(input).some(k=>!['requestId','agent','project','workspace'].includes(k))||!/^[a-f0-9-]{36}$/.test(input.requestId??'')||!['codex','claude'].includes(input.agent)||typeof input.project!=='string')throw reject('새 작업의 프로젝트와 AI를 확인하세요.');
+ if(!input||Array.isArray(input)||Object.keys(input).some(k=>!['requestId','agent','project','workspace','handoffFrom'].includes(k))||!/^[a-f0-9-]{36}$/.test(input.requestId??'')||input.handoffFrom!==undefined&&!/^[a-f0-9-]{36}$/.test(input.handoffFrom)||!['codex','claude'].includes(input.agent)||typeof input.project!=='string')throw reject('새 작업의 프로젝트와 AI를 확인하세요.');
  const w=input.workspace??{mode:'current'};const fields={current:['mode'],branch:['mode','branch'],existing:['mode','key'],new:['mode','branch','name']}[w.mode];
  if(!fields||Object.keys(w).some(k=>!fields.includes(k))||fields.some(k=>typeof w[k]!=='string'||!w[k]||w[k].length>200||/[\u0000-\u001f]/.test(w[k])))throw reject('작업 공간 선택을 다시 확인하세요.');
  return {...input,workspace:Object.fromEntries(fields.map(k=>[k,w[k]]))};

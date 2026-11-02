@@ -62,6 +62,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  }
 
  async function exists(p){try{await stat(p);return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}}
+ async function handoffLinks(){try{return JSON.parse(await readFile(slot+'.handoffs.json','utf8'));}catch(e){if(e.code==='ENOENT')return {};throw e;}}
  async function state(){
   await current();
   if(phase)return phase==='running'&&!child?.running?'exited':phase;
@@ -267,9 +268,11 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   async accountProfiles(authorization){await authorize(authorization);return accountProfiles(c.accountConfig).list();},
   async accountProfile(authorization,input){
    await authorize(authorization);
-   if(!input||Object.keys(input).some(k=>!['action','agent','alias','id'].includes(k))||!['add','switch'].includes(input.action)||!['claude','codex'].includes(input.agent))throw Object.assign(Error('계정 요청을 확인하세요.'),{rejected:true,status:400});
+   if(!input||Object.keys(input).some(k=>!['action','agent','alias','id'].includes(k))||!['add','switch','rename','remove'].includes(input.action)||!['claude','codex'].includes(input.agent))throw Object.assign(Error('계정 요청을 확인하세요.'),{rejected:true,status:400});
    const profiles=accountProfiles(c.accountConfig);
    if(input.action==='add')return exclusive(()=>profiles.add(input.agent,input.alias));
+   if(input.action==='rename')return exclusive(()=>profiles.rename(input.agent,input.id,input.alias));
+   if(input.action==='remove')return exclusive(()=>profiles.remove(input.agent,input.id));
    return exclusive(async()=>{
     if((await profiles.list())[input.agent]?.active===input.id)return profiles.list();
     const before=await state();
@@ -345,7 +348,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      const nativeKey=m.flavor==='codex'?'codexSessionId':'claudeSessionId';
      // One account is active at a time; resuming under another account would continue it with the wrong login.
      const owner=await accountProfiles(c.accountConfig).owner(m.flavor,m[nativeKey]??m.agentSessionId,m.path).catch(()=>null);
-     if(owner&&!owner.active)throw Object.assign(Error(`이 대화는 다른 계정(‘${owner.alias}’)에서 만들었습니다. AI 계정 패널에서 그 계정으로 전환한 뒤 재개하세요.`),{rejected:true,status:409,reason:'ACCOUNT_MISMATCH'});
+     if(owner&&!owner.active)throw Object.assign(Error(owner.removed?`이 대화는 목록에서 삭제한 계정(‘${owner.alias}’)에서 만들었습니다. 다른 계정으로는 재개하지 않습니다.`:`이 대화는 다른 계정(‘${owner.alias}’)에서 만들었습니다. AI 계정 패널에서 그 계정으로 전환한 뒤 재개하세요.`),{rejected:true,status:409,reason:'ACCOUNT_MISMATCH'});
      pending={id:resume.id,machineId:m.machineId,path:m.path,flavor:m.flavor,nativeKey,nativeId:typeof m[nativeKey]==='string'?m[nativeKey]:null,child,directory:c.directory};
     }
     const marker=join(c.directory,'session-operation.json');let recorded=false;
@@ -357,7 +360,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   },
   async target(auth){await current();return createRunnerWorkspace(c).target(auth);},
   async task(raw,authorization,check=false){
-   if(!raw?.workspace)return exclusive(()=>createRunnerWorkspace(c).task(raw,authorization,check));
+   if(!raw?.workspace&&!raw?.handoffFrom)return exclusive(()=>createRunnerWorkspace(c).task(raw,authorization,check));
    await authorize(authorization);const input=workspaceRequest(raw);
    return exclusive(async()=>{
     const project=await selectedProject(authorization,input.project);
@@ -386,8 +389,11 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      }catch(error){throw Object.assign(Error('작업 폴더 선택은 보존했습니다. 실행기 준비 상태를 확인한 뒤 같은 요청의 결과를 확인하세요.'),{rejected:false,reason:'RUNNER_SETUP'});}
     }
     if(!check&&prepared.branch&&(await workspaceChoices(prepared.path)).branch!==prepared.branch)throw Error('선택 후 브랜치가 바뀌었습니다. 세션을 만들지 않았습니다.');
+    // A handoff target records its source so the new session can link back; the source must be this project's other-AI session.
+    if(input.handoffFrom){const source=(await api.workspace(authorization)).find(s=>s.id===input.handoffFrom);if(!source||source.project!==prepared.path||source.agent===input.agent)throw Object.assign(Error('인계 출처 세션을 확인하지 못해 만들지 않았습니다.'),{rejected:true,status:400});}
     const effective={requestId:input.requestId,agent:input.agent,project:prepared.project};
     const result=await createRunnerWorkspace(c).task(effective,authorization,check);
+    if(input.handoffFrom&&result.state==='created'&&/^[a-f0-9-]{36}$/.test(result.session?.id??'')){const links=await handoffLinks();if(links[result.session.id]!==input.handoffFrom){links[result.session.id]=input.handoffFrom;const temp=slot+'.handoffs.'+randomUUID()+'.tmp';await writeFile(temp,JSON.stringify(links),{mode:0o600,flag:'wx'});await rename(temp,slot+'.handoffs.json');}}
     return result.state==='none'?{state:'prepared'}:result;
    });
   },
@@ -403,8 +409,9 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    const r=await fetch(c.hubUrl+'/api/sessions',{headers:{authorization},redirect:'error',signal:AbortSignal.timeout(5000)});
    if(!r.ok)throw Object.assign(Error('Workspace unavailable'),{status:r.status});
    const data=await r.json();if(!Array.isArray(data.sessions))throw Error('Workspace unavailable');
+   const links=await handoffLinks().catch(()=>({}));
    return data.sessions.filter(s=>/^[a-f0-9-]{36}$/.test(s.id)&&s.metadata?.machineId===settings.machineId&&(allowed?allowed.some(p=>p.path===s.metadata?.path):s.metadata?.path===plan.cwd))
-    .map(s=>({id:s.id,...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),agent:s.metadata?.flavor,updatedAt:s.updatedAt,createdAt:s.createdAt,label:sessionTitle({id:s.id},s),project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
+    .map(s=>({id:s.id,...(typeof links[s.id]==='string'&&data.sessions.some(x=>x.id===links[s.id])?{parentId:links[s.id]}:{}),...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),agent:s.metadata?.flavor,updatedAt:s.updatedAt,createdAt:s.createdAt,label:sessionTitle({id:s.id},s),project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
   },
   prepare:()=>action('unprepared','preparing',async()=>{await prepare(c.accountConfig,c.directory);phase='prepared';}),
   start:()=>action('prepared','starting',async()=>{if((await snapshot()).configuration!=='matched')throw Error('Prepared configuration changed');await launchCurrent();}),

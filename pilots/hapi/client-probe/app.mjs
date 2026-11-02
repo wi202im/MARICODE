@@ -444,9 +444,11 @@ async function prepareRunnerHandoff(){
  const source=trialSessions.find(s=>s.id===sessionId),agent=session.metadata?.flavor==='codex'?'claude':'codex',project=projectCatalog.find(p=>p.path===source?.project);
  if(!source||!project){notice('이 대화의 프로젝트를 찾지 못해 인계하지 않았습니다.');return;}
  let text;try{text=buildHandoff(source,{id:handoffPlaceholder,label:'새 인계 세션'},messages,{hasOlder:history.hasMore||history.limited,limited:history.limited});}catch(e){notice(e.message);return;}
- const request={requestId:crypto.randomUUID(),agent,project:project.key,...(draftSupportsGit?{workspace:{mode:'current'}}:{})};
+ const request={requestId:crypto.randomUUID(),agent,project:project.key,handoffFrom:source.id,workspace:{mode:'current'}};
  try{sessionStorage.setItem('maricode-handoff:'+request.requestId,JSON.stringify({text,source:source.label,report:handoffExcerpt(messages)}));sessionStorage.setItem(taskPendingKey,JSON.stringify(request));}catch{notice('요청을 보관하지 못해 인계하지 않았습니다.');return;}
- draftContinue=true;await createTask(false);
+ if(claudeImportPanel?.pending){notice('확인이 필요한 가져오기 요청이 있어 인계하지 않았습니다. 새 대화 화면에서 가져오기 결과를 먼저 확인하세요.');return;}
+ // createTask is a no-op while the new-session panel is in import mode.
+ draftSessionMode='new';draftContinue=true;await createTask(false);
  if(taskPending())notice('인계 세션 생성 결과를 확인하지 못했습니다. 새 대화 화면의 결과 확인을 눌러 주세요. 다시 만들지 않습니다.');
 }
 $('new-handoff').onclick=()=>runnerHandoff&&!handoffEnabled?prepareRunnerHandoff():prepareNewHandoff();
@@ -994,21 +996,23 @@ async function refreshAccounts(){
 }
 // One account per AI is active at a time; switching restarts this computer's Runner (server refuses while anything runs).
 function accountProfileControls(agent,prof,status,local){
- const box=document.createElement('div'),select=document.createElement('select'),apply=document.createElement('button'),name=document.createElement('input'),add=document.createElement('button'),hint=document.createElement('small');
+ const box=document.createElement('div'),select=document.createElement('select'),apply=document.createElement('button'),name=document.createElement('input'),add=document.createElement('button'),rename=document.createElement('button'),remove=document.createElement('button'),hint=document.createElement('small');let armed=false;
  box.className='account-profiles';const active=prof.accounts.find(a=>a.active);
  status.textContent=`${active?`‘${active.alias}’`:'현재 계정'} · ${status.textContent}`;
  select.setAttribute('aria-label',(agent==='claude'?'Claude':'Codex')+' 사용할 계정');
  select.replaceChildren(...prof.accounts.map(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.alias+(a.active?' (사용 중)':'');return o;}));select.value=prof.active??'';
- apply.type='button';apply.textContent='이 계정으로 전환';name.placeholder='새 계정 이름 (예: 회사)';name.maxLength=40;name.setAttribute('aria-label','새 계정 이름');add.type='button';add.textContent='계정 추가';
+ apply.type='button';apply.textContent='이 계정으로 전환';name.placeholder='새 계정 이름 (예: 회사)';name.maxLength=40;name.setAttribute('aria-label','새 계정 이름');add.type='button';add.textContent='계정 추가';rename.type=remove.type='button';rename.textContent='선택한 계정 이름 바꾸기';remove.textContent='목록에서 삭제';remove.title='로그인 폴더는 남기고 목록에서만 뺍니다. 이 계정으로 만든 대화는 재개하지 않습니다.';
  hint.textContent='한 번에 한 계정만 사용합니다. 전환하면 실행기를 다시 시작하며 실행 중인 대화가 없어야 합니다. 다른 계정으로 만든 대화는 그 계정으로 전환해야 재개됩니다. 새 계정은 전환 후 로그인합니다.';
- const sync=()=>{apply.disabled=!local||accountsBusy||select.value===prof.active;add.disabled=!local||accountsBusy||!name.value.trim();};
- select.onchange=sync;name.oninput=sync;sync();
+ const sync=()=>{apply.disabled=!local||accountsBusy||select.value===prof.active;add.disabled=rename.disabled=!local||accountsBusy||!name.value.trim();remove.disabled=!local||accountsBusy||select.value===prof.active||select.value==='default';if(remove.disabled||!armed){armed=false;remove.textContent='목록에서 삭제';}};
+ select.onchange=()=>{armed=false;sync();};name.oninput=sync;sync();
  const run=async(body,doing)=>{if(accountsBusy)return;accountsBusy=true;sync();$('account-notice').textContent=doing;
   try{await api('/api/account-profiles',{method:'POST',body});accountsBusy=false;await refreshAccounts();if(body.action==='switch'){await refreshCatalog();$('account-notice').textContent='계정을 전환했습니다. 로그인 상태를 확인하세요.';}}
   catch(e){$('account-notice').textContent=e.message||'계정 요청 결과를 확인하지 못했습니다.';}finally{accountsBusy=false;sync();}};
  apply.onclick=()=>run({action:'switch',agent,id:select.value},'계정을 전환하고 실행기를 다시 시작하는 중입니다…');
  add.onclick=()=>run({action:'add',agent,alias:name.value},'계정을 추가하는 중입니다…');
- const row=document.createElement('div'),addRow=document.createElement('div');row.className=addRow.className='account-profile-row';row.append(select,apply);addRow.append(name,add);box.append(row,addRow,hint);return box;
+ rename.onclick=()=>run({action:'rename',agent,id:select.value,alias:name.value},'계정 이름을 바꾸는 중입니다…');
+ remove.onclick=()=>{if(!armed){armed=true;remove.textContent='삭제 확인 · 로그인 폴더는 남김';return;}armed=false;run({action:'remove',agent,id:select.value},'목록에서 삭제하는 중입니다…');};
+ const row=document.createElement('div'),addRow=document.createElement('div');row.className=addRow.className='account-profile-row';row.append(select,apply);addRow.append(name,add);const manage=document.createElement('div');manage.className='account-profile-manage';manage.append(rename,remove);box.append(row,addRow,manage,hint);return box;
 }
 async function startAccountLogin(agent){
  if(accountsBusy)return;accountsBusy=true;for(const b of $('account-list').querySelectorAll('button'))b.disabled=true;

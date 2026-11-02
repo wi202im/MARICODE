@@ -41,3 +41,15 @@ test('a session belongs to the account whose profile holds its native transcript
  await mkdir(join(f.profiles,'claude','projects','-work-proj'),{recursive:true});await writeFile(join(f.profiles,'claude','projects','-work-proj',claude+'.jsonl'),'{}');
  assert.equal((await f.p.owner('claude',claude,cwd)).active,true);
 });
+test('accounts can be renamed and hidden; hidden accounts still guard their conversations',async()=>{
+ const f=await fixture(),{id}=await f.p.add('codex','회사'),thread='01a19ca6-2c4a-7d82-87dc-a1b14d35a222';
+ assert.equal((await f.p.rename('codex',id,' 회사 계정 ')).codex.accounts[1].alias,'회사 계정');
+ await assert.rejects(f.p.rename('codex','default','회사 계정'),/이미/);await assert.rejects(f.p.rename('codex',id,''),/1~40/);
+ await assert.rejects(f.p.remove('codex','default'),/기본 계정/);
+ await f.p.activate('codex',id);await assert.rejects(f.p.remove('codex',id),/사용 중/);await f.p.activate('codex','default');
+ await mkdir(join(f.profiles,'codex-'+id,'sessions'),{recursive:true});await writeFile(join(f.profiles,'codex-'+id,'sessions',`rollout-x-${thread}.jsonl`),'{}');
+ const after=await f.p.remove('codex',id);assert.deepEqual(after.codex.accounts.map(a=>a.alias),['기본 계정']);
+ const owner=await f.p.owner('codex',thread,'/p');assert.equal(owner.alias,'회사 계정');assert.equal(owner.removed,true);assert.equal(owner.active,false);
+ await assert.rejects(f.p.activate('codex',id),/등록된 계정/);
+ assert.equal((await f.p.add('codex','회사 계정')).codex.accounts.length,2);
+});

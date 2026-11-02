@@ -300,7 +300,7 @@ export function createServer({pairing,desktopAccess,upstream,sessionId,sessions=
               // No spawn record exists at this point. Authentication and AI setup precede mutation.
               await runnerService.projects(req.headers.authorization);
               const input=JSON.parse(raw);
-              if(!input||Array.isArray(input)||Object.keys(input).some(k=>!['requestId','agent','project','workspace'].includes(k))||!/^[a-f0-9-]{36}$/.test(input.requestId??'')||!['codex','claude'].includes(input.agent)||(input.project!==undefined&&typeof input.project!=='string')){res.writeHead(400,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,error:'새 세션 요청 형식을 확인해 주세요.'}));return;}
+              if(!input||Array.isArray(input)||Object.keys(input).some(k=>!['requestId','agent','project','workspace','handoffFrom'].includes(k))||!/^[a-f0-9-]{36}$/.test(input.requestId??'')||!['codex','claude'].includes(input.agent)||(input.project!==undefined&&typeof input.project!=='string')){res.writeHead(400,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,error:'새 세션 요청 형식을 확인해 주세요.'}));return;}
               if(input.workspace)workspaceRequest(input);
               if(accountsService&&(await accountsService.status(input.agent)).state!=='connected'){res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'AI_SETUP',error:'선택한 AI의 설치·구독 로그인을 먼저 연결하세요.'}));return;}
               if(!input.workspace)try{await runnerService.ready(req.headers.authorization,input.project,input.agent);
