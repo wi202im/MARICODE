@@ -25,3 +25,8 @@ export function createChatDrafts(){
  const drafts=new Map();
  return {save(id,{text='',note=''}={}){if(!id)return;if(text||note)drafts.set(id,{text,note});else drafts.delete(id);},read(id){return {...(drafts.get(id)??{text:'',note:''})};},clear(){drafts.clear();}};
 }
+
+// Same workspace only; caller supplies the current server's catalog.
+export function recentWorkspaceSession(sessions,path){
+ return sessions.filter(s=>s.project===path&&['claude','codex'].includes(s.agent)).sort((a,b)=>(b.updatedAt??b.createdAt??0)-(a.updatedAt??a.createdAt??0))[0]??null;
+}

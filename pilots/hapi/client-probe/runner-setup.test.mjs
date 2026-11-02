@@ -215,3 +215,40 @@ test('legacy default folders expose ordinary management without writing on read'
  await service.manage('Bearer synthetic',{...remove,action:'rename',name:'내 프로젝트'});
  const restored=(await service.projects('Bearer synthetic'))[0];assert.equal(restored.projectId,p.projectId);assert.equal(restored.label,'내 프로젝트');assert.equal(restored.path,path);
 });
+
+test('general chat provisions one dedicated workspace only after authentication and never starts AI',async t=>{
+ const {createServer}=await import('node:http');const {readFile,symlink}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'maricode-general-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const hub=createServer((req,res)=>{if(req.headers.authorization!=='Bearer synthetic')return res.writeHead(401).end();res.end('{"sessions":[]}');});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),projectsPath:join(root,'projects.json'),binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:`http://127.0.0.1:${hub.address().port}`};
+ await writeFile(c.accountConfig,JSON.stringify({cwd:join(root,'local-setup/working-directory')}));
+ const api=createRunnerSetup(c,{launch:()=>{throw Error('must not start');}});
+ await assert.rejects(api.generalChat('Bearer wrong'));await assert.rejects(access(c.projectsPath));
+ const first=await api.generalChat('Bearer synthetic'),second=await api.generalChat('Bearer synthetic');
+ assert.equal(first.project,second.project);const projects=await api.projects('Bearer synthetic');
+ assert.equal(projects.length,1);assert.equal(projects[0].general,true);assert.equal(projects[0].label,'일반 대화');assert.notEqual(projects[0].path,root);
+ await rm(projects[0].path,{recursive:true});await symlink(root,projects[0].path);
+ await assert.rejects(api.generalChat('Bearer synthetic'));
+ await rm(projects[0].path);await rm(join(root,'runner.general'),{recursive:true});
+ const outside=join(root,'outside');await mkdir(outside);await symlink(outside,join(root,'runner.general'));
+ await assert.rejects(api.generalChat('Bearer synthetic'));await assert.rejects(access(join(outside,'general-chat')));
+});
+
+test('general chat can start beside an active project without changing its folder or refreshing the Runner',async t=>{
+ const {createServer}=await import('node:http'),{projectRegistry}=await import('./project-registry.mjs'),{readFile}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'maricode-general-session-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const projectsPath=join(root,'projects.json');await projectRegistry(projectsPath).add(root);
+ await writeFile(join(root,'env'),'{"PATH":"/usr/bin:/bin"}');await writeFile(join(root,'accounts'),JSON.stringify({cwd:root,environment:join(root,'env'),binaries:{claude:'/bin/echo'}}));await writeFile(join(root,'token'),'synthetic');
+ let starts=0,stops=0,spawns=0,spawned;const sid='20000000-0000-4000-8000-000000000001';
+ const hub=createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer synthetic')return res.writeHead(401).end('{}');
+ if(req.url==='/api/sessions')return res.end('{"sessions":[]}');if(req.url==='/api/machines')return res.end('{"machines":[{"id":"own"}]}');if(req.url.endsWith('/agent-availability'))return res.end('{"agents":[{"agent":"claude","available":true}]}');
+ if(req.url.endsWith('/spawn')){let body='';for await(const c of req)body+=c;spawned=JSON.parse(body);spawns++;return res.end(JSON.stringify({type:'success',sessionId:sid}));}
+ res.end(JSON.stringify({session:{id:sid,metadata:{machineId:'own',path:spawned.directory,flavor:'claude'}}}));});await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),projectsPath,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:`http://127.0.0.1:${hub.address().port}`};
+ const api=createRunnerSetup(c,{connection:async()=>true,hasActive:async()=>true,launch:async({prepared})=>{starts++;await mkdir(join(prepared,'runner-home'));await writeFile(join(prepared,'runner-home/settings.json'),'{"machineId":"own"}');return {running:true,stop:async()=>{stops++;}};}});
+ await api.prepare();await api.start();const general=await api.generalChat('Bearer synthetic');
+ const req={requestId:'30000000-0000-4000-8000-000000000001',agent:'claude',project:general.project,workspace:{mode:'current'}};
+ assert.equal((await api.task(req,'Bearer synthetic')).state,'created');assert.equal((await api.task(req,'Bearer synthetic',true)).state,'created');assert.equal(spawns,1);assert.equal(starts,1);assert.equal(stops,0);
+ assert.notEqual(spawned.directory,root);assert.equal(spawned.yolo,false);assert.ok((JSON.parse(await readFile(join(c.directory,'prepared.json')))).workspaceRoots.includes(spawned.directory));
+});

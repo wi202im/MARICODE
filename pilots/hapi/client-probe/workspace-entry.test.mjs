@@ -31,3 +31,11 @@ test('chat drafts stay with their session when a new workspace or another conver
  assert.equal(drafts.read('old').text,'');assert.equal(drafts.read('new').text,'다른 초안');
  drafts.clear();assert.equal(drafts.read('new').text,'');
 });
+
+test('new sessions inherit the newest supported AI only from the exact workspace',async()=>{
+ const {recentWorkspaceSession}=await import('./workspace-entry.mjs');
+ const rows=[{id:'old',project:'/a',agent:'codex',updatedAt:10},{id:'latest',project:'/a',agent:'claude',updatedAt:20},{id:'other',project:'/a/sub',agent:'codex',updatedAt:30}];
+ assert.equal(recentWorkspaceSession(rows,'/a').id,'latest');
+ assert.equal(recentWorkspaceSession(rows,'/empty'),null);
+ assert.equal(recentWorkspaceSession([...rows,{id:'unsupported',project:'/a',agent:'other',updatedAt:40}],'/a').id,'latest');
+});

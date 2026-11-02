@@ -341,3 +341,13 @@ test('local Claude imports require same-origin authenticated service and are una
  assert.equal((await request({authorization:'Bearer fixture'})).status,200);assert.equal(calls,1);
  const config=await(await fetch(url+'/config',{headers:{authorization:'Bearer fixture'}})).json();assert.equal(config.claudeImport,true);
 });
+
+test('general conversation preparation rejects cross-origin, unauthenticated and arbitrary folder requests',async t=>{
+ let calls=0;const service={generalChat:async auth=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});calls++;return {project:'owned'};}};
+ const server=createServer({upstream:'http://127.0.0.1:1',runnerService:service});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
+ const url=`http://127.0.0.1:${server.address().port}`;
+ const send=(body='{}',headers={})=>fetch(url+'/api/conversations/prepare',{method:'POST',headers:{origin:url,'content-type':'application/json',...headers},body});
+ assert.equal((await send()).status,401);assert.equal((await send('{}',{authorization:'Bearer fixture',origin:'https://wrong.example'})).status,403);
+ assert.equal((await send('{"path":"/another-project"}',{authorization:'Bearer fixture'})).status,400);assert.equal(calls,0);
+ assert.equal((await send('{}',{authorization:'Bearer fixture'})).status,200);assert.equal(calls,1);
+});

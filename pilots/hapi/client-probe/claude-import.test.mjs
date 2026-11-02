@@ -73,3 +73,11 @@ test('concurrent imports hold the lock through registration readback',async t=>{
  const first=f.api.import(request,callbacks);await atLookup;
  await assert.rejects(f.api.import(request,callbacks));assert.equal(posts,1);release();assert.equal((await first).state,'registered');
 });
+
+test('search distinguishes missing profile, missing project store and empty project records',async t=>{
+ const f=await fixture(t);
+ assert.equal((await f.api.list(join(f.root,'missing'))).status,'profile-missing');
+ assert.equal((await f.api.list(f.project)).status,'store-missing');
+ await rm(f.folder,{recursive:true});assert.equal((await f.api.list(f.source)).status,'project-missing');
+ await mkdir(f.folder);assert.equal((await f.api.list(f.source)).status,'empty');
+});

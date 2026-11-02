@@ -2,8 +2,8 @@ import {workspaceChoices,workspaceRequest,createWorkspacePlans} from './workspac
 import {projectRegistry,legacyProjectId} from './project-registry.mjs';
 import {randomUUID} from 'node:crypto';
 import {createRunnerWorkspace} from './runner-workspace.mjs';
-import {readFile,readdir,stat,mkdir,rm,writeFile,rename} from 'node:fs/promises';
-import {join,isAbsolute} from 'node:path';
+import {readFile,readdir,stat,lstat,realpath,mkdir,rm,writeFile,rename} from 'node:fs/promises';
+import {join,isAbsolute,dirname,basename} from 'node:path';
 import {prepareRunner,accountRevision} from './machine-setup.mjs';
 import {launchRunner} from './runner-launch.mjs';
 import {claudeImports} from './claude-import.mjs';
@@ -36,6 +36,15 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('Local Hub required');
  if(['directory','accountConfig','binary','tokenFile'].some(k=>typeof config[k]!=='string'||!isAbsolute(config[k])))throw Error('Absolute launcher paths required');
  const c={...config,hubUrl:url.origin,taskDirectory:join(config.directory,'tasks')},slot=config.directory;let busy=false,phase=null,child=null,resumePending=null;
+ async function generalDirectory(){return join(await realpath(dirname(slot)),basename(slot)+'.general','general-chat');}
+ async function prepareGeneralDirectory(){
+  const path=await generalDirectory();
+  for(const part of [dirname(path),path]){
+   try{await mkdir(part,{mode:0o700});}catch(error){if(error.code!=='EEXIST')throw error;}
+   if(!(await lstat(part)).isDirectory()||await realpath(part)!==part)throw Error('General chat folder changed');
+  }
+  return path;
+ }
  async function current(){
   try{const saved=JSON.parse(await readFile(slot+'.current.json','utf8')).directory;
    if(typeof saved!=='string'||!saved.startsWith(slot+'.generation-')||!/^[a-f0-9-]{36}$/.test(saved.slice((slot+'.generation-').length)))throw Error('Invalid generation');
@@ -91,10 +100,10 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  }
  async function activeAuthorizedSessions(auth){const data=await authorize(auth);if(!Array.isArray(data.sessions))throw Error('Session state unavailable');return data.sessions.some(s=>s.active);}
  async function projects(authorization){
-  await authorize(authorization);
+  await authorize(authorization);const generalPath=await generalDirectory();
   if(!c.projectsPath){const t=await createRunnerWorkspace(c).target(authorization);return [{key:'',label:t.project,path:t.project}];}
   const registry=projectRegistry(c.projectsPath);const registered=await registry.list();const availability=new Map();for(const p of registered){try{await registry.get(p.id);availability.set(p.id,true);}catch{availability.set(p.id,false);}}
-  const rows=registered.map(p=>({key:p.id,label:p.name,path:p.path,available:availability.get(p.id),projectId:p.projectId,projectLabel:p.projectLabel,workspaceId:p.workspaceId,workspaceLabel:p.workspaceLabel,...(p.parentId?{parentKey:p.parentId,worktree:p.worktree===true}:{})}));
+  const rows=registered.map(p=>({key:p.id,label:p.path===generalPath?'일반 대화':p.name,general:p.path===generalPath,path:p.path,available:availability.get(p.id),projectId:p.projectId,projectLabel:p.path===generalPath?'일반 대화':p.projectLabel,workspaceId:p.workspaceId,workspaceLabel:p.workspaceLabel,...(p.parentId?{parentKey:p.parentId,worktree:p.worktree===true}:{})}));
   const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
   if(!cfg.cwd.endsWith('/local-setup/working-directory')&&!(await registry.list({includeRemoved:true})).some(p=>p.path===cfg.cwd))rows.unshift({key:'',label:cfg.cwd.split('/').at(-1),path:cfg.cwd,projectId:legacyProjectId(cfg.cwd)});
   return rows;
@@ -108,6 +117,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    if(!plan.cwd.endsWith('/local-setup/working-directory'))roots.push(plan.cwd);
    if(!roots.length)roots=[plan.cwd];
   }
+  if(c.projectsPath)roots.push(await prepareGeneralDirectory());
   await writeFile(path,JSON.stringify({...plan,workspaceRoots:[...new Set(roots)]})+'\n',{mode:0o600});
   const token=await readFile(c.tokenFile,'utf8');child=await launch({prepared:c.directory,binary:c.binary,hubUrl:c.hubUrl,token});phase='running';
  }
@@ -163,6 +173,14 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  }
  const plans=c.projectsPath?createWorkspacePlans({directory:slot+'.workspace-plans',worktreeDirectory:slot+'.worktrees',registry:projectRegistry(c.projectsPath)}):null;
  const api={status,projects,
+  async generalChat(authorization){
+   await authorize(authorization);if(!c.projectsPath)throw Error('General chat unavailable');
+   return exclusive(async()=>{
+    const generalPath=await prepareGeneralDirectory();
+    const row=await projectRegistry(c.projectsPath).add(generalPath);
+    return {project:row.id};
+   });
+  },
   async claudeImportHistory(authorization,id,before){
    await current();
    const available=await api.workspace(authorization),session=available.find(s=>s.id===id);if(!session)throw Error('등록된 세션을 선택하세요.');
@@ -232,7 +250,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     await registry.edit(input,{legacyPath});return {ok:true};
    });
   },
-  async workspaceChoices(authorization,key){const p=await selectedProject(authorization,key);return workspaceChoices(p.path);},
+  async workspaceChoices(authorization,key){const p=await selectedProject(authorization,key);return p.path===await generalDirectory()?{kind:'folder',path:p.path,branches:[],worktrees:[]}:workspaceChoices(p.path);},
   async ready(authorization,project,agent){await authorize(authorization);return exclusive(()=>ensureReady(authorization,project,agent));},
   async reconcileResume(id,authorization){
    await authorize(authorization);
@@ -275,6 +293,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    await authorize(authorization);const input=workspaceRequest(raw);
    return exclusive(async()=>{
     const project=await selectedProject(authorization,input.project);
+    if(project.path===await generalDirectory()&&input.workspace.mode!=='current')throw Object.assign(Error('일반 대화에서는 브랜치·워크트리를 만들지 않습니다.'),{rejected:true,status:400});
     if(input.workspace.mode!=='current'&&!project.id)throw Object.assign(Error('먼저 이 폴더를 프로젝트로 등록하세요.'),{rejected:true,status:400});
     let prepared;
     if(input.workspace.mode!=='current'){
@@ -317,7 +336,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    if(!r.ok)throw Object.assign(Error('Workspace unavailable'),{status:r.status});
    const data=await r.json();if(!Array.isArray(data.sessions))throw Error('Workspace unavailable');
    return data.sessions.filter(s=>/^[a-f0-9-]{36}$/.test(s.id)&&s.metadata?.machineId===settings.machineId&&(allowed?allowed.some(p=>p.path===s.metadata?.path):s.metadata?.path===plan.cwd))
-    .map(s=>({id:s.id,...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),label:s.metadata?.flavor==='claude'?'Claude 작업':'Codex 작업',project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
+    .map(s=>({id:s.id,...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),agent:s.metadata?.flavor,updatedAt:s.updatedAt,createdAt:s.createdAt,label:s.metadata?.flavor==='claude'?'Claude 작업':'Codex 작업',project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
   },
   prepare:()=>action('unprepared','preparing',async()=>{await prepare(c.accountConfig,c.directory);phase='prepared';}),
   start:()=>action('prepared','starting',async()=>{if((await snapshot()).configuration!=='matched')throw Error('Prepared configuration changed');await launchCurrent();}),

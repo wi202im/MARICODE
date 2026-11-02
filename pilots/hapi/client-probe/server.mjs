@@ -203,6 +203,13 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
       let available=[...sessions,...children,...(trialTasks?await trialTasks.list():[]),...(taskTarget?[...await tasks.list(),...await projectHandoffs.list()].map(r=>({...r,project:r.project??taskTarget.project,scope:'personal'})):[])];
       const runnerWorkspace=typeof runnerService?.workspace==='function';
       const localImport=isLocal&&host===`127.0.0.1:${server.address().port}`&&['127.0.0.1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)&&!req.headers.forwarded&&!Object.keys(req.headers).some(k=>k.startsWith('x-forwarded-')||k.startsWith('tailscale-'));
+      if(u.pathname==='/api/conversations/prepare'){
+        if(req.method!=='POST'||u.search||!runnerService?.generalChat){res.writeHead(405).end();return;}
+        let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>128){res.writeHead(413).end();return;}}
+        if(raw.trim()!=='{}'){res.writeHead(400).end();return;}
+        try{const result=await runnerService.generalChat(req.headers.authorization);res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(result));}
+        catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({error:'일반 대화 공간을 준비하지 못했습니다. 연결과 파일 접근 권한을 확인하세요.'}));}return;
+      }
       if(['/api/claude-import','/api/claude-import/list','/api/claude-import/check'].includes(u.pathname)){
         if(!localImport||!runnerService?.claudeImport){res.writeHead(403).end();return;}
         if(req.method!=='POST'||u.search){res.writeHead(405).end();return;}
@@ -270,7 +277,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
           res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
         }catch(error){res.writeHead([400,401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,reason:error.reason,error:error.reason==='RUNNER_SETUP'?'작업 폴더 선택은 보존했습니다. 실행 환경 준비를 확인하지 못했습니다. 생성 결과 확인을 눌러 같은 요청으로 계속하세요.':error.rejected?error.message:'결과를 확인하지 못했습니다. 같은 요청의 결과 확인을 눌러 주세요.'}));}return;
       }
-      if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,claudeImport:localImport&&!!runnerService?.claudeImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
+      if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,claudeImport:localImport&&!!runnerService?.claudeImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{generalChat:!!runnerService.generalChat,workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
       if(req.method==='GET'&&assets.has(u.pathname)) {
         const name=assets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.webmanifest')?'application/manifest+json':name.endsWith('.png')?'image/png':name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');
         let asset=await readFile(new URL(name,import.meta.url));

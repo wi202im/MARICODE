@@ -78,8 +78,11 @@ export function claudeImports({directory,destination,project,machineId}){
   },
   async list(source){
    source=configRoot(source);let entries;
-   try{await folder(source);await folder(join(source,'projects'));entries=await readdir(await folder(join(source,'projects',encoded)),{withFileTypes:true});}
-   catch(e){if(e.code==='ENOENT')return {sessions:[],skipped:0};throw e;}
+   const searched={project,source,records:join(source,'projects',encoded)};
+   for(const [path,status] of [[source,'profile-missing'],[join(source,'projects'),'store-missing'],[searched.records,'project-missing']]){
+    try{await folder(path);}catch(e){if(e.code==='ENOENT')return {sessions:[],skipped:0,status,searched};throw e;}
+   }
+   entries=await readdir(searched.records,{withFileTypes:true});
    const candidates=entries.filter(e=>e.isFile()&&uuid.test(e.name.replace(/\.jsonl$/,''))&&e.name.endsWith('.jsonl'));
    if(candidates.length>500)throw Error('이 폴더의 기록이 500개를 넘습니다. 필요한 기록만 담은 별도 Claude 설정 폴더를 선택하세요.');
    const sessions=[];let skipped=0,scanned=0;
@@ -91,7 +94,7 @@ export function claudeImports({directory,destination,project,machineId}){
      const {files,...row}=await snapshot(source,entry.name.slice(0,-6));scanned+=files.slice(1).reduce((n,f)=>n+f.data.length,0);sessions.push(row);
     }catch{skipped++;}
    }
-   return {sessions:sessions.sort((a,b)=>b.modifiedAt-a.modifiedAt),skipped};
+   return {sessions:sessions.sort((a,b)=>b.modifiedAt-a.modifiedAt),skipped,status:sessions.length?'found':skipped?'excluded':'empty',searched};
   },
   async import(input,{register,lookup},check=false){
    if(!input||!uuid.test(input.id??'')||!/^[a-f0-9]{64}$/.test(input.fingerprint??''))fail();
