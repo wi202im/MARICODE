@@ -6,6 +6,7 @@ import {questionForm} from './question-form.mjs';
 import {createAttachmentComposer} from './attachment-composer.mjs';
 import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool} from './chat-presentation.mjs';
+import {permissionLabel} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts} from './workspace-entry.mjs';
@@ -834,7 +835,7 @@ function renderSettings(){
  const current=settingsCurrent(),pending=settingsPending(),label=v=>v??'자동 (실제 값 미확정)';
  $('model-name').textContent=({claude:'Claude',codex:'Codex'})[session?.metadata?.flavor]??'에이전트';
  $('model-chip').textContent=`모델: ${current.model??'자동'} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
- $('permissionMode-chip').textContent=`액세스: ${settingsData?.permissionModes?.find(o=>o.value===current.permissionMode)?.label??current.permissionMode??'미확인'} ▾`;
+ $('permissionMode-chip').textContent=`액세스: ${settingsData?.permissionModes?.find(o=>o.value===current.permissionMode)?.label??permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'} ▾`;
  $('model-chip').title=$('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
  $('settings-current').textContent=`서버 보고값: 모델 ${label(current.model)} / 추론 ${label(current.effort)} / 액세스 ${current.permissionMode??'미확인'}`;
  const allowed=settingsOwner===sessionId&&settingsData?.editable&&session?.active&&!session?.thinking&&session?.agentState?.controlledByUser===false&&!Object.keys(session?.agentState?.requests??{}).length&&!busy&&!settingsLoading&&connected&&!pending&&!actions?.pending;

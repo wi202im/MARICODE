@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {settingsView,settingChange} from './settings.mjs';
+import {settingsView,settingChange,permissionLabel} from './settings.mjs';
 const session={active:true,thinking:false,metadata:{flavor:'codex'},agentState:{controlledByUser:false,requests:{}},model:'m1',modelReasoningEffort:'high'};
 const catalog={success:true,models:[{id:'m1',displayName:'Model 1',isDefault:true,supportedReasoningEfforts:['low','high']},{id:'m2',displayName:'Model 2',supportedReasoningEfforts:['medium']}]};
 test('settings use per-model advertised efforts and do not invent missing capabilities',()=>{
@@ -37,4 +37,11 @@ test('access modes are provider specific and require the current provider and pe
  assert.throws(()=>settingChange({...c,thinking:true},null,{field:'permissionMode',value:'bypassPermissions',expected}));
  assert.throws(()=>settingChange({...c,agentState:{controlledByUser:false,requests:{pending:{}}}},null,{field:'permissionMode',value:'bypassPermissions',expected}));
  assert.deepEqual(settingsView({...c,metadata:{flavor:'other'}}).permissionModes,[]);
+});
+
+test('access chip labels come from the provider presets without a settings fetch',()=>{
+ assert.equal(permissionLabel('claude','bypassPermissions'),'Bypass · 승인 생략');
+ assert.equal(permissionLabel('codex','yolo'),'전체 접근 · 승인 생략');
+ assert.equal(permissionLabel('claude','unknown-mode'),'unknown-mode');
+ assert.equal(permissionLabel('codex',null),null);
 });

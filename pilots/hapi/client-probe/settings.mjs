@@ -6,6 +6,7 @@ const permissionOptions={
  codex:[['default','기본 승인','Codex의 기본 승인·샌드박스 정책을 따릅니다.'],['read-only','읽기 전용','Codex의 읽기 전용 샌드박스를 사용합니다.'],['autoReview','자동 검토','Codex가 요청을 자동 검토합니다. 실행기 지원 여부는 실행 시 확인합니다.'],['yolo','전체 접근 · 승인 생략','이 세션의 도구 승인과 Codex 샌드박스 제한을 해제합니다. 파일 변경과 명령 실행도 개별 확인 없이 진행할 수 있습니다.']]
 };
 const option=value=>({value,label:value??'자동 · 엔진 기본값'});
+export function permissionLabel(flavor,value){return permissionOptions[flavor]?.find(([v])=>v===value)?.[1]??value;}
 export function settingsView(session,catalog){
  const flavor=session?.metadata?.flavor,current={model:session?.model??null,effort:(flavor==='codex'?session?.modelReasoningEffort:session?.effort)??null,permissionMode:session?.permissionMode??null};
  const editable=['codex','claude'].includes(flavor)&&session?.active===true&&!session.thinking&&session.agentState?.controlledByUser===false&&!Object.keys(session.agentState?.requests??{}).length;
