@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
+import {tmpdir,homedir} from 'node:os';
 import {join} from 'node:path';
 import {signingOptions,notarizeArtifact} from './signing.mjs';
 
@@ -10,7 +10,20 @@ test('Developer ID mode requires both explicit identity and keychain profile',()
  assert.throws(()=>signingOptions({identity:'-'}));
  assert.throws(()=>signingOptions({profile:'example'}));
  assert.throws(()=>signingOptions({identity:'a'.repeat(40),profile:'--password'}));
- assert.deepEqual(signingOptions({identity:'a'.repeat(40),profile:'example'}),{identity:'a'.repeat(40),profile:'example'});
+ assert.deepEqual(signingOptions({identity:'a'.repeat(40),profile:'example'}),{identity:'a'.repeat(40),profile:'example',keychain:join(homedir(),'Library/Keychains/login.keychain-db')});
+ assert.throws(()=>signingOptions({identity:'a'.repeat(40),profile:'example',keychain:'relative.keychain-db'}));
+ assert.throws(()=>signingOptions({keychain:'/test/login.keychain-db'}));
+});
+
+test('submission and wait explicitly use the same selected file-based keychain',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'maricode-keychain-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const id='12345678-1234-1234-1234-123456789012',calls=[],keychain='/test/a folder/login.keychain-db';
+ await notarizeArtifact('/test/app.zip','example',join(root,'submission.json'),(file,args)=>{calls.push(args);return JSON.stringify(args[1]==='submit'?{id}:{id,status:'Accepted'});},keychain);
+ assert.equal(calls.length,2);
+ for(const args of calls){assert.equal(args[args.indexOf('--keychain')+1],keychain);assert.equal(args[args.indexOf('--keychain-profile')+1],'example');}
+ const defaults=[];
+ await notarizeArtifact('/test/app.zip','example',join(root,'default.json'),(file,args)=>{defaults.push(args);return JSON.stringify(args[1]==='submit'?{id}:{id,status:'Accepted'});});
+ for(const args of defaults)assert.equal(args[args.indexOf('--keychain')+1],join(homedir(),'Library/Keychains/login.keychain-db'));
 });
 
 test('notarization rejection preserves receipt and prevents duplicate submission or stapling',async t=>{

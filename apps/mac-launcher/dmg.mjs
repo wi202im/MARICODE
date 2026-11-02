@@ -53,5 +53,5 @@ Do not run the app from the read-only disk image.
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==4&&process.argv.length!==5)throw Error('Usage: node dmg.mjs <built-Maricode.app> <new-output-directory> [upstream-source-directory]');
- console.log(await createDmg(process.argv[2],process.argv[3],process.argv[4],{identity:process.env.MARICODE_SIGN_IDENTITY,profile:process.env.MARICODE_NOTARY_PROFILE}));
+ console.log(await createDmg(process.argv[2],process.argv[3],process.argv[4],{identity:process.env.MARICODE_SIGN_IDENTITY,profile:process.env.MARICODE_NOTARY_PROFILE,keychain:process.env.MARICODE_NOTARY_KEYCHAIN}));
 }

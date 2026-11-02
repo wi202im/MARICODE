@@ -1,26 +1,33 @@
 import {readFile,writeFile,copyFile,unlink,lstat,open} from 'node:fs/promises';
 import {constants} from 'node:fs';
-import {join} from 'node:path';
+import {join,isAbsolute} from 'node:path';
+import {homedir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {hapiRelease,hapiHashes} from './package-hapi.mjs';
 
 const execute=(file,args)=>execFileSync(file,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],maxBuffer:8*1024*1024});
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-export function signingOptions({identity,profile}={}){
- if(identity===undefined&&profile===undefined)return null;
+const defaultKeychain=()=>join(homedir(),'Library/Keychains/login.keychain-db');
+function validateKeychain(keychain){
+ if(typeof keychain!=='string'||!isAbsolute(keychain)||keychain.includes('\0'))throw Error('An absolute file-based keychain path is required');
+ return keychain;
+}
+export function signingOptions({identity,profile,keychain}={}){
+ if(identity===undefined&&profile===undefined&&keychain===undefined)return null;
  if(!/^[a-fA-F0-9]{40}$/.test(identity??'')||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(profile??''))throw Error('Developer ID requires an explicit SHA-1 identity and keychain profile');
- return {identity,profile};
+ return {identity,profile,keychain:validateKeychain(keychain??defaultKeychain())};
 }
 
-export async function notarizeArtifact(artifact,profile,receipt,run=execute){
+export async function notarizeArtifact(artifact,profile,receipt,run=execute,keychain=defaultKeychain()){
+ const credentials=['--keychain-profile',profile,'--keychain',validateKeychain(keychain)];
  // Reserve before submitting. Unknown reception must be reconciled via notarytool
  // history/info, never by automatically submitting the artifact again.
  const lock=await open(receipt,'wx',0o600);await lock.writeFile(JSON.stringify({state:'submitting'}));await lock.close();
- const submission=JSON.parse(run('/usr/bin/xcrun',['notarytool','submit',artifact,'--keychain-profile',profile,'--output-format','json','--no-wait']));
+ const submission=JSON.parse(run('/usr/bin/xcrun',['notarytool','submit',artifact,...credentials,'--output-format','json','--no-wait']));
  if(!/^[a-fA-F0-9-]{36}$/.test(submission.id??''))throw Error('Notarization reception unknown; inspect history before retry');
  await writeFile(receipt,JSON.stringify({state:'submitted',id:submission.id})+'\n');
- const result=JSON.parse(run('/usr/bin/xcrun',['notarytool','wait',submission.id,'--keychain-profile',profile,'--output-format','json','--timeout','20m']));
+ const result=JSON.parse(run('/usr/bin/xcrun',['notarytool','wait',submission.id,...credentials,'--output-format','json','--timeout','20m']));
  await writeFile(receipt,JSON.stringify({state:result.status,id:submission.id})+'\n');
  if(result.status!=='Accepted')throw Error('Notarization not accepted: '+String(result.status));
  return submission.id;
@@ -28,7 +35,7 @@ export async function notarizeArtifact(artifact,profile,receipt,run=execute){
 
 // Only called on the packager's new, private stage copy; never on an installed app.
 export async function signAndNotarizeApp(app,output,options,run=execute){
- const {identity,profile}=signingOptions(options);
+ const {identity,profile,keychain}=signingOptions(options);
  const available=run('/usr/bin/security',['find-identity','-v','-p','codesigning']);
  if(!available.split('\n').some(line=>line.toLowerCase().includes(identity.toLowerCase())&&line.includes('"Developer ID Application:')))throw Error('Selected Developer ID Application identity unavailable');
  const hapi=join(app,'Contents/Resources/hapi');
@@ -51,7 +58,7 @@ export async function signAndNotarizeApp(app,output,options,run=execute){
  run('/usr/bin/codesign',['--verify','--deep','--strict',app]);
  const archive=join(output,'app-notary.zip');
  run('/usr/bin/ditto',['-c','-k','--keepParent',app,archive]);
- await notarizeArtifact(archive,profile,join(output,'app-notary-submission.json'),run);
+ await notarizeArtifact(archive,profile,join(output,'app-notary-submission.json'),run,keychain);
  run('/usr/bin/xcrun',['stapler','staple',app]);
  run('/usr/bin/xcrun',['stapler','validate',app]);
  run('/usr/sbin/spctl',['--assess','--type','execute',app]);
@@ -59,9 +66,9 @@ export async function signAndNotarizeApp(app,output,options,run=execute){
 }
 
 export async function signAndNotarizeDmg(image,output,options,run=execute){
- const {identity,profile}=signingOptions(options);
+ const {identity,profile,keychain}=signingOptions(options);
  run('/usr/bin/codesign',['--sign',identity,'--timestamp',image]);
- await notarizeArtifact(image,profile,join(output,'dmg-notary-submission.json'),run);
+ await notarizeArtifact(image,profile,join(output,'dmg-notary-submission.json'),run,keychain);
  run('/usr/bin/xcrun',['stapler','staple',image]);
  run('/usr/bin/xcrun',['stapler','validate',image]);
  run('/usr/bin/codesign',['--verify','--strict',image]);

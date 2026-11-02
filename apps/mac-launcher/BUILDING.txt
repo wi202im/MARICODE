@@ -41,6 +41,19 @@ only these non-secret identifiers):
 
 MARICODE_SIGN_IDENTITY=<40-character-certificate-SHA1> MARICODE_NOTARY_PROFILE=<keychain-profile> /path/to/node/bin/node apps/mac-launcher/dmg.mjs /new/app-output/Maricode.app /new/signed-dmg-output /path/to/upstream-sources
 
+Store and read the profile in the same explicit file-based keychain. Example:
+
+xcrun notarytool store-credentials <keychain-profile> --keychain "$HOME/Library/Keychains/login.keychain-db" --apple-id <developer-account> --team-id <team-id>
+
+Enter the app-specific password only at the secure prompt. The packager uses
+that login.keychain-db path explicitly by default; set MARICODE_NOTARY_KEYCHAIN
+to another absolute keychain path only if credentials were stored there.
+Use the same --keychain path for manual info/log/history/wait requests.
+Without --keychain, notarytool stores credentials in the Data Protection
+keychain, which is a different store. Do not mix the two. A locked file-based
+keychain may still require the user's local unlock; do not disable its lock
+protection or put the keychain password into scripts.
+
 Both variables are required together; failed signing/notarization never falls
 back to ad-hoc. Only the new staging copy is modified. Node/HAPI are signed
 with hardened runtime, timestamp and allow-jit (without get-task-allow), then
