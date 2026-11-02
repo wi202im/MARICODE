@@ -614,7 +614,10 @@ const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('clau
   if(!trialSessions.some(s=>s.id===id))throw Error('등록된 대화를 목록에서 찾지 못했습니다.');
   await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);
   const mine=epoch,manual='기존 Claude 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.';
-  if(connected&&session&&!session.active&&!actions.pending){
+  // selectSession() starts the SSE stream without awaiting it; `connected`
+  // only flips true once that handshake resolves, slightly after this point.
+  const start=Date.now();while(mine===epoch&&!connected&&Date.now()-start<4000)await new Promise(r=>setTimeout(r,50));
+  if(mine===epoch&&connected&&session&&!session.active&&!actions.pending){
    busy=true;render();
    try{
     const request=actions.resume();render();await request;await refresh();
