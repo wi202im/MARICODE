@@ -2,7 +2,9 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**MARICODE 1.0.9 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.9/MARICODE-1.0.9-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.9). HAPI 0.33.3 and Node are included.
+**Maricode 1.0.10 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.10/MARICODE-1.0.10-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.10). HAPI 0.33.3 and Node are included.
+
+App, menu and Dock names use **Maricode**; the native title bar displays the installed version. HAPI corresponding source is provided as a separate release attachment, with licenses and notices retained inside the app.
 
 ## What it does
 
@@ -17,7 +19,7 @@ A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
 ## Install and use
 
-Apple Silicon Mac; build target macOS 14 or newer. The DMG is ad-hoc signed, **not notarized**. Claude/Codex CLI installation and official subscription login are separate. Tailscale is optional for same-LAN access and required for the Tailscale connection path.
+Apple Silicon Mac; build target macOS 14 or newer. The app and DMG are **Developer ID signed and Apple notarized**, with attached notarization tickets. Claude/Codex CLI installation and official subscription login are separate. Tailscale is optional for same-LAN access and required for the Tailscale connection path.
 
 - [Installation, first session and remote access](apps/mac-launcher/USER-GUIDE.txt)
 - [Build from source](apps/mac-launcher/BUILDING.txt)
@@ -44,18 +46,18 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 
 ## Current limitations
 
-- No Intel Mac build, App Store release or Developer ID notarization. The app checks for updates and downloads a verified DMG; app replacement is manual.
+- No Intel Mac build or App Store release. The app checks for updates and downloads a verified DMG; app replacement is manual.
 - No QR pairing, multiple account selection for the same AI, or cross-machine native session migration.
 - AI settings and approval choices are limited to the capabilities exposed by the provider and HAPI; not every upstream AI feature is supported.
 - Actual Codex question UI, full sub-agent lifecycle, a clean second Mac installation and long sleep/wake behavior have not all been verified.
 - Claude imports accept the same session continued in a project subfolder, while retaining project/session boundaries. Validation errors identify the row and cause without exposing paths or conversation text. The history refresh button is aligned with its selector.
 - New conversation and existing transcript import now have separate entry paths. The draft keeps its action/error area visible, hides redundant workspace and account setup controls, and displays meaningful conversation titles. Imported history counts are separate from the continued conversation.
 - The native quit flow now keeps processing runtime shutdown callbacks before closing. This was verified with an isolated AppKit test; company-machine update installation remains unverified.
-- Version 1.0.9 includes 286 automated checks. Imported conversations open automatically alongside live chat. Enter sends and Shift+Enter inserts a newline, with IME guards. The composer exposes provider-specific access modes; the selected mode persists in the same session without automatic reset. Browser tests used synthetic data. Real HAPI/Claude with a local model stub verified imported-context forwarding and Bypass retention through stop/resume and a subsequent turn. Company records and real subscription responses remain unverified.
+- Version 1.0.10 includes 291 automated checks. Imported conversations open automatically alongside live chat. Enter sends and Shift+Enter inserts a newline, with IME guards. The composer exposes provider-specific access modes; the selected mode persists in the same session without automatic reset. Browser tests used synthetic data. Real HAPI/Claude with a local model stub verified imported-context forwarding and Bypass retention through stop/resume and a subsequent turn. Company records and real subscription responses remain unverified.
 - Access changes are only offered while idle. A change made immediately after resume, before the engine RPC is ready, can remain unconfirmed and lock sending; recovery UX for that case still needs improvement. The app never silently resends the change.
 - Claude record discovery checks an explicit selection, the inherited CLI environment, and one literal shell-profile path before using ~/.claude. Conditional settings, aliases, functions and multiple candidates require manual folder selection; shell files are never executed. The exact company-machine configuration and a signed-in Claude response recalling imported context remain unverified. Actual AI/MCP responses in the general-conversation flow also remain unverified.
 - Import does not copy credentials, MCP/settings, memory or attachment files. The copied transcript and original diverge after import. Cross-machine import and external Codex transcript import are not supported.
-- Version 1.0.0 was tested for native local connection and a Codex response/stop/resume. Installing this new DMG over an existing app, mounting it and real use on another Mac were not tested in this release.
+- Version 1.0.0 was tested for native local connection and a Codex response/stop/resume. The 1.0.10 DMG was mounted and its app signature, notarization ticket, Gatekeeper acceptance and isolated HAPI startup were checked. Replacing an existing installed app and real use on another Mac remain unverified.
 
 ## License
 
