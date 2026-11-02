@@ -4,11 +4,13 @@
 
 ## Developer ID 서명·공증 준비 — 진행 중
 
-- 사용자 요청으로 기존 Apple Developer 멤버십을 이용한 앱 서명·공증을 시작했다. 계정/자동 갱신 설정은 변경하지 않았다.
-- **된다 — 사전 확인:** 로컬 `notarytool`이 있다. 키체인 codesigning 조회 결과 사용 가능한 서명 identity는0개다. 계정은 최신 Apple Developer Program License Agreement 동의를 요구하며 인증서 리소스가 제한돼 있다. 공식 계약 검토 화면을 열고 사용자 확인을 요청했다. 에이전트는 동의를 제출하지 않았다.
-- **다음:** 약관 동의 확인 → Developer ID Application 인증서/개인 키 준비 → 공증용 인증 준비 → 격리 빌드의 앱·Node·HAPI 서명 → 공증 제출/결과 조회/티켓 부착/Gatekeeper 검증. 브라우저 계정 로그인만으로 notarytool 인증이 되지는 않는다. 인증정보는 키체인 등 로컬에만 보관하고 커밋/출력하지 않는다.
-- 현재 패키저는 ad-hoc 서명 전용이다. 포함 Node에 개발용 get-task-allow 등 entitlement가 있어 공식 배포에 맞춘 정리가 필요하고, HAPI/Bun도 hardened runtime 및 JIT 동작을 확인해야 한다. 기존 앱/런타임을 재서명하거나 교체하지 않았다.
-- **확인 안 함:** Developer ID 발급·서명·공증·서명된 엔진 실사용. 계정 주소/약관 본문/개인 정보는 저장소에 저장하지 않는다.
+- 사용자 요청으로 기존 Apple Developer 멤버십을 이용한 앱 서명·공증을 시작했다. 사용자가 새 약관에 직접 동의했고, 인증서 발급·이 Mac 키체인 등록도 승인했다. 계정/자동 갱신 설정은 변경하지 않았다.
+- **된다 — 인증서:** Developer ID Application(G2) 인증서를 발급했다. 공개 CSR과 인증서의 공개 키 일치를 확인했고, 암호화한 개인 키와 인증서를 로그인 키체인에 등록했다. Apple 공식 G2 중간 인증서도 기존 루트 신뢰 검증 후 등록했다. 유효한 codesigning identity 1개를 확인했다. 사용자에게 키체인 암호 입력을 맡겼으며 비밀은 출력/커밋하지 않았다.
+- **된다 — 격리 서명:** `.runtime/apple-signing/Maricode.app` 복사본의 Node·HAPI·앱을 안쪽부터 Developer ID + timestamp + hardened runtime으로 서명했다. Node/HAPI entitlement는 allow-jit 하나만 사용하고 get-task-allow를 제거했다. deep/strict 서명 검증, 서명된 Node의 반복 연산, HAPI 버전 실행, 격리 Hub 인증·빈 세션 목록 조회·정상 종료를 확인했다. 기존 설치 앱/서버/AI 계정은 변경하지 않았다.
+- **다음:** Apple 계정의 앱 암호를 사용자가 직접 생성하고 로컬 `notary-login.command`의 보안 입력으로 `maricode-notary` 키체인 프로필에 저장 → 준비한 서명 앱 ZIP 제출 → Accepted/티켓 부착/Gatekeeper 확인 → 검증된 서명·공증 흐름을 패키저에 반영한다. Apple 계정 화면을 열고 앱 암호 생성을 요청한 상태다. 브라우저 로그인만으로 notarytool 인증이 되지는 않는다.
+- 현재 제품 DMG 패키저는 아직 ad-hoc 서명 전용이다. 서명한 앱을 기존 패키저에 그대로 넣으면 ad-hoc으로 바뀌므로 사용하지 않는다. 이미 공개한1.0.9 첨부는 교체하지 않았으며, 이후 배포는 새 버전과 최종 티켓 부착 후 체크섬이 필요하다.
+- **확인 안 함:** Apple 공증 접수/승인·티켓 부착·Gatekeeper·서명된 앱의 실제 AI 세션·새 DMG 설치. 인증서/개인 키/계정 정보는 Git 제외된 로컬 자료와 키체인에만 있다.
+- 도구의 이전 작업 경로가 삭제된 저장소를 가리켜 실행이 실패하여, 옛 로컬 경로에는 현재 저장소를 가리키는 심볼릭 링크만 만들었다. 소스/과거 데이터를 복제하거나 복구하지 않았다.
 
 ## 표시 이름·제목 버전 — 다음 배포 대기
 
