@@ -392,3 +392,10 @@ test('HTML titles and visible branding use the running product version',async t=
  }
  const manifest=await(await fetch(origin+'/manifest.webmanifest')).json();assert.equal(manifest.short_name,'Maricode');
 });
+test('read-only diff routes accept only project-relative paths',()=>{
+ const ok=u=>allowedRoute('GET',new URL('http://x'+u),'s1');
+ assert.equal(ok('/api/sessions/s1/git-diff-numstat'),true);assert.equal(ok('/api/sessions/s1/git-diff-numstat?staged=true'),true);
+ assert.equal(ok('/api/sessions/s1/git-diff-file?path=src/a.js'),true);assert.equal(ok('/api/sessions/s1/git-diff-file?path=src/a.js&staged=true'),true);
+ assert.equal(ok('/api/sessions/s1/git-diff-file?path=../secret'),false);assert.equal(ok('/api/sessions/s1/git-diff-file?path=/etc/passwd'),false);
+ assert.equal(ok('/api/sessions/s1/git-diff-file?path=a&extra=1'),false);assert.equal(allowedRoute('POST',new URL('http://x/api/sessions/s1/git-diff-numstat'),'s1'),false);
+});

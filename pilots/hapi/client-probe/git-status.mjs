@@ -25,3 +25,10 @@ export function worktreePresentation(metadata){
  if(!w||typeof w.name!=='string'||!w.name||typeof w.basePath!=='string'||!w.basePath||typeof metadata.path!=='string'||w.worktreePath&&w.worktreePath!==metadata.path)return null;
  return {name:w.name,base:w.basePath,path:metadata.path,branch:typeof w.branch==='string'?w.branch:''};
 }
+// `git diff --numstat` rows from HAPI's read-only git-diff-numstat RPC; '-' marks binary files.
+export function numstatRows(stdout,staged=false){
+ return String(stdout??'').split('\n').flatMap(line=>{const m=/^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);if(!m)return [];const binary=m[1]==='-';return [{path:m[3],added:binary?0:Number(m[1]),removed:binary?0:Number(m[2]),binary,staged}];});
+}
+export function diffLines(text){
+ return String(text??'').split('\n').filter((l,i,a)=>l||i<a.length-1).map(text=>({text,kind:/^(diff |index |--- |\+\+\+ |new file|deleted file|similarity|rename |Binary )/.test(text)?'meta':text.startsWith('@@')?'hunk':text.startsWith('+')?'add':text.startsWith('-')?'del':'context'}));
+}

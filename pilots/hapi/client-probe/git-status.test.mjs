@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {gitSummary,worktreePresentation} from './git-status.mjs';
+import {gitSummary,worktreePresentation,numstatRows,diffLines} from './git-status.mjs';
 test('porcelain v2 counts paths once, preserves HEAD and distinguishes index/worktree/conflicts',()=>{
  const oid='a'.repeat(40);
  const result=gitSummary({success:true,exitCode:0,stdout:`# branch.oid ${oid}\n# branch.head feature/sidebar\n# branch.upstream origin/feature/sidebar\n# branch.ab +2 -1\n1 MM N... 100644 100644 100644 a b edited.txt\n2 R. N... 100644 100644 100644 a b R100 new.txt\told.txt\nu UU N... 100644 100644 100644 100644 a b c conflict.txt\n? untracked.txt\n`});
@@ -28,4 +28,9 @@ test('actual Git linked worktree has its own branch and changes while sharing th
  const status=cwd=>gitSummary({success:true,exitCode:0,stdout:git(cwd,'status','--porcelain=v2','--branch','--untracked-files=all')});
  const original=status(base),worktree=status(linked);
  assert.equal(original.branch,'main');assert.equal(original.changed,0);assert.equal(worktree.branch,'feature/sidebar');assert.equal(worktree.changed,2);assert.equal(worktree.commit,original.commit);
+});
+test('numstat rows and diff lines feed the read-only change review',()=>{
+ assert.deepEqual(numstatRows('1\t0\thello.txt\n-\t-\timg.png\n3\t2\tsrc/a b.js\n',true),[{path:'hello.txt',added:1,removed:0,binary:false,staged:true},{path:'img.png',added:0,removed:0,binary:true,staged:true},{path:'src/a b.js',added:3,removed:2,binary:false,staged:true}]);
+ assert.deepEqual(numstatRows('garbage'),[]);
+ assert.deepEqual(diffLines('diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n hello\n+added\n-gone\n').map(l=>l.kind),['meta','meta','meta','hunk','context','add','del']);
 });

@@ -13,6 +13,7 @@ import {draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProjec
 import {createReadRecovery,connectionFailure} from './reconnect.mjs';
 import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace} from './workspace.mjs';
 import {createHistory} from './history.mjs';
+import {createGitReview} from './git-review.mjs';
 import {toolViews,requestSnapshot,createPermissionActions,permissionChoices} from './workflow.mjs';
 import {archiveSnapshot,archiveMatches,createActions,messageView,relativePath,createSSEDecoder,buildHandoff,confirmedDraft,handoffExcerpt,readTabToken,saveTabToken} from './core.mjs';
 const deviceStorage=(()=>{try{return window.localStorage;}catch{return null;}})();
@@ -422,8 +423,11 @@ async function prepareNewHandoff(checkOnly=false){
 $('new-handoff').onclick=()=>prepareNewHandoff();
 $('check-handoff').onclick=()=>prepareNewHandoff(true);
 
+const gitReview=workspaceLayout?createGitReview({element:$('git-review'),api,base,owner:()=>sessionId&&token?`${epoch}:${sessionId}`:null,untracked:()=>gitView.data?.state==='ready'?gitView.data.untracked:0}):null;
+let reviewOwner=null;
 function renderGit(){
  if(!workspaceLayout)return;
+ if(reviewOwner!==`${epoch}:${sessionId}`){reviewOwner=`${epoch}:${sessionId}`;gitReview?.reset();}
  const current=gitView.owner===`${epoch}:${sessionId}`?gitView:null,data=current?.data;
  const worktree=sessionPresentation(trialSessions.find(s=>s.id===sessionId)??{id:sessionId,label:''},session?.id===sessionId?session:null).worktree;
  const name=worktree?`워크트리 ${worktree.name}`:'';
@@ -439,7 +443,8 @@ function renderGit(){
 async function loadGit(force=false){
  if(!workspaceLayout||!token||!sessionId||paused)return;
  const owner=`${epoch}:${sessionId}`;
- if(gitView.owner===owner&&(gitView.loading||!force&&Date.now()-gitView.checked<30000))return;
+ // Only a ready result is cached; an inactive session's failure must not hide status right after resume.
+ if(gitView.owner===owner&&(gitView.loading||!force&&gitView.data?.state==='ready'&&Date.now()-gitView.checked<30000))return;
  gitView={owner,data:gitView.owner===owner?gitView.data:null,loading:true,checked:Date.now()};renderGit();
  try{const data=await api(base()+'/git-status');if(owner!==`${epoch}:${sessionId}`||!token)return;gitView={owner,data,loading:false,checked:Date.now()};}
  catch{if(owner!==`${epoch}:${sessionId}`||!token)return;gitView={owner,data:{state:'unavailable'},loading:false,checked:Date.now()};}
@@ -562,7 +567,7 @@ function updateSidebarToggle(){
 }
 
 if(workspaceLayout){
- $('git-summary').onclick=()=>workspacePanel('info');$('git-refresh').onclick=()=>loadGit(true);
+ $('git-summary').onclick=()=>workspacePanel('info');$('git-refresh').onclick=()=>{loadGit(true);gitReview?.reset();};
  $('tools-tab').onclick=()=>workspacePanel('tools');$('session-info-tab').onclick=()=>workspacePanel('info');$('info-tab').onclick=()=>workspacePanel(workspaceView==='chat'?lastInspector:'chat');$('back-chat').onclick=()=>workspacePanel('chat');
  updateSidebarToggle();
  compactSidebar.addEventListener('change',()=>workspaceDrawer(false));
