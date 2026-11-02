@@ -6,6 +6,8 @@ import {readFile,readdir,stat,mkdir,rm,writeFile,rename} from 'node:fs/promises'
 import {join,isAbsolute} from 'node:path';
 import {prepareRunner,accountRevision} from './machine-setup.mjs';
 import {launchRunner} from './runner-launch.mjs';
+import {claudeImports} from './claude-import.mjs';
+import {homedir} from 'node:os';
 async function ownerAuthorization(config){
  const token=await readFile(config.tokenFile,'utf8');
  const auth=await fetch(config.hubUrl+'/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({accessToken:token}),redirect:'error',signal:AbortSignal.timeout(3000)});
@@ -161,6 +163,47 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  }
  const plans=c.projectsPath?createWorkspacePlans({directory:slot+'.workspace-plans',worktreeDirectory:slot+'.worktrees',registry:projectRegistry(c.projectsPath)}):null;
  const api={status,projects,
+  async claudeImportHistory(authorization,id,before){
+   await current();
+   const available=await api.workspace(authorization),session=available.find(s=>s.id===id);if(!session)throw Error('등록된 세션을 선택하세요.');
+   return claudeImports({directory:slot+'.claude-imports',project:session.project,machineId:await machineId(c)}).history(id,before);
+  },
+  async claudeImport(authorization,input,action){
+   await authorize(authorization);
+   if(!input||Object.keys(input).some(k=>!['project','source','id','fingerprint'].includes(k))||typeof input.project!=='string'||!['list','import','check'].includes(action))throw Error('가져오기 요청을 확인하세요.');
+   return exclusive(async()=>{
+    const p=await selectedProject(authorization,input.project),source=input.source||join(homedir(),'.claude');
+    const cfg=JSON.parse(await readFile(c.accountConfig,'utf8')),env=JSON.parse(await readFile(cfg.environment,'utf8'));
+    if(typeof env.CLAUDE_CONFIG_DIR!=='string'||!isAbsolute(env.CLAUDE_CONFIG_DIR))throw Error('분리된 Claude 프로필이 필요합니다.');
+    if(action==='import'){
+     await ensureReady(authorization,input.project,'claude');
+     let ready=false;for(let attempt=0;attempt<15;attempt++){try{ready=await connection(c);}catch{}if(ready)break;await new Promise(r=>setTimeout(r,300));}
+     if(!ready)throw Error('실행기 연결을 먼저 확인하세요. 가져오기를 실행하지 않았습니다.');
+    }
+    let target;
+    if(action==='list')target={machineId:'not-started'};
+    else if(action==='check'){
+     if(!await exists(join(c.directory,'runner-home/settings.json')))return {state:'none'};
+     target={machineId:await machineId(c)};
+    }else target=await createRunnerWorkspace(c).target(authorization);
+    const imports=claudeImports({directory:slot+'.claude-imports',project:p.path,destination:env.CLAUDE_CONFIG_DIR,machineId:target.machineId});
+    if(action==='list')return imports.list(source);
+    // Bind the caller to this machine's namespace before using owner CLI auth.
+    const sessions=await authorize(authorization);
+    if(sessions.sessions?.some(s=>s.metadata?.machineId===target.machineId&&s.metadata?.claudeSessionId===input.id&&s.metadata?.path!==p.path))throw Error('이 세션 ID가 다른 작업 폴더에 연결돼 있습니다.');
+    return imports.import({...input,source},{
+     register:async record=>{
+      const token=await readFile(c.tokenFile,'utf8');
+      const r=await fetch(c.hubUrl+'/cli/sessions',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({id:record.hubId,tag:'maricode-import-'+record.hubId,metadata:record.metadata,agentState:{controlledByUser:false}}),redirect:'error',signal:AbortSignal.timeout(15000)});
+      if(!r.ok)throw Error('세션 등록 결과를 확인하세요. 자동 재등록하지 않습니다.');
+     },
+     lookup:async id=>{
+      const r=await fetch(c.hubUrl+'/api/sessions/'+encodeURIComponent(id),{headers:{authorization},redirect:'error',signal:AbortSignal.timeout(5000)});
+      if(r.status===404)return null;if(!r.ok)throw Error('등록 결과 조회 실패');return (await r.json()).session;
+     }
+    },action==='check');
+   });
+  },
   async navigation(authorization){await authorize(authorization);if(!c.projectsPath)throw Error('목록 관리 미지원');return projectRegistry(c.projectsPath).navigation();},
   async manage(authorization,input){
    await authorize(authorization);

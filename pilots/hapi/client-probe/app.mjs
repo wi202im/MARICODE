@@ -1,3 +1,4 @@
+import {createClaudeImportPanel,createImportedHistory} from './claude-import-ui.mjs';
 import {createQuitFlow} from './quit-flow.mjs';
 import {requestQuestions,questionDecision} from './questions.mjs';
 import {questionForm} from './question-form.mjs';
@@ -45,7 +46,7 @@ async function api(path,{method='GET',body,signal}={}){
   const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path.endsWith('/resume')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
@@ -189,7 +190,7 @@ async function stream(authEpoch){
   }
 }
 async function openWorkspace(){
- const auth=token;const config=await api('/config');if(!auth||token!==auth)return;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled;
+ const auth=token;const config=await api('/config');if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled;
  $('session-select').replaceChildren(...trialSessions.map(s=>{const option=document.createElement('option');option.value=s.id;option.textContent=s.label;return option;}));
  if(!trialSessions.length){
   rememberChat();$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();
@@ -223,7 +224,7 @@ $('login-form').addEventListener('submit',async e=>{
  }catch(e){if(attempt===epoch)notice(e.message);}finally{button.disabled=false;}
 });
 async function selectSession(id){
-  rememberChat();
+  rememberChat();importedHistory?.load(id,importHistorySupported);
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
   try{sessionStorage.setItem('hapi-trial-selected-session',id);}catch{}
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
@@ -588,11 +589,19 @@ restoreLogin();
 // Creation has its own project target, separate from the selected conversation.
 const taskPendingKey='hapi-trial-new-task';
 let taskCreating=false,taskProjectsReady=false,projectCatalog=[],selectedProject='';
+let importHistorySupported=false;
+const importedHistory=workspaceLayout?createImportedHistory({element:$('imported-history'),api}):null;
 let draftProject=null,draftOptions=null,draftLoading=false,draftSerial=0,draftMessage='',draftContinue=false,draftSupportsGit=false,draftAccountSerial=0;
 try{selectedProject=sessionStorage.getItem('maricode-project')||'';}catch{}
+const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('claude-import-panel'),api,
+ context:()=>({agent:$('task-agent').value,project:draftProject,projectAvailable:taskProjectsReady&&projectCatalog.some(p=>p.key===draftProject),busy:busy||taskCreating}),
+ changed:value=>{taskCreating=value;busy=value;render();renderTaskCreation();},
+ opened:async id=>{await openWorkspace();await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);notice('기존 Claude 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.');}
+}):null;
+
 function taskPending(){try{return JSON.parse(sessionStorage.getItem(taskPendingKey)||'null');}catch{return null;}}
 async function configureTasks(config){
- $('new-task-toggle').hidden=!config.newTask;draftSupportsGit=!!config.newTask?.workspaceChoices;
+ $('new-task-toggle').hidden=!config.newTask;draftSupportsGit=!!config.newTask?.workspaceChoices;claudeImportPanel?.configure(config.claudeImport===true);
  if(config.newTask)await loadTaskProjects(true);
 }
 async function loadTaskProjects(followSession=false){
@@ -649,7 +658,7 @@ function draftWorkspace(){
  return draftOptions?.kind==='git'&&$('task-branch').value&&$('task-branch').value!==draftOptions.branch?{mode:'branch',branch:$('task-branch').value}:{mode:'current'};
 }
 function renderTaskCreation(){
- if(!workspaceLayout)return;
+ if(!workspaceLayout)return;claudeImportPanel?.render();
  const pending=taskPending();if(pending)$('task-agent').value=pending.agent;
  const project=projectCatalog.find(p=>p.key===draftProject),mode=$('task-mode').value,git=draftOptions?.kind==='git';
  $('task-project').textContent=project?.path??'프로젝트 폴더를 선택하세요.';

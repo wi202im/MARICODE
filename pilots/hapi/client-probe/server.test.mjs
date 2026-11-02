@@ -332,3 +332,12 @@ test('question answers bind the authenticated current request and cannot grant b
  current=valid.expected;assert.equal((await post(valid)).status,200);assert.deepEqual(forwarded,[{decision:'approved',answers:{'0':['Focused']}}]);
  assert.equal((await post(valid)).status,409);assert.equal(forwarded.length,1);
 });
+
+test('local Claude imports require same-origin authenticated service and are unavailable through remote forwarding',async t=>{
+ let calls=0;const service={workspace:async auth=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});return [];},target:async()=>({project:'/fixture'}),claudeImport:async(auth,input,action)=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});calls++;return {sessions:[],action};}};
+ const server=createServer({upstream:'http://127.0.0.1:1',runnerService:service});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
+ const url=`http://127.0.0.1:${server.address().port}`;const request=(headers={})=>fetch(url+'/api/claude-import/list',{method:'POST',headers:{origin:url,'content-type':'application/json',...headers},body:JSON.stringify({project:'fixture'})});
+ assert.equal((await request()).status,401);assert.equal((await request({authorization:'Bearer fixture','x-forwarded-for':'127.0.0.1'})).status,403);assert.equal((await request({authorization:'Bearer fixture',origin:'https://untrusted.example'})).status,403);assert.equal(calls,0);
+ assert.equal((await request({authorization:'Bearer fixture'})).status,200);assert.equal(calls,1);
+ const config=await(await fetch(url+'/config',{headers:{authorization:'Bearer fixture'}})).json();assert.equal(config.claudeImport,true);
+});

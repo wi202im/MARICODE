@@ -55,7 +55,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
   const taskConfig=taskTarget??handoffTarget;
   const tasks=taskTarget?createTasks(taskTarget):trialTasks;
   const projectHandoffs=taskTarget?createHandoffs({...taskTarget,directory:taskTarget.directory+'/handoffs'}):null;
-  const assets=new Map([['/manifest.webmanifest','manifest.webmanifest'],['/icon-192.png','icon-192.png'],['/icon-512.png','icon-512.png'],['/install','install.html'],['/','index.html'],['/workspace','workspace/index.html'],['/workspace/','workspace/index.html'],['/workspace/style.css','workspace/style.css'],['/workspace/chat.css','workspace/chat.css'],['/workspace.mjs','workspace.mjs'],['/git-status.mjs','git-status.mjs'],['/workspace-entry.mjs','workspace-entry.mjs'],['/design','design/index.html'],['/design/','design/index.html'],['/design/style.css','design/style.css'],['/design/app.js','design/app.js'],['/questions.mjs','questions.mjs'],['/question-form.mjs','question-form.mjs'],['/chat-render.mjs','chat-render.mjs'],['/chat-presentation.mjs','chat-presentation.mjs'],['/attachments.mjs','attachments.mjs'],['/attachment-composer.mjs','attachment-composer.mjs'],['/app.mjs','app.mjs'],['/markdown.mjs','markdown.mjs'],['/device-login.mjs','device-login.mjs'],['/core.mjs','core.mjs'],['/quit-flow.mjs','quit-flow.mjs'],['/reconnect.mjs','reconnect.mjs'],['/workflow.mjs','workflow.mjs'],['/history.mjs','history.mjs'],['/style.css','style.css']]);
+  const assets=new Map([['/manifest.webmanifest','manifest.webmanifest'],['/icon-192.png','icon-192.png'],['/icon-512.png','icon-512.png'],['/install','install.html'],['/','index.html'],['/workspace','workspace/index.html'],['/workspace/','workspace/index.html'],['/workspace/style.css','workspace/style.css'],['/workspace/chat.css','workspace/chat.css'],['/workspace.mjs','workspace.mjs'],['/git-status.mjs','git-status.mjs'],['/workspace-entry.mjs','workspace-entry.mjs'],['/design','design/index.html'],['/design/','design/index.html'],['/design/style.css','design/style.css'],['/design/app.js','design/app.js'],['/questions.mjs','questions.mjs'],['/question-form.mjs','question-form.mjs'],['/chat-render.mjs','chat-render.mjs'],['/chat-presentation.mjs','chat-presentation.mjs'],['/attachments.mjs','attachments.mjs'],['/attachment-composer.mjs','attachment-composer.mjs'],['/app.mjs','app.mjs'],['/claude-import-ui.mjs','claude-import-ui.mjs'],['/markdown.mjs','markdown.mjs'],['/device-login.mjs','device-login.mjs'],['/core.mjs','core.mjs'],['/quit-flow.mjs','quit-flow.mjs'],['/reconnect.mjs','reconnect.mjs'],['/workflow.mjs','workflow.mjs'],['/history.mjs','history.mjs'],['/style.css','style.css']]);
   const server=http.createServer(async(req,res)=>{
     const host=req.headers.host;
     const allowedOrigins=new Set(origins);
@@ -202,6 +202,16 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
       const children=handoffs?await handoffs.list():[];
       let available=[...sessions,...children,...(trialTasks?await trialTasks.list():[]),...(taskTarget?[...await tasks.list(),...await projectHandoffs.list()].map(r=>({...r,project:r.project??taskTarget.project,scope:'personal'})):[])];
       const runnerWorkspace=typeof runnerService?.workspace==='function';
+      const localImport=isLocal&&host===`127.0.0.1:${server.address().port}`&&['127.0.0.1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)&&!req.headers.forwarded&&!Object.keys(req.headers).some(k=>k.startsWith('x-forwarded-')||k.startsWith('tailscale-'));
+      if(['/api/claude-import','/api/claude-import/list','/api/claude-import/check'].includes(u.pathname)){
+        if(!localImport||!runnerService?.claudeImport){res.writeHead(403).end();return;}
+        if(req.method!=='POST'||u.search){res.writeHead(405).end();return;}
+        try{
+          let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>8192){res.writeHead(413).end();return;}}
+          const result=await runnerService.claudeImport(req.headers.authorization,JSON.parse(raw),u.pathname.endsWith('/list')?'list':u.pathname.endsWith('/check')?'check':'import');
+          res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(result));
+        }catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,error:error.userMessage??'가져오기 결과를 확인하지 못했습니다. 원본은 변경하지 않았습니다. 결과 확인 후 폴더·기록 변경 여부와 실행기 상태를 확인하세요.'}));}return;
+      }
       if(runnerWorkspace){
         if(!runnerService.target&&/^\/api\/sessions\/[^/]+\/(file|directory)$/.test(u.pathname)){res.writeHead(403).end();return;}
         available=[];
@@ -209,6 +219,14 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
           if(!req.headers.authorization?.startsWith('Bearer ')){res.writeHead(401).end();return;}
           try{available=await runnerService.workspace(req.headers.authorization);}catch(error){res.writeHead([401,403].includes(error.status)?error.status:503).end();return;}
         }
+      }
+      const importHistory=/^\/api\/sessions\/([a-f0-9-]{36})\/import-history$/.exec(u.pathname);
+      if(importHistory&&runnerService?.claudeImportHistory){
+        if(!localImport||req.method!=='GET'||[...u.searchParams.keys()].some(k=>k!=='before')){res.writeHead(403).end();return;}
+        try{const before=u.searchParams.has('before')?Number(u.searchParams.get('before')):undefined;
+          const result=await runnerService.claudeImportHistory(req.headers.authorization,importHistory[1],before);
+          res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(result));
+        }catch{res.writeHead(409).end();}return;
       }
       if(runnerWorkspace&&runnerService.manage&&u.pathname==='/api/navigation'){
         if(u.search){res.writeHead(400).end();return;}
@@ -252,7 +270,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
           res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
         }catch(error){res.writeHead([400,401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,reason:error.reason,error:error.reason==='RUNNER_SETUP'?'작업 폴더 선택은 보존했습니다. 실행 환경 준비를 확인하지 못했습니다. 생성 결과 확인을 눌러 같은 요청으로 계속하세요.':error.rejected?error.message:'결과를 확인하지 못했습니다. 같은 요청의 결과 확인을 눌러 주세요.'}));}return;
       }
-      if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
+      if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,claudeImport:localImport&&!!runnerService?.claudeImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
       if(req.method==='GET'&&assets.has(u.pathname)) {
         const name=assets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.webmanifest')?'application/manifest+json':name.endsWith('.png')?'image/png':name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');
         let asset=await readFile(new URL(name,import.meta.url));
