@@ -22,7 +22,7 @@ Node26.7 이상과 기존 macOS Swift 도구가 필요하다. 빌드는 새 소�
 
 ```sh
 node apps/mac-launcher/build.mjs /existing/node-root /new/output /verified/hapi-artifact-directory --release
-'/new/output/MARICODE.app/Contents/MacOS/Merry' --data-directory /absolute/path/to/isolated-data
+'/new/output/Maricode.app/Contents/MacOS/Merry' --data-directory /absolute/path/to/isolated-data
 ```
 
 HAPI 입력 폴더는 `package-hapi.mjs`의 고정 SHA-256에 맞는 `hapi`, `LICENSE`, `source.tar.gz`를 포함해야 한다. 현재 고정 버전은0.33.3 arm64다. 앱에는 Node 전체 LICENSE·HAPI 고정 소스·고지·제품 소스가 포함된다. 원래 AI 계정·실행 자료는 포함하지 않는다.
@@ -32,7 +32,7 @@ release bundle ID는 `dev.maricode.desktop`, 데이터는 `~/Library/Application
 ## 패키징과 업데이트
 
 ```sh
-node apps/mac-launcher/dmg.mjs /built/MARICODE.app /new/dmg-output /verified/upstream-sources
+node apps/mac-launcher/dmg.mjs /built/Maricode.app /new/dmg-output /verified/upstream-sources
 ```
 
 앱 사본에 ad-hoc 서명한 뒤 검증하고 DMG·제품 소스·SHA-256·빌드 안내를 생성한다. Developer ID 서명·공증을 뜻하지 않는다. 원본 번들과 기존 출력은 덮어쓰지 않는다. 공개 저장소/릴리스 게시와 DMG 생성은 별개다.

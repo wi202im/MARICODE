@@ -23,7 +23,7 @@ Contents/Resources/hapi. Node's license is Contents/Resources/Node-LICENSE.txt.
 Extract MARICODE-1.0.9-source.tar.gz into an empty directory and run from it:
 
 /path/to/node/bin/node apps/mac-launcher/build.mjs /path/to/node /new/app-output /path/to/hapi-artifacts --release
-/path/to/node/bin/node apps/mac-launcher/dmg.mjs /new/app-output/MARICODE.app /new/dmg-output /path/to/upstream-sources
+/path/to/node/bin/node apps/mac-launcher/dmg.mjs /new/app-output/Maricode.app /new/dmg-output /path/to/upstream-sources
 
 apps/mac-launcher/version.mjs defines the product version. The build compiles
 AppUpdate.swift alongside the other native sources, targeting macOS 14.0.
@@ -155,10 +155,10 @@ all applicable notices. This is an intentional source change: the standard
 packager rejects modified vendor artifacts until their hashes are updated.
 Alternatively, to test your replacement in a private writable app copy:
 
-  cp /new/output/hapi /path/to/MARICODE.app/Contents/Resources/hapi/hapi
-  codesign --force --sign - /path/to/MARICODE.app/Contents/Resources/hapi/hapi
-  codesign --force --sign - /path/to/MARICODE.app
-  codesign --verify --deep --strict /path/to/MARICODE.app
+  cp /new/output/hapi /path/to/Maricode.app/Contents/Resources/hapi/hapi
+  codesign --force --sign - /path/to/Maricode.app/Contents/Resources/hapi/hapi
+  codesign --force --sign - /path/to/Maricode.app
+  codesign --verify --deep --strict /path/to/Maricode.app
 
 Quit that app before replacing its executable; do not alter its Application
 Support data. No MARICODE signing key, subscription or paid Developer ID is

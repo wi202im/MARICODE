@@ -5,7 +5,7 @@ Apple Silicon Mac용이며 macOS 14 이상을 빌드 대상으로 합니다.
 모든 macOS 버전과 깨끗한 Mac의 전체 설치를 검증한 것은 아닙니다.
 
 1. 설치
-DMG 안의 MARICODE.app을 Applications에 복사하고 DMG를 꺼냅니다.
+DMG 안의 Maricode.app을 Applications에 복사하고 DMG를 꺼냅니다.
 이 앱은 Apple Developer ID 서명·공증을 받지 않았습니다.
 출처를 확인한 뒤 macOS의 안내에 따라 사용자가 실행을 허용해야 합니다.
 시스템 보안을 일괄 해제하거나 다른 앱의 경고까지 무시하지 마세요.

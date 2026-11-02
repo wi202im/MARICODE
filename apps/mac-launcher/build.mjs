@@ -16,7 +16,7 @@ const [major,minor]=version.slice(1).split('.').map(Number);
 if(major<26||(major===26&&minor<7))throw Error('Node 26.7+ required');
 // No overwrite, install, download or automatic signing identity selection.
 await mkdir(output,{mode:0o700});
-const bundle=join(output,'MARICODE.app'),contents=join(bundle,'Contents'),resources=join(contents,'Resources');
+const bundle=join(output,'Maricode.app'),contents=join(bundle,'Contents'),resources=join(contents,'Resources');
 await mkdir(join(contents,'MacOS'),{recursive:true});await mkdir(resources);
 await copyFile(binary,join(resources,'node'));await chmod(join(resources,'node'),0o755);
 await copyFile(join(nodeRoot,'LICENSE'),join(resources,'Node-LICENSE.txt'));

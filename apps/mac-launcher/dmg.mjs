@@ -18,14 +18,14 @@ export async function createDmg(app,output,upstreamSources){
  await mkdir(output,{mode:0o700});
  if(upstreamSources)await packageUpstreamSources(resolve(upstreamSources),output);
  const stage=join(output,'stage');await mkdir(stage);
- const copy=join(stage,'MARICODE.app');await cp(app,copy,{recursive:true,errorOnExist:true,force:false});
+ const copy=join(stage,'Maricode.app');await cp(app,copy,{recursive:true,errorOnExist:true,force:false});
  // Seal only this new copy; keep the bundled vendor executables unchanged.
  execFileSync('/usr/bin/codesign',['--force','--sign','-',copy],{stdio:'pipe'});
  execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',copy],{stdio:'pipe'});
  await symlink('/Applications',join(stage,'Applications'));
  await writeFile(join(stage,'READ-ME.txt'),`Maricode ${PRODUCT_VERSION} — installation
 
-Copy MARICODE.app to Applications, then eject this disk image.
+Copy Maricode.app to Applications, then eject this disk image.
 This build has an ad-hoc signature, not a Developer ID signature or notarization.
 Keep the matching product/runtime sources, BUILDING.txt, NOTICES.txt and checksums with this release.
 HAPI 0.33.3 and Node are included. Claude/Codex installation and official login are separate.
@@ -47,6 +47,6 @@ Do not run the app from the read-only disk image.
  return image;
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
- if(process.argv.length!==4&&process.argv.length!==5)throw Error('Usage: node dmg.mjs <built-MARICODE.app> <new-output-directory> [upstream-source-directory]');
+ if(process.argv.length!==4&&process.argv.length!==5)throw Error('Usage: node dmg.mjs <built-Maricode.app> <new-output-directory> [upstream-source-directory]');
  console.log(await createDmg(process.argv[2],process.argv[3],process.argv[4]));
 }
