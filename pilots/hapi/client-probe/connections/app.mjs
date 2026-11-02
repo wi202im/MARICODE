@@ -67,15 +67,15 @@ async function discoveryReady(){
 $('discover').onclick=async()=>{
  if(discoveryBusy||!discoveryNonce)return;discoveryBusy=true;$('discover').disabled=true;$('discovery-results').replaceChildren();$('discovery-note').textContent='온라인 기기 조회 중…';
  try{const r=await fetch('/api/environment/discovery',{headers:{'x-setup-nonce':discoveryNonce},credentials:'omit',redirect:'error',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error();const s=await r.json();if(!Array.isArray(s.candidates))throw Error();
-  $('discovery-note').textContent=s.state==='ready'?`온라인 기기 후보 ${s.candidates.length}개 · MARICODE 서버 실행 여부는 확인 전입니다.`:s.state==='not-running'?'Tailscale이 연결되지 않았습니다. 기존 Tailscale 앱의 상태를 확인하세요.':s.state==='not-installed'?'등록된 Tailscale 실행 파일이 없습니다. 자동 설치하지 않습니다.':'기기를 조회하지 못했습니다. 주소를 직접 등록할 수 있습니다.';
-  if(s.state==='ready')for(const item of s.candidates){const button=document.createElement('button');button.type='button';button.textContent=`${item.name} · ${item.host} 선택`;button.onclick=()=>{const port=$('discovery-port').value;if(!/^[0-9]{1,5}$/.test(port)||Number(port)<1||Number(port)>65535){$('discovery-note').textContent='대상 MARICODE의 HTTPS 포트를 1~65535 사이로 입력하세요.';return;}try{const next=addServer([],{name:item.name,address:`https://${item.host}:${Number(port)}`})[0];$('name').value=next.name;$('address').value=next.address;$('discovery-note').textContent='등록 양식을 채웠습니다. 주소를 확인하고 등록하세요. 아직 연결하지 않았습니다.';}catch{$('discovery-note').textContent='후보 주소를 사용할 수 없습니다. 직접 등록하세요.';}};$('discovery-results').append(button);}
+  $('discovery-note').textContent=s.state==='ready'?`온라인 기기 후보 ${s.candidates.length}개 · Maricode 서버 실행 여부는 확인 전입니다.`:s.state==='not-running'?'Tailscale이 연결되지 않았습니다. 기존 Tailscale 앱의 상태를 확인하세요.':s.state==='not-installed'?'등록된 Tailscale 실행 파일이 없습니다. 자동 설치하지 않습니다.':'기기를 조회하지 못했습니다. 주소를 직접 등록할 수 있습니다.';
+  if(s.state==='ready')for(const item of s.candidates){const button=document.createElement('button');button.type='button';button.textContent=`${item.name} · ${item.host} 선택`;button.onclick=()=>{const port=$('discovery-port').value;if(!/^[0-9]{1,5}$/.test(port)||Number(port)<1||Number(port)>65535){$('discovery-note').textContent='대상 Maricode의 HTTPS 포트를 1~65535 사이로 입력하세요.';return;}try{const next=addServer([],{name:item.name,address:`https://${item.host}:${Number(port)}`})[0];$('name').value=next.name;$('address').value=next.address;$('discovery-note').textContent='등록 양식을 채웠습니다. 주소를 확인하고 등록하세요. 아직 연결하지 않았습니다.';}catch{$('discovery-note').textContent='후보 주소를 사용할 수 없습니다. 직접 등록하세요.';}};$('discovery-results').append(button);}
  }catch{$('discovery-note').textContent='조회하지 못했습니다. 역할 설정과 Tailscale 상태를 확인하거나 주소를 직접 등록하세요.';}
  finally{discoveryBusy=false;$('discover').disabled=false;}
 };void discoveryReady();
 
 let lanBusy=false;
 $('discover-lan').onclick=async()=>{
- if(lanBusy||!discoveryNonce)return;lanBusy=true;$('discover-lan').disabled=true;$('lan-results').replaceChildren();$('lan-note').textContent='LAN MARICODE 후보 조회 중…';
+ if(lanBusy||!discoveryNonce)return;lanBusy=true;$('discover-lan').disabled=true;$('lan-results').replaceChildren();$('lan-note').textContent='LAN Maricode 후보 조회 중…';
  try{
   const r=await fetch('/api/environment/discovery-lan',{headers:{'x-setup-nonce':discoveryNonce},credentials:'omit',redirect:'error',signal:AbortSignal.timeout(6000)});
   if(!r.ok)throw Error();const data=await r.json();if(!Array.isArray(data.candidates))throw Error();

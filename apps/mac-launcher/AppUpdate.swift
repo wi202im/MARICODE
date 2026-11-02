@@ -89,7 +89,7 @@ final class AppUpdateController: NSObject, URLSessionDownloadDelegate {
     func show() {
         if panel == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 440), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.title = "MARICODE 업데이트"; w.appearance = NSAppearance(named: .darkAqua); w.isReleasedWhenClosed = false
+            w.title = "Maricode 업데이트"; w.appearance = NSAppearance(named: .darkAqua); w.isReleasedWhenClosed = false
             let heading = NSTextField(labelWithString: "앱 업데이트"); heading.font = .systemFont(ofSize: 21, weight: .semibold)
             let scope = NSTextField(wrappingLabelWithString: "지금 사용하는 Mac 앱 · 원격 서버는 변경하지 않습니다."); scope.textColor = .secondaryLabelColor
             versions.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium); if versions.stringValue.isEmpty { versions.stringValue = "현재 버전  \(current.value)" }
@@ -137,7 +137,7 @@ final class AppUpdateController: NSObject, URLSessionDownloadDelegate {
     @objc private func openChanges() { if let release { NSWorkspace.shared.open(release.page) } }
     @objc private func openSecurity() {
         let alert = NSAlert(); alert.messageText = "설치·업데이트 후 실행이 차단됐나요?"
-        alert.informativeText = "설치한 앱을 한 번 실행한 뒤, 개인정보 보호 및 보안에서 MARICODE의 ‘그래도 열기’를 직접 선택하세요. 이 배포본은 Apple 공증을 받지 않아 업데이트 후에도 확인이 필요할 수 있습니다. 앱이 대신 승인하거나 전체 보안 설정을 해제하지 않습니다."
+        alert.informativeText = "설치한 앱을 한 번 실행한 뒤, 개인정보 보호 및 보안에서 Maricode의 ‘그래도 열기’를 직접 선택하세요. 이 배포본은 Apple 공증을 받지 않아 업데이트 후에도 확인이 필요할 수 있습니다. 앱이 대신 승인하거나 전체 보안 설정을 해제하지 않습니다."
         alert.addButton(withTitle: "보안 설정 열기"); alert.addButton(withTitle: "닫기")
         if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension")!) }
     }

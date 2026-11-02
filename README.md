@@ -1,4 +1,4 @@
-# MARICODE
+# Maricode
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 

@@ -4,7 +4,7 @@ import WebKit
 final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     var window: NSWindow!
     let status = NSTextField(wrappingLabelWithString: "설정 화면을 열 준비가 됐습니다.")
-    let start = NSButton(title: "MARICODE 화면 시작", target: nil, action: nil)
+    let start = NSButton(title: "Maricode 화면 시작", target: nil, action: nil)
     let open = NSButton(title: "브라우저에서 열기", target: nil, action: nil)
     let stop = NSButton(title: "작업 서버 종료", target: nil, action: nil)
     let configure = NSButton(title: "이 Mac의 AI 작업 설정", target: nil, action: nil)
@@ -35,6 +35,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     let machineLabel = NSTextField(labelWithString: "이 Mac")
     let connectionIndicator = NSImageView()
     var connectionTimer: Timer?
+    var productTitle: String { ["Maricode", Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ") }
     let pageTitle = NSTextField(labelWithString: "")
     let backButton = NSButton()
     var utilityTrail = DesktopUtilityTrail()
@@ -55,7 +56,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let iconPath = Bundle.main.path(forResource: "AppIcon", ofType: "icns") { NSApp.applicationIconImage = NSImage(contentsOfFile: iconPath) }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "MARICODE " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""); window.minSize = NSSize(width: 820, height: 600); window.delegate = self
+        window.title = productTitle; window.minSize = NSSize(width: 820, height: 600); window.delegate = self
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.userContentController.add(self, name: "maricode")
@@ -80,6 +81,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         machineLabel.textColor = .secondaryLabelColor; machineLabel.lineBreakMode = .byTruncatingMiddle
         machineLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 240).isActive = true
         pageTitle.font = .systemFont(ofSize: 13, weight: .medium)
+        pageTitle.lineBreakMode = .byTruncatingTail; pageTitle.maximumNumberOfLines = 1
         connectionIndicator.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "연결 상태")
         connectionIndicator.translatesAutoresizingMaskIntoConstraints = false
         connectionIndicator.widthAnchor.constraint(equalToConstant: 7).isActive = true
@@ -119,7 +121,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         browserContainer.addSubview(hostButton)
         NSLayoutConstraint.activate([hostButton.leadingAnchor.constraint(equalTo: browserContainer.leadingAnchor, constant: 12), hostButton.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor, constant: -2), hostButton.widthAnchor.constraint(equalToConstant: 28), hostButton.heightAnchor.constraint(equalToConstant: 28)])
         let menu = NSMenu(); let item = NSMenuItem(); menu.addItem(item)
-        let appMenu = NSMenu(); let updates = appMenu.addItem(withTitle: "업데이트 확인…", action: #selector(showAppUpdates), keyEquivalent: ""); updates.target = self; appMenu.addItem(.separator()); appMenu.addItem(withTitle: "MARICODE 종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); item.submenu = appMenu; NSApp.mainMenu = menu
+        let appMenu = NSMenu(); let updates = appMenu.addItem(withTitle: "업데이트 확인…", action: #selector(showAppUpdates), keyEquivalent: ""); updates.target = self; appMenu.addItem(.separator()); appMenu.addItem(withTitle: "Maricode 종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); item.submenu = appMenu; NSApp.mainMenu = menu
         let setupItem = NSMenuItem(); let setupMenu = NSMenu(title: "설정")
         setupMenu.delegate = self
         setupItem.submenu = setupMenu; menu.addItem(setupItem)
@@ -173,7 +175,9 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         for (id, view) in machineViews { view.isHidden = current != nil || id != activeMachine }
         for (id, view) in utilityViews { view.isHidden = id != current }
         backButton.isHidden = current == nil
-        pageTitle.stringValue = current == "settings" ? "컴퓨터 설정" : current == "connections" ? "컴퓨터 연결" : "MARICODE"
+        let section = current == "settings" ? "컴퓨터 설정" : current == "connections" ? "컴퓨터 연결" : nil
+        pageTitle.stringValue = productTitle + (section.map { " · " + $0 } ?? "")
+        pageTitle.toolTip = pageTitle.stringValue
         leftPanelButton.isHidden = current != nil; rightPanelButton.isHidden = current != nil
         // Lifecycle and failure messages remain visible beside the computer name.
         refreshPanelControls()
@@ -409,7 +413,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         completionHandler(alert.runModal() == .alertFirstButtonReturn)
     }
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
-        let alert = NSAlert(); alert.messageText = "MARICODE"; alert.informativeText = message
+        let alert = NSAlert(); alert.messageText = "Maricode"; alert.informativeText = message
         alert.runModal(); completionHandler()
     }
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
@@ -422,7 +426,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     @objc func openUserGuide() {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent("USER-GUIDE.txt"),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return }
-        let dialog = NSAlert(); dialog.messageText = "MARICODE 설치·사용 안내"
+        let dialog = NSAlert(); dialog.messageText = "Maricode 설치·사용 안내"
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 540, height: 380))
         scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder
         let view = NSTextView(frame: scroll.bounds); view.string = text; view.isEditable = false
@@ -441,7 +445,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
     @objc func showFileAccessHelp() {
         let guide = NSAlert(); guide.messageText = "파일·폴더 접근 허용 확인"
-        guide.informativeText = "macOS 접근 요청이 뜨면 요청한 앱과 폴더를 확인하고 필요한 범위만 허용하세요.\n\n이미 거절했다면 시스템 설정 → 개인정보 보호 및 보안 → 파일 및 폴더에서 요청한 앱의 해당 항목을 확인하세요. 실행 방식에 따라 MARICODE 또는 실행 도구 이름으로 나타날 수 있습니다.\n\n목록에 없다면 작업 폴더를 다시 선택하세요. Finder의 정보 가져오기 → 공유 및 사용 권한, 외장 디스크 연결 상태도 확인하세요. 전체 디스크 접근 권한을 기본으로 요구하지 않습니다.\n\n허용 후 이 앱으로 돌아와 이전 작업의 저장·접수 상태를 먼저 확인하고 필요한 작업만 다시 시도하세요. 자동 재실행하지 않습니다. AI 도구 승인과 서버의 허용 경로는 별도이며 macOS 허용으로 해제되지 않습니다. 원격 접속 중이라면 파일이 있는 서버 Mac에서 확인하세요."
+        guide.informativeText = "macOS 접근 요청이 뜨면 요청한 앱과 폴더를 확인하고 필요한 범위만 허용하세요.\n\n이미 거절했다면 시스템 설정 → 개인정보 보호 및 보안 → 파일 및 폴더에서 요청한 앱의 해당 항목을 확인하세요. 실행 방식에 따라 Maricode 또는 실행 도구 이름으로 나타날 수 있습니다.\n\n목록에 없다면 작업 폴더를 다시 선택하세요. Finder의 정보 가져오기 → 공유 및 사용 권한, 외장 디스크 연결 상태도 확인하세요. 전체 디스크 접근 권한을 기본으로 요구하지 않습니다.\n\n허용 후 이 앱으로 돌아와 이전 작업의 저장·접수 상태를 먼저 확인하고 필요한 작업만 다시 시도하세요. 자동 재실행하지 않습니다. AI 도구 승인과 서버의 허용 경로는 별도이며 macOS 허용으로 해제되지 않습니다. 원격 접속 중이라면 파일이 있는 서버 Mac에서 확인하세요."
         guide.addButton(withTitle: "확인"); guide.addButton(withTitle: "시스템 설정 열기")
         if guide.runModal() == .alertSecondButtonReturn {
             NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
@@ -520,11 +524,11 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         guard process == nil, let resources = Bundle.main.resourceURL else { return }
         let directory = dataDirectory()
         if FileManager.default.fileExists(atPath: directory + "/backend.json") {
-            status.stringValue = "이 Mac의 실행 설정이 이미 있습니다. 기존 설정을 보존합니다. MARICODE 화면을 시작하세요."; return
+            status.stringValue = "이 Mac의 실행 설정이 이미 있습니다. 기존 설정을 보존합니다. Maricode 화면을 시작하세요."; return
         }
         let choice = NSAlert()
         choice.messageText = "처음 사용할 AI를 선택하세요"
-        choice.informativeText = "HAPI가 앱에 포함되어 있으면 자동 사용합니다. 설치된 AI 실행 파일과 작업 폴더를 선택하고, HAPI 미포함 개발 빌드만 HAPI 파일을 추가 선택합니다. MARICODE 전용 계정 폴더를 만들며 기존 로그인은 복사하지 않습니다. 저장 뒤 웹 설정에서 공식 로그인을 진행하세요. 새 설치나 작업 실행은 하지 않습니다. 원격으로만 사용할 경우 취소 후 MARICODE 화면을 시작하세요."
+        choice.informativeText = "HAPI가 앱에 포함되어 있으면 자동 사용합니다. 설치된 AI 실행 파일과 작업 폴더를 선택하고, HAPI 미포함 개발 빌드만 HAPI 파일을 추가 선택합니다. Maricode 전용 계정 폴더를 만들며 기존 로그인은 복사하지 않습니다. 저장 뒤 웹 설정에서 공식 로그인을 진행하세요. 새 설치나 작업 실행은 하지 않습니다. 원격으로만 사용할 경우 취소 후 Maricode 화면을 시작하세요."
         choice.addButton(withTitle: "Codex"); choice.addButton(withTitle: "Claude"); choice.addButton(withTitle: "취소")
         let answer = choice.runModal()
         guard answer == .alertFirstButtonReturn || answer == .alertSecondButtonReturn else { return }
@@ -554,7 +558,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             let data = try JSONSerialization.data(withJSONObject: ["directory":directory,"binary":binary,"agent":agent,"agentBinary":agentBinary,"project":project])
             try p.run(); try pipe.fileHandleForWriting.write(contentsOf: data); try pipe.fileHandleForWriting.close(); p.waitUntilExit()
             if p.terminationStatus == 13 { status.stringValue = "파일·폴더 또는 실행 파일의 접근이 거부됐습니다. 권한 안내를 확인하세요."; showFileAccessHelp(); return }
-            status.stringValue = p.terminationStatus == 0 ? "설정 저장 완료 · MARICODE 화면 시작 → AI 연결 상태 확인 → 공식 로그인 → Runner 준비 순서로 진행하세요." : "설정 저장 실패 · 실행 파일, 작업 폴더와 기존 실행/설정을 확인하세요. 기존 설정은 교체하지 않았습니다."
+            status.stringValue = p.terminationStatus == 0 ? "설정 저장 완료 · Maricode 화면 시작 → AI 연결 상태 확인 → 공식 로그인 → Runner 준비 순서로 진행하세요." : "설정 저장 실패 · 실행 파일, 작업 폴더와 기존 실행/설정을 확인하세요. 기존 설정은 교체하지 않았습니다."
         } catch { status.stringValue = "설정 저장 결과를 확인하지 못했습니다. 실행 폴더를 확인하세요." }
     }
     @objc func addLocalAgent() {
@@ -627,13 +631,13 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 420, height: 26))
         field.stringValue = previous ?? ""; field.placeholderString = "https://기기.사설망.ts.net:포트"
         let prompt = NSAlert(); prompt.messageText = "Tailscale HTTPS 주소"
-        prompt.informativeText = "이 MARICODE 실행기에 사용할 주소를 등록합니다. 주소 등록만으로 연결되지는 않습니다. 서버 역할과 이 앱의 127.0.0.1:61192로 전달하는 HTTPS 설정이 별도로 필요합니다. 기존 Serve 설정은 변경하지 않습니다."
+        prompt.informativeText = "이 Maricode 실행기에 사용할 주소를 등록합니다. 주소 등록만으로 연결되지는 않습니다. 서버 역할과 이 앱의 127.0.0.1:61192로 전달하는 HTTPS 설정이 별도로 필요합니다. 기존 Serve 설정은 변경하지 않습니다."
         prompt.accessoryView = field
         prompt.addButton(withTitle: "주소 등록"); prompt.addButton(withTitle: "등록 해제"); prompt.addButton(withTitle: "취소")
         let answer = prompt.runModal()
         guard answer == .alertFirstButtonReturn || answer == .alertSecondButtonReturn else { return }
         let next: String? = answer == .alertFirstButtonReturn ? field.stringValue : nil
-        let confirm = NSAlert(); confirm.messageText = next == nil ? "원격 주소 등록을 해제할까요?" : "이 주소에서 MARICODE 접속을 허용할까요?"
+        let confirm = NSAlert(); confirm.messageText = next == nil ? "원격 주소 등록을 해제할까요?" : "이 주소에서 Maricode 접속을 허용할까요?"
         confirm.informativeText = "현재: \(previous ?? "미등록")\n변경: \(next ?? "미등록")\n\n다음 실행부터 적용됩니다. 서버 역할이 켜져 있어야 원격 작업을 사용할 수 있으며 HAPI 인증은 계속 필요합니다. 주소 해제는 Tailscale의 포트 전달 설정을 삭제하지 않습니다."
         confirm.addButton(withTitle: "저장"); confirm.addButton(withTitle: "취소")
         guard confirm.runModal() == .alertFirstButtonReturn else { return }
@@ -686,7 +690,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func applicationWillTerminate(_ notification: Notification) { connectionTimer?.invalidate(); clearCopiedToken() }
     @objc func startRemote() {
         guard process != nil, !stopping, let info = try? RemoteConnection.read(directory: dataDirectory()) else {
-            status.stringValue = "먼저 MARICODE 화면을 시작하고 서버 역할·원격 주소를 설정하세요."; return
+            status.stringValue = "먼저 Maricode 화면을 시작하고 서버 역할·원격 주소를 설정하세요."; return
         }
         let prompt = NSAlert(); prompt.messageText = "사설망 HTTPS 전달을 시작할까요?"
         prompt.informativeText = "\(info.address) → 이 앱의 로컬 웹 화면\n\n같은 Tailscale 사설망에서 접근할 수 있게 됩니다. HAPI 인증은 계속 필요합니다. 기존 Serve 설정이 있으면 시작하지 않습니다. Tailscale 설치·가입·HTTPS 승인이 필요하면 직접 완료해야 합니다."
@@ -778,8 +782,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = false; self.open.isEnabled = false; self.stop.isEnabled = false; self.connect.isEnabled = false; self.start.isEnabled = true; self.configure.isEnabled = true; self.addAgent.isEnabled = true; self.changeProject.isEnabled = true; self.remoteSettings.isEnabled = true
             switch p.terminationStatus {
             case 0: self.status.stringValue = "작업 서버를 종료했습니다."
-            case 21: self.status.stringValue = "기존 실행이나 미확인 작업이 남아 있어 시작을 보류했습니다. 이미 열린 MARICODE 창에서 작업·종료 상태를 확인하세요. 안전을 확인한 이전 잠금은 자동 복구하며, 확인할 수 없는 기록은 보존합니다. 잠금을 임의로 지우지 마세요."
-            case 22: self.status.stringValue = "MARICODE에 필요한 포트를 다른 프로그램이 사용 중입니다. 이미 열린 MARICODE 창을 확인하세요. 다른 프로그램을 자동 종료하지 않았습니다."
+            case 21: self.status.stringValue = "기존 실행이나 미확인 작업이 남아 있어 시작을 보류했습니다. 이미 열린 Maricode 창에서 작업·종료 상태를 확인하세요. 안전을 확인한 이전 잠금은 자동 복구하며, 확인할 수 없는 기록은 보존합니다. 잠금을 임의로 지우지 마세요."
+            case 22: self.status.stringValue = "Maricode에 필요한 포트를 다른 프로그램이 사용 중입니다. 이미 열린 Maricode 창을 확인하세요. 다른 프로그램을 자동 종료하지 않았습니다."
             case 23: self.status.stringValue = "이 앱으로 읽을 수 없는 데이터 형식입니다. 이 데이터를 마지막으로 사용한 버전으로 실행하세요. 문제가 계속되면 원본을 보존한 채 점검이 필요합니다."
             case 24: self.status.stringValue = "실행 설정을 읽을 수 없습니다. 기존 설정은 보존했습니다. 설정 파일을 삭제하거나 최초 설정을 반복하지 말고 점검해 주세요."
             case 25: self.status.stringValue = "시작 실패 후 전용 실행 환경의 종료를 확인하지 못했습니다. 진행 중 작업과 프로세스를 확인해야 합니다. 재시도하거나 잠금을 지우지 마세요."

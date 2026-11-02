@@ -13,7 +13,7 @@ export async function createDmg(app,output,upstreamSources){
   if(!(await lstat(join(app,name))).isFile())throw Error('Complete bundled app required');
  }
  const info=JSON.parse(execFileSync('/usr/bin/plutil',['-convert','json','-o','-',join(app,'Contents/Info.plist')],{encoding:'utf8'}));
- if(info.CFBundleName!=='MARICODE'||info.CFBundleShortVersionString!==PRODUCT_VERSION||info.MARICODERelease!==true||info.CFBundleIdentifier!=='dev.maricode.desktop')throw Error('Expected matching MARICODE release bundle');
+ if(info.CFBundleName!=='Maricode'||info.CFBundleShortVersionString!==PRODUCT_VERSION||info.MARICODERelease!==true||info.CFBundleIdentifier!=='dev.maricode.desktop')throw Error('Expected matching MARICODE release bundle');
  // A fresh destination is mandatory. Do not overwrite a previous release or source app.
  await mkdir(output,{mode:0o700});
  if(upstreamSources)await packageUpstreamSources(resolve(upstreamSources),output);
@@ -23,7 +23,7 @@ export async function createDmg(app,output,upstreamSources){
  execFileSync('/usr/bin/codesign',['--force','--sign','-',copy],{stdio:'pipe'});
  execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',copy],{stdio:'pipe'});
  await symlink('/Applications',join(stage,'Applications'));
- await writeFile(join(stage,'READ-ME.txt'),`MARICODE ${PRODUCT_VERSION} — installation
+ await writeFile(join(stage,'READ-ME.txt'),`Maricode ${PRODUCT_VERSION} — installation
 
 Copy MARICODE.app to Applications, then eject this disk image.
 This build has an ad-hoc signature, not a Developer ID signature or notarization.
@@ -36,7 +36,7 @@ Do not run the app from the read-only disk image.
  await copyFile(new URL('./INSTALL.html',import.meta.url),join(stage,'처음 실행 안내.html'));
  await writeFile(join(stage,'보안 설정 열기.webloc'),'<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>URL</key><string>x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension</string></dict></plist>');
  const name=`MARICODE-${PRODUCT_VERSION}-arm64.dmg`,image=join(output,name);
- execFileSync('/usr/bin/hdiutil',['create','-volname',`MARICODE ${PRODUCT_VERSION}`,'-srcfolder',stage,'-format','UDZO',image],{stdio:'pipe'});
+ execFileSync('/usr/bin/hdiutil',['create','-volname',`Maricode ${PRODUCT_VERSION}`,'-srcfolder',stage,'-format','UDZO',image],{stdio:'pipe'});
  execFileSync('/usr/bin/hdiutil',['verify',image],{stdio:'pipe'});
  const digest=createHash('sha256').update(await readFile(image)).digest('hex');
  await writeFile(join(output,name+'.sha256'),digest+'  '+name+'\n');

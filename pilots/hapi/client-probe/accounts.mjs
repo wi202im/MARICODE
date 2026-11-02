@@ -64,7 +64,7 @@ async function loginInTerminal(configPath,agent){
  try{
   const state=accountStatus(agent,await runStatus(c.binaries[agent],statusArgs(agent),{env:c.env,cwd:c.cwd}));
   if(state.state!=='signed-out'){console.log('기존 인증이 있거나 상태를 확인할 수 없어 새 로그인을 시작하지 않았습니다.');return;}
-  console.log('MARICODE 시험 환경의 공식 로그인입니다. 완료 후 웹 화면에서 AI 연결 상태를 다시 확인하세요.');
+  console.log('Maricode 시험 환경의 공식 로그인입니다. 완료 후 웹 화면에서 AI 연결 상태를 다시 확인하세요.');
   await new Promise((resolve,reject)=>{const child=spawn(c.binaries[agent],agent==='claude'?['auth','login','--claudeai']:['login'],{env:c.env,cwd:c.cwd,stdio:'inherit'});child.once('error',()=>reject(Error('Login could not start')));child.once('exit',()=>resolve());});
  }finally{await writeFile(join(lock,'state.json'),JSON.stringify({phase:'finished'}),{mode:0o600});}
 }

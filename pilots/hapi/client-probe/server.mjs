@@ -1,3 +1,4 @@
+import {PRODUCT_VERSION} from '../../../apps/mac-launcher/version.mjs';
 import {questionDecision,requestQuestions} from './questions.mjs';
 import {uploadPayload} from './attachments.mjs';
 import {workspaceRequest} from './workspace-plans.mjs';
@@ -23,6 +24,11 @@ import { relativePath } from './core.mjs';
 import {requestSnapshot,permissionDecision} from './workflow.mjs';
 import {createEnvironment,canUseMachine} from './environment.mjs';
 import {randomBytes,createHash} from 'node:crypto';
+
+async function readPresentationAsset(name) {
+  const asset=await readFile(new URL(name,import.meta.url));
+  return name.endsWith('.html')?asset.toString('utf8').replaceAll('{{PRODUCT_VERSION}}',PRODUCT_VERSION):asset;
+}
 
 export function allowedRoute(method,url,sessionId) {
   if(method==='POST'&&url.pathname==='/api/auth')return !url.search;
@@ -96,7 +102,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
       try{
         const issued=await desktopAccess.exchange(form.get('code'));
         const credential=JSON.stringify(issued).replaceAll('<','\\u003c');
-        const page=(await readFile(new URL('workspace/index.html',import.meta.url),'utf8')).replace('</body>',`<script type="application/json" id="desktop-credential">${credential}</script></body>`);
+        const page=(await readPresentationAsset('workspace/index.html')).replace('</body>',`<script type="application/json" id="desktop-credential">${credential}</script></body>`);
         res.setHeader('Content-Type','text/html; charset=utf-8');res.end(page);
       }catch{res.writeHead(403,{'Content-Type':'text/plain; charset=utf-8'}).end('연결이 만료됐거나 이미 사용되었습니다. Mac 앱에서 작업 화면 연결을 다시 누르세요.');}
       return;
@@ -121,7 +127,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
             if(local){res.writeHead(303,{Location:'/setup'}).end();return;}res.writeHead(403).end();return;
           }
           res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
-          const name=connectionAssets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');res.end(await readFile(new URL(name,import.meta.url)));return;
+          const name=connectionAssets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');res.end(await readPresentationAsset(name));return;
         }
         if(['/api/environment/discovery','/api/environment/discovery-lan'].includes(u.pathname)){
           const state=await environment.read();
@@ -174,7 +180,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
         if(setupAssets.has(u.pathname)||u.pathname==='/api/environment'){
           if(!local||u.search){res.writeHead(403).end();return;}
           if(req.method==='GET'&&setupAssets.has(u.pathname)){
-            const name=setupAssets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');res.end(await readFile(new URL(name,import.meta.url)));return;
+            const name=setupAssets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');res.end(await readPresentationAsset(name));return;
           }
           if(u.pathname==='/api/environment'){
             if(req.method==='POST'){
@@ -280,7 +286,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
       if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,claudeImport:localImport&&!!runnerService?.claudeImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{generalChat:!!runnerService.generalChat,workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
       if(req.method==='GET'&&assets.has(u.pathname)) {
         const name=assets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.webmanifest')?'application/manifest+json':name.endsWith('.png')?'image/png':name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');
-        let asset=await readFile(new URL(name,import.meta.url));
+        let asset=await readPresentationAsset(name);
         if(name==='workspace/index.html'){
           const machineSetup=!!environment&&isLocal&&(!req.headers.origin||req.headers.origin===`http://${host}`)&&!req.headers.forwarded&&!Object.keys(req.headers).some(k=>k.startsWith('x-forwarded-'));
           asset=asset.toString();

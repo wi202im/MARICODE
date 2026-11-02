@@ -373,3 +373,22 @@ test('access setting stays scoped, rejects stale providers and does not resend a
  assert.equal((await post(input)).status,409);assert.equal(writes,1);
  assert.equal(allowedRoute('POST',url(`/api/sessions/${id}/permission-mode`),id),false);
 });
+
+
+test('HTML titles and visible branding use the running product version',async t=>{
+ const {PRODUCT_VERSION}=await import('../../../apps/mac-launcher/version.mjs');
+ const {mkdtemp,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+ const {createEnvironment}=await import('./environment.mjs');
+ const dir=await mkdtemp(join(tmpdir(),'maricode-brand-')),environmentPath=join(dir,'environment.json');
+ await createEnvironment(environmentPath).save({revision:0,roles:{local:true,server:false,remote:true}});
+ const server=createServer({upstream:'http://127.0.0.1:1',sessionId:id,environmentPath});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(()=>{server.closeAllConnections();server.close();return rm(dir,{recursive:true,force:true});});
+ const origin=`http://127.0.0.1:${server.address().port}`;
+ for(const path of ['/workspace','/setup','/connections','/install','/']){
+  const response=await fetch(origin+path);assert.equal(response.status,200,path);
+  const html=await response.text();assert.ok(html.includes(`Maricode ${PRODUCT_VERSION}`),path);
+  assert.ok(!html.includes('{{PRODUCT_VERSION}}'),path);assert.ok(!html.includes('MARICODE 1.0.0'),path);
+ }
+ const manifest=await(await fetch(origin+'/manifest.webmanifest')).json();assert.equal(manifest.short_name,'Maricode');
+});
