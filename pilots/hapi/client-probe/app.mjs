@@ -67,7 +67,11 @@ async function api(path,{method='GET',body,signal}={}){
 }
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
 const base=()=>`/api/sessions/${sessionId}`;
+// Programmatic value changes (clear after send, handoff prefill, draft restore) fire no input event.
+let fittedPrompt=null;
+function fitPrompt(){const input=$('prompt');if(!input)return;fittedPrompt=input.value;input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';}
 function render(){
+  if(workspaceLayout&&$('prompt').value!==fittedPrompt)fitPrompt();
   $('session-select').disabled=busy;
   const relation=trialSessions.find(s=>s.id===sessionId),nextAgent=session?.metadata?.flavor==='codex'?'Claude':'Codex';
   $('new-handoff').textContent=handoffState==='created'?'기존 인계 세션 열기':`새 ${nextAgent} 세션으로 인계 준비`;
@@ -1061,7 +1065,7 @@ if(workspaceLayout){
   if(key==='k'){e.preventDefault();palette.isOpen?palette.close():palette.open();}
   else if(key==='f'&&!e.shiftKey&&sessionId){e.preventDefault();finder.open();}
  });
- $('prompt').addEventListener('input',()=>{const input=$('prompt');input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';});
+ $('prompt').addEventListener('input',fitPrompt);
 }
 
 async function chooseProject(project){
