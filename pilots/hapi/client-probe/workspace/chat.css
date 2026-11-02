@@ -61,3 +61,5 @@
 @media(max-width:760px){#keyboard-hint{display:none}#conversation-history #imported-history{width:calc(100% - 32px)}}
 /* Hover-only copy action floats in the bubble's bottom margin so hiding it leaves no gap. */
 @media(hover:hover) and (min-width:761px){.bubble>.copy-button{position:absolute;top:100%;left:0;margin-top:2px}.bubble.user>.copy-button{left:auto;right:0}}
+#setting-extras{grid-column:1/-1}#setting-extras:empty{display:none}.setting-extra{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;margin-top:10px}
+#model-field,.setting-extra{grid-template-columns:minmax(0,1fr) 108px}#model-field>button,.setting-extra>button{width:100%}

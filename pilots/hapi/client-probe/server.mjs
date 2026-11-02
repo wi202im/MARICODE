@@ -445,6 +445,9 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
           if(state?.metadata?.flavor==='codex'){
             try{const r=await fetch(new URL(`/api/sessions/${id}/codex-models`,target),{headers,signal:AbortSignal.timeout(15000),redirect:'error'});if(r.ok)catalog=await r.json();}catch{}
           }
+          else if(state?.metadata?.flavor==='claude'&&typeof state.metadata.machineId==='string'){
+            try{const r=await fetch(new URL(`/api/machines/${encodeURIComponent(state.metadata.machineId)}/claude-models`,target),{headers,signal:AbortSignal.timeout(15000),redirect:'error'});if(r.ok)catalog=await r.json();}catch{}
+          }
           return {state,catalog};
         };
         const changing=req.method==='POST';

@@ -45,3 +45,25 @@ test('access chip labels come from the provider presets without a settings fetch
  assert.equal(permissionLabel('claude','unknown-mode'),'unknown-mode');
  assert.equal(permissionLabel('codex',null),null);
 });
+
+test('Claude uses the account model list with per-model effort levels when the runner reports one',()=>{
+ const c={...session,metadata:{flavor:'claude'},model:'sonnet',effort:null,permissionMode:'default'};
+ const list={success:true,availableModels:[{value:'default',displayName:'Default (recommended)',effortLevels:['low']},{value:'opus',displayName:'Opus 5.5',effortLevels:['low','max']},{value:'sonnet',displayName:'Sonnet 5.5',effortLevels:['low','high']},{value:'claude-haiku-4-5',displayName:'Haiku 4.5',effortLevels:[]}]};
+ const v=settingsView(c,list);
+ assert.deepEqual(v.models.map(o=>o.value),[null,'opus','sonnet','claude-haiku-4-5']);assert.equal(v.models[1].label,'Opus 5.5');
+ assert.deepEqual(v.efforts.map(o=>o.value),[null,'low','high']);assert.doesNotMatch(v.source,/프리셋/);
+ assert.deepEqual(settingsView({...c,model:'claude-haiku-4-5'},list).efforts,[]);
+ assert.deepEqual(settingsView({...c,model:'retired'},list).models.map(o=>o.value)[1],'retired');
+ assert.deepEqual(settingChange(c,list,{field:'model',value:'opus',expected:{...v.current}}),{route:'model',body:{model:'opus'}});
+});
+test('Codex Fast and plan mode are explicit, model-gated choices',()=>{
+ const s={...session,permissionMode:'default',serviceTier:'standard',collaborationMode:'default'},fast={success:true,models:[{...catalog.models[0],serviceTiers:['priority','fast']},catalog.models[1]]};
+ const v=settingsView(s,fast),expected={...v.current,flavor:'codex'};
+ assert.deepEqual(v.extras.map(e=>[e.field,e.current,e.options.map(o=>o.value)]),[['serviceTier','standard',['standard','fast']],['collaborationMode','default',['default','plan']]]);
+ assert.deepEqual(settingsView(s,catalog).extras.map(e=>e.field),['collaborationMode']);
+ assert.deepEqual(settingChange(s,fast,{field:'serviceTier',value:'fast',expected}),{route:'service-tier',body:{serviceTier:'fast'}});
+ assert.deepEqual(settingChange(s,fast,{field:'collaborationMode',value:'plan',expected}),{route:'collaboration-mode',body:{mode:'plan'}});
+ assert.throws(()=>settingChange(s,catalog,{field:'serviceTier',value:'fast',expected}));
+ assert.throws(()=>settingChange(s,fast,{field:'serviceTier',value:'standard',expected}));
+ assert.throws(()=>settingChange({...s,metadata:{flavor:'claude'}},null,{field:'collaborationMode',value:'plan',expected:{...expected,flavor:'claude'}}));
+});

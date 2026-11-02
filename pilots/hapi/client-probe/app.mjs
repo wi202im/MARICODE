@@ -243,7 +243,7 @@ async function selectSession(id){
   try{sessionStorage.setItem('hapi-trial-selected-session',id);}catch{}
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;
-  if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
+  if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
   sessionId=id;if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
@@ -843,14 +843,16 @@ function renderSettings(){
  if(!workspaceLayout)return;
  const current=settingsCurrent(),pending=settingsPending(),label=v=>v??'자동 (실제 값 미확정)';
  $('model-name').textContent=({claude:'Claude',codex:'Codex'})[session?.metadata?.flavor]??'에이전트';
- $('model-chip').textContent=`모델: ${current.model??'자동'} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
+ const extraOn=settingsOwner===sessionId?(settingsData?.extras??[]).filter(e=>e.current==='fast'||e.current==='plan').map(e=>e.current==='fast'?'Fast':'계획'):[];
+ $('model-chip').textContent=`모델: ${current.model??'자동'}${extraOn.length?' · '+extraOn.join(' · '):''} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
  $('permissionMode-chip').textContent=`액세스: ${settingsData?.permissionModes?.find(o=>o.value===current.permissionMode)?.label??permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'} ▾`;
  $('model-chip').title=$('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
  $('settings-current').textContent=`서버 보고값: 모델 ${label(current.model)} / 추론 ${label(current.effort)} / 액세스 ${current.permissionMode??'미확인'}`;
  const allowed=settingsOwner===sessionId&&settingsData?.editable&&session?.active&&!session?.thinking&&session?.agentState?.controlledByUser===false&&!Object.keys(session?.agentState?.requests??{}).length&&!busy&&!settingsLoading&&connected&&!pending&&!actions?.pending;
  for(const field of ['model','effort','permissionMode']){$(`setting-${field}`).disabled=!allowed;$(`apply-${field}`).disabled=!allowed||!settingsData?.[field==='model'?'models':field==='effort'?'efforts':'permissionModes']?.length;}
+ for(const e of settingsOwner===sessionId?settingsData?.extras??[]:[])if($(`setting-${e.field}`)){$(`setting-${e.field}`).disabled=!allowed;$(`apply-${e.field}`).disabled=!allowed;}
  $('load-settings').disabled=busy||settingsLoading||!connected;
- if(pending)$('settings-status').textContent=`${pending.field==='model'?'모델':pending.field==='effort'?'추론':'액세스'} 변경 결과 확인 필요 · 요청값 ${label(pending.value)}. 자동 재전송하지 않습니다. 결과 확인 전 대화 전송을 잠급니다.`;
+ if(pending)$('settings-status').textContent=`${({model:'모델',effort:'추론',permissionMode:'액세스',serviceTier:'속도',collaborationMode:'협업 방식'})[pending.field]??'설정'} 변경 결과 확인 필요 · 요청값 ${label(pending.value)}. 자동 재전송하지 않습니다. 결과 확인 전 대화 전송을 잠급니다.`;
 }
 async function loadSettings(){
  const id=sessionId,mine=++settingsSerial;settingsLoading=true;renderSettings();
@@ -864,9 +866,13 @@ async function loadSettings(){
    if(!options.some(o=>o.value===result.current[field])){const o=document.createElement('option');o.value=result.current[field]??'';o.textContent=`현재: ${result.current[field]??(field==='permissionMode'?'미확인':'자동')} (목록 밖)`;o.disabled=true;select.prepend(o);}
    select.value=result.current[field]??'';
   }
+  $('setting-extras').replaceChildren(...(result.extras??[]).map(e=>{
+   const row=document.createElement('div'),label=document.createElement('label'),select=document.createElement('select'),apply=document.createElement('button');
+   row.className='setting-extra';label.textContent=e.label;select.id='setting-'+e.field;apply.id='apply-'+e.field;apply.type='button';apply.textContent=e.label+' 적용';apply.onclick=()=>applySetting(e.field);
+   select.replaceChildren(...e.options.map(item=>{const o=document.createElement('option');o.value=item.value;o.textContent=item.label;return o;}));select.value=e.current;label.append(select);row.append(label,apply);return row;}));
   $('settings-source').textContent=result.source;renderPermissionDescription();
   const pending=settingsPending();
-  if(pending&&result.current[pending.field]===pending.value)sessionStorage.removeItem(`hapi-settings-pending:${id}`);
+  if(pending&&(result.extras?.find(e=>e.field===pending.field)?.current??result.current[pending.field])===pending.value)sessionStorage.removeItem(`hapi-settings-pending:${id}`);
   $('settings-status').textContent= result.editable?'서버 설정을 조회했습니다. 한 항목씩 적용하세요.':'입력 대기 중인 원격 세션에서만 변경할 수 있습니다.';
   await refresh();
  }catch(e){if(id===sessionId)$('settings-status').textContent=e.message;}
@@ -874,8 +880,8 @@ async function loadSettings(){
 }
 async function applySetting(field,fromCreation=false){
  if($(`apply-${field}`).disabled&&!(fromCreation&&taskCreating&&settingsOwner===sessionId&&settingsData?.editable))return;
- const id=sessionId,value=$(`setting-${field}`).value||null,expected={...settingsData.current,...(field==='permissionMode'?{flavor:settingsData.flavor}:{})};
- if(value===expected[field]){$('settings-status').textContent='이미 같은 값입니다.';return;}
+ const id=sessionId,value=$(`setting-${field}`).value||null,expected={...settingsData.current,...(!['model','effort'].includes(field)?{flavor:settingsData.flavor}:{})};
+ if(value===(settingsData.extras?.find(e=>e.field===field)?.current??expected[field])){$('settings-status').textContent='이미 같은 값입니다.';return;}
  const key=`hapi-settings-pending:${id}`;
  try{sessionStorage.setItem(key,JSON.stringify({field,value}));}catch{$('settings-status').textContent='변경 요청 상태를 보관할 수 없어 실행하지 않았습니다.';return;}
  busy=true;render();
