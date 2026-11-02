@@ -88,3 +88,31 @@ test('custom hidden profile paths expand only the current home prefix',()=>{
  assert.throws(()=>claudeSourcePath('.claude-global'));
  assert.throws(()=>claudeSourcePath('~another/.claude'));
 });
+
+test('same native session can continue inside a child folder without losing its original transcript',async t=>{
+ const f=await fixture(t);await mkdir(join(f.project,'child'));
+ const follow={type:'assistant',uuid:randomUUID(),sessionId:f.id,cwd:join(f.project,'child'),message:{content:'continued in child'}};
+ const raw=f.raw+JSON.stringify(follow)+'\n';await writeFile(f.file,raw);await rm(join(f.project,'child'),{recursive:true});
+ const row=(await f.api.list(f.source)).sessions[0];assert.equal(row.importable,true);let stored;
+ const result=await f.api.import({source:f.source,...row},{register:async r=>stored={id:r.hubId,metadata:r.metadata},lookup:async()=>stored});
+ assert.equal(result.state,'registered');assert.equal(stored.metadata.path,f.project);
+ assert.equal(await readFile(join(f.destination,'projects',f.project.replace(/[^a-zA-Z0-9]/g,'-'),f.id+'.jsonl'),'utf8'),raw);
+ assert.equal((await f.api.history(result.id)).total,2);
+});
+
+test('outside cwd, different session and invalid message IDs remain rejected with distinct safe reasons',async t=>{
+ const f=await fixture(t);let posts=0;const callbacks={register:async()=>posts++,lookup:async()=>null};
+ for(const [overrides,reason] of [[{cwd:f.project+'-other'},'IMPORT_CWD_OUTSIDE'],[{sessionId:randomUUID()},'IMPORT_SESSION_ID'],[{uuid:'broken'},'IMPORT_MESSAGE_ID']]){
+  const row={type:'assistant',uuid:randomUUID(),sessionId:f.id,cwd:f.project,message:{content:'private payload'},...overrides};
+  await writeFile(f.file,f.raw+JSON.stringify(row)+'\n');const selected=(await f.api.list(f.source)).sessions[0];
+  await assert.rejects(f.api.import({source:f.source,...selected},callbacks),e=>e.rejected===true&&e.reason===reason&&e.userMessage.includes('2행')&&!e.userMessage.includes(f.project)&&!e.userMessage.includes('private payload'));
+ }
+ assert.equal(posts,0);
+});
+
+test('child cwd symlink cannot make an outside project eligible for import',async t=>{
+ const f=await fixture(t),outside=join(f.root,'outside'),child=join(f.project,'linked');await mkdir(outside);await symlink(outside,child);
+ await writeFile(f.file,f.raw+JSON.stringify({type:'assistant',uuid:randomUUID(),sessionId:f.id,cwd:join(child,'removed-child'),message:{content:'history'}})+'\n');
+ const row=(await f.api.list(f.source)).sessions[0];let posts=0;
+ await assert.rejects(f.api.import({source:f.source,...row},{register:async()=>posts++,lookup:async()=>null}),e=>e.rejected&&e.reason==='IMPORT_CWD_OUTSIDE');assert.equal(posts,0);
+});

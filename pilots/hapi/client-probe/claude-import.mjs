@@ -1,6 +1,6 @@
 import {open,mkdir,readdir,lstat,readFile,writeFile,rename,rm,realpath} from 'node:fs/promises';
 import {constants} from 'node:fs';
-import {join,resolve,isAbsolute} from 'node:path';
+import {join,resolve,relative,dirname,basename,isAbsolute} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {homedir} from 'node:os';
 import {catalogRow,catalogIndex,nativeSessionTitle,subagentFiles,transcriptFingerprint,transcriptLimit,importLimit} from './claude-session-catalog.mjs';
@@ -29,6 +29,20 @@ export function claudeSourcePath(source,home=homedir()){
 }
 const configRoot=claudeSourcePath;
 
+// Historical child folders may have been removed. Resolve the nearest existing
+// ancestor, retaining symlink boundaries rather than assuming missing paths safe.
+async function historicalLocation(path){
+ let current=resolve(path);const suffix=[];
+ for(;;){try{return resolve(await realpath(current),...suffix);}catch(error){
+  if(error.code!=='ENOENT')throw error;
+  // A dangling link is not a missing ordinary directory.
+  const info=await lstat(current).catch(check=>{if(check.code==='ENOENT')return null;throw check;});
+  if(info?.isSymbolicLink())throw error;
+  const parent=dirname(current);if(parent===current)throw error;
+  suffix.unshift(basename(current));current=parent;
+ }}
+}
+
 // Compatibility boundary: Claude's project transcript layout and HAPI 0.33.3
 // CLI session registration. No credentials, settings, hooks or MCP are copied.
 export function claudeImports({directory,destination,project,machineId}){
@@ -36,12 +50,24 @@ export function claudeImports({directory,destination,project,machineId}){
  async function snapshot(source,id){
   if(!uuid.test(id??''))fail();source=configRoot(source);
   await folder(source);const projects=await folder(join(source,'projects')),base=await folder(join(projects,encoded));
-  const main=await bytes(join(base,id+'.jsonl')),title=nativeSessionTitle(id,(await catalogIndex(base,project)).get(id));let count=0;
-  for(const line of main.data.toString('utf8').split('\n')){if(!line.trim())continue;let row;try{row=JSON.parse(line);}catch{throw Error('일부 대화 행의 JSON 형식을 읽을 수 없습니다.');}
+  const main=await bytes(join(base,id+'.jsonl')),title=nativeSessionTitle(id,(await catalogIndex(base,project)).get(id));let count=0,lineNumber=0;
+  const root=await realpath(project),paths=new Map();
+  const reject=(reason,message)=>{throw Object.assign(Error(`${lineNumber}행: ${message} [${reason}]`),{reason});};
+  for(const line of main.data.toString('utf8').split('\n')){lineNumber++;if(!line.trim())continue;let row;try{row=JSON.parse(line);}catch{reject('IMPORT_JSON','대화 기록의 JSON 형식을 읽을 수 없습니다.');}
+   if(!row||typeof row!=='object'||Array.isArray(row))reject('IMPORT_RECORD','대화 기록의 행 형식을 확인해 주세요.');
    title.consume(row);
    if(row.isSidechain===true)throw Error('하위 에이전트 기록은 상위 세션과 함께 가져와야 합니다.');
    if(['user','assistant'].includes(row.type)){
-    if(row.sessionId!==id||typeof row.cwd!=='string'||resolve(row.cwd)!==resolve(project)||!uuid.test(row.uuid??''))throw Error('대화 행의 세션 ID·실행 폴더·형식을 확인해야 합니다.');count++;
+    if(row.sessionId!==id)reject('IMPORT_SESSION_ID','선택한 대화와 다른 세션 ID가 들어 있습니다.');
+    if(!uuid.test(row.uuid??''))reject('IMPORT_MESSAGE_ID','대화 메시지 ID가 없거나 지원하지 않는 형식입니다.');
+    if(typeof row.cwd!=='string'||!isAbsolute(row.cwd)||row.cwd.includes('\0'))reject('IMPORT_CWD_MISSING','대화 기록의 실행 폴더를 확인할 수 없습니다.');
+    const lexical=relative(resolve(project),resolve(row.cwd));
+    if(lexical==='..'||lexical.startsWith('../')||isAbsolute(lexical))reject('IMPORT_CWD_OUTSIDE','선택한 프로젝트 밖에서 이어간 기록이 있습니다. 원래 작업 폴더를 확인하세요.');
+    if(!paths.has(row.cwd))paths.set(row.cwd,await historicalLocation(row.cwd));
+    const location=relative(root,paths.get(row.cwd));
+    if(location==='..'||location.startsWith('../')||isAbsolute(location))reject('IMPORT_CWD_OUTSIDE','프로젝트 밖으로 연결된 실행 폴더의 기록입니다.');
+    if(!count&&lexical!=='')reject('IMPORT_CWD_ROOT','처음 대화의 실행 폴더가 선택한 작업 폴더와 다릅니다.');
+    count++;
    }
   }
   if(!count)throw Error('가져올 대화 메시지가 없습니다.');

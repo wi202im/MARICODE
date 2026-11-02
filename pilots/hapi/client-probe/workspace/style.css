@@ -183,3 +183,6 @@
 .technical-details{margin:16px 0}.session-info .account-panel{margin:20px 0 0;border-color:var(--border)}
 .session-info #imported-history-status{font-size:12px;color:var(--foreground)}
 body:has(.live-notice:not(:empty)) .conversation>.task-create{padding-bottom:48px}
+
+/* Override the import panel button margin so refresh shares the select baseline. */
+.task-create #claude-import-find{margin:0;align-self:center;box-sizing:border-box}

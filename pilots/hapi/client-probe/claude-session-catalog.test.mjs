@@ -8,7 +8,7 @@ import {claudeImports} from './claude-import.mjs';
 async function fixture(t){
  const root=await mkdtemp(join(tmpdir(),'claude-catalog-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const project=join(root,'project'),source=join(root,'source'),folder=join(source,'projects',project.replace(/[^a-zA-Z0-9]/g,'-'));
- await mkdir(folder,{recursive:true});const destination=join(root,'destination');await mkdir(destination);
+ await mkdir(project);await mkdir(folder,{recursive:true});const destination=join(root,'destination');await mkdir(destination);
  const api=claudeImports({directory:join(root,'imports'),destination,project,machineId:'fixture'});
  const row=(id,text,extra={})=>({type:'user',uuid:randomUUID(),sessionId:id,cwd:project,message:{content:text},...extra});
  const put=async(id,rows)=>writeFile(join(folder,id+'.jsonl'),rows.map(r=>typeof r==='string'?r:JSON.stringify(r)).join('\n')+'\n');
