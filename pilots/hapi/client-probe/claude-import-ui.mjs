@@ -1,6 +1,17 @@
 // Local-only, explicitly selected transcript snapshot. No conversation contents
 // or credentials are kept in browser storage.
-export function createClaudeImportPanel({element,api,context,opened,changed}){
+export function nativeClaudeSourcePicker(view=globalThis.window){
+ if(view?.location?.origin!=='http://127.0.0.1:61192'||view.location.pathname!=='/workspace'||!view.webkit?.messageHandlers?.maricode)return null;
+ return ()=>new Promise((resolve,reject)=>{
+  const requestId=view.crypto.randomUUID();
+  const clear=()=>{view.removeEventListener('maricode-claude-source-selected',receive);view.removeEventListener('pagehide',cancel);};
+  const cancel=()=>{clear();resolve(null);};
+  const receive=event=>{if(event.detail?.requestId!==requestId)return;clear();resolve(typeof event.detail.path==='string'?event.detail.path:null);};
+  view.addEventListener('maricode-claude-source-selected',receive);view.addEventListener('pagehide',cancel);
+  try{view.webkit.messageHandlers.maricode.postMessage('choose-claude-source:'+requestId);}catch(error){clear();reject(error);}
+ });
+}
+export function createClaudeImportPanel({element,api,context,opened,changed,pickSource=nativeClaudeSourcePicker()}){
  const $=id=>element.querySelector('#'+id),key='maricode-claude-import-pending';
  let supported=false,loading=false,selection=null,owner=null,serial=0,searchedOwner=null;
  let pending;try{pending=JSON.parse(sessionStorage.getItem(key)||'null');}catch{}
@@ -10,6 +21,8 @@ export function createClaudeImportPanel({element,api,context,opened,changed}){
   if(pending)$('claude-import-source').value=pending.source??'';
   const blocked=loading||c.busy;
   $('claude-import-source').disabled=blocked||!!pending;
+  $('claude-import-browse').hidden=!pickSource;
+  $('claude-import-browse').disabled=blocked||!!pending||!c.projectAvailable;
   $('claude-import-find').disabled=blocked||!!pending||!c.projectAvailable;
   $('claude-import-select').disabled=blocked||!!pending||!selection?.rows.length;
   $('claude-import-confirm').disabled=blocked||!!pending;
@@ -27,13 +40,26 @@ export function createClaudeImportPanel({element,api,context,opened,changed}){
    const result=await api('/api/claude-import/list',{method:'POST',body:request});
    if(ticket!==serial||context().project!==request.project)return;
    selection={...request,source:result.searched?.source??request.source,rows:result.sessions};
+   $('claude-import-source-status').textContent=result.searched?`${({'selected':'선택한 기록 폴더','environment':'CLI 환경변수에서 찾은 폴더','shell-file':'셸 설정에서 찾은 경로 후보','default':'기본 Claude 기록 폴더'})[result.sourceOrigin]??'기록 폴더'}: ${result.searched.source}`:'저장 위치를 자동으로 확인하지 못했습니다. 기록 폴더를 선택해 주세요.';
    $('claude-import-confirm').checked=false;
    $('claude-import-searched').textContent=result.searched?`작업 폴더: ${result.searched.project}\n기록 저장소: ${result.searched.source}\n검색한 기록 폴더: ${result.searched.records}`:'';
    $('claude-import-select').replaceChildren(...result.sessions.map(row=>{const o=document.createElement('option');o.value=row.id;o.textContent=row.title+' · '+new Date(row.modifiedAt).toLocaleString()+' · '+row.messageCount+'개 메시지';return o;}));
-   $('claude-import-status').textContent=result.sessions.length?`${result.sessions.length}개 기록을 찾았습니다.`:({ 'profile-missing':'기본 Claude 기록 저장소가 없습니다. 별도 프로필을 사용했다면 고급 설정에서 지정하세요.', 'store-missing':'지정한 위치에 Claude 기록 저장소가 없습니다. 프로젝트 폴더가 아닌 Claude 프로필 위치인지 확인하세요.', 'project-missing':'이 작업 폴더에 대응하는 기록을 찾지 못했습니다. CLI에서 Claude를 실행했던 폴더와 위 작업 폴더가 같은지 확인하세요.', excluded:'기록 파일은 있지만 현재 지원하는 형식으로 읽지 못했습니다.', empty:'이 작업 폴더에 저장된 대화가 없습니다.' }[result.status]??'이 작업 폴더의 기록을 찾지 못했습니다.');
+   $('claude-import-status').textContent=result.sessions.length?`${result.sessions.length}개 기록을 찾았습니다.`:({ 'source-unresolved':'CLI 설정이 동적이거나 후보가 여러 개여서 저장 위치를 확정하지 않았습니다. 기록 폴더를 직접 선택하세요.', 'profile-missing':'표시된 Claude 기록 폴더가 없습니다. 기록 폴더 선택 또는 직접 입력으로 지정하세요.', 'store-missing':'지정한 위치에 Claude 기록 저장소가 없습니다. 프로젝트 폴더가 아닌 Claude 프로필 위치인지 확인하세요.', 'project-missing':'이 작업 폴더에 대응하는 기록을 찾지 못했습니다. CLI에서 Claude를 실행했던 폴더와 위 작업 폴더가 같은지 확인하세요.', excluded:'기록 파일은 있지만 현재 지원하는 형식으로 읽지 못했습니다.', empty:'이 작업 폴더에 저장된 대화가 없습니다.' }[result.status]??'이 작업 폴더의 기록을 찾지 못했습니다.');
    if(result.skipped)$('claude-import-status').textContent+=` 검색 한도·형식 확인 문제로 ${result.skipped}개는 제외했습니다.`;
   }catch{if(ticket===serial)$('claude-import-status').textContent='기록을 찾지 못했습니다. 이 컴퓨터의 Claude 설정 폴더와 파일 접근 권한을 확인하세요.';}
   finally{loading=false;render();}
+ };
+ $('claude-import-browse').onclick=async()=>{
+  if(!pickSource||$('claude-import-browse').disabled||element.hidden)return;
+  const project=context().project,ticket=++serial;searchedOwner=project;loading=true;render();let search=false;
+  try{
+   const path=await pickSource();
+   if(ticket!==serial||context().project!==project||context().busy||pending||element.hidden||!path)return;
+   $('claude-import-source').value=path;selection=null;$('claude-import-confirm').checked=false;
+   $('claude-import-select').replaceChildren();$('claude-import-searched').textContent='';search=true;
+  }catch{$('claude-import-status').textContent='폴더 선택창을 열지 못했습니다. 경로를 직접 입력할 수도 있습니다.';}
+  finally{loading=false;render();}
+  if(search)await $('claude-import-find').onclick();
  };
  async function run(check){
   if(loading||context().busy)return;
@@ -62,7 +88,7 @@ export function createClaudeImportPanel({element,api,context,opened,changed}){
  $('claude-import-start').onclick=()=>run(false);$('claude-import-check').onclick=()=>run(true);
  $('claude-import-confirm').onchange=render;
  element.addEventListener('toggle',()=>{if(element.open&&!element.hidden&&!loading&&!pending&&searchedOwner!==context().project)$('claude-import-find').click();});
- $('claude-import-source').oninput=()=>{serial++;searchedOwner=context().project;selection=null;$('claude-import-status').textContent='저장 위치를 입력한 뒤 기존 세션 다시 찾기를 누르세요.';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();$('claude-import-confirm').checked=false;render();};
+ $('claude-import-source').oninput=()=>{$('claude-import-source-status').textContent='입력한 위치는 아직 검색하지 않았습니다.';serial++;searchedOwner=context().project;selection=null;$('claude-import-status').textContent='저장 위치를 입력한 뒤 기존 세션 다시 찾기를 누르세요.';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();$('claude-import-confirm').checked=false;render();};
  return {render,configure(enabled){supported=enabled;render();}};
 }
 

@@ -7,6 +7,7 @@ import {join,isAbsolute,dirname,basename} from 'node:path';
 import {prepareRunner,accountRevision} from './machine-setup.mjs';
 import {launchRunner} from './runner-launch.mjs';
 import {claudeImports} from './claude-import.mjs';
+import {discoverClaudeSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
 async function ownerAuthorization(config){
  const token=await readFile(config.tokenFile,'utf8');
@@ -190,7 +191,13 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    await authorize(authorization);
    if(!input||Object.keys(input).some(k=>!['project','source','id','fingerprint'].includes(k))||typeof input.project!=='string'||!['list','import','check'].includes(action))throw Error('가져오기 요청을 확인하세요.');
    return exclusive(async()=>{
-    const p=await selectedProject(authorization,input.project),source=input.source||join(homedir(),'.claude');
+    const p=await selectedProject(authorization,input.project);
+    // A selected list result supplies an absolute source for import/check, so
+    // later shell changes cannot silently retarget an already chosen record.
+    // Older pending records used an empty source for ~/.claude; preserve that
+    // meaning instead of applying new discovery to an uncertain registration.
+    const discovery=await discoverClaudeSource({source:action==='list'?(input.source??''):(input.source||join(homedir(),'.claude'))}),source=discovery.source;
+    if(!source)return {sessions:[],skipped:0,status:'source-unresolved',sourceOrigin:discovery.origin};
     const cfg=JSON.parse(await readFile(c.accountConfig,'utf8')),env=JSON.parse(await readFile(cfg.environment,'utf8'));
     if(typeof env.CLAUDE_CONFIG_DIR!=='string'||!isAbsolute(env.CLAUDE_CONFIG_DIR))throw Error('분리된 Claude 프로필이 필요합니다.');
     if(action==='import'){
@@ -205,7 +212,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      target={machineId:await machineId(c)};
     }else target=await createRunnerWorkspace(c).target(authorization);
     const imports=claudeImports({directory:slot+'.claude-imports',project:p.path,destination:env.CLAUDE_CONFIG_DIR,machineId:target.machineId});
-    if(action==='list')return imports.list(source);
+    if(action==='list')return {...await imports.list(source),sourceOrigin:discovery.origin};
     // Bind the caller to this machine's namespace before using owner CLI auth.
     const sessions=await authorize(authorization);
     if(sessions.sessions?.some(s=>s.metadata?.machineId===target.machineId&&s.metadata?.claudeSessionId===input.id&&s.metadata?.path!==p.path))throw Error('이 세션 ID가 다른 작업 폴더에 연결돼 있습니다.');

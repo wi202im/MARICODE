@@ -332,13 +332,18 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
         guard (message.webView === webView || message.webView === utilityViews["settings"] || message.webView === utilityViews["connections"]), let rawAction = message.body as? String else { return }
-        let action = rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction
+        let action = rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
         guard desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
         if action == "quit-ready" {
             guard message.webView === webView, let nonce = quitReviewNonce, rawAction == "quit-ready:" + nonce else { return }
             quitReviewNonce = nil; NSApp.terminate(nil); return
         }
         if action == "add-project" { addProjectFolder(); return }
+        if action == "choose-claude-source" {
+            guard message.webView === webView, activeMachine == "local", desktopWorkspacePath(webView.url?.path),
+                  let requestId = rawAction.split(separator: ":").last.map(String.init), UUID(uuidString: requestId) != nil else { return }
+            chooseClaudeSource(requestId); return
+        }
         if action == "connect" { if webView.url?.path == "/workspace" { selectMachine("local") } else { restoreDesktop() }; updateLocalLabel(); return }
         if action == "codex" || action == "claude" { selectedAgent = action; requestConfiguration("add-agent"); return }
         requestConfiguration(action)
@@ -468,6 +473,22 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         guard process == nil else { return }
         if !writeConfiguration(["action":"initialize", "directory":dataDirectory(), "binary":"bundled:hapi"]) {
             status.stringValue = "로컬 작업 공간을 준비하지 못했습니다. 기존 설정은 유지됩니다."
+        }
+    }
+    func chooseClaudeSource(_ requestId: String) {
+        let target = webView!, address = webView.url
+        var selected: String? = nil
+        if !stopping && !quitting {
+            let panel = NSOpenPanel(); panel.title = "Claude 기록 저장 폴더 선택"
+            panel.message = "projects 폴더가 들어 있는 Claude 설정 폴더를 선택하세요. 숨김 폴더도 표시됩니다. 기록을 검색할 뿐 계정이나 설정을 변경하지 않습니다."
+            panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
+            panel.showsHiddenFiles = true; panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser; panel.prompt = "이 폴더에서 찾기"
+            if panel.runModal() == .OK { selected = panel.url?.path }
+        }
+        guard target === webView, activeMachine == "local", target.url == address else { return }
+        let payload: [String: Any] = ["requestId":requestId, "path":selected as Any? ?? NSNull()]
+        if let data = try? JSONSerialization.data(withJSONObject: payload), let detail = String(data:data, encoding:.utf8) {
+            target.evaluateJavaScript("window.dispatchEvent(new CustomEvent('maricode-claude-source-selected',{detail:\(detail)}))", completionHandler: nil)
         }
     }
     func addProjectFolder() {
@@ -683,6 +704,10 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         p.arguments = [resources.appendingPathComponent("source/apps/mac-launcher/runtime.mjs").path, directory, "61192"]
         // Do not inherit credentials or Node startup hooks from the launching shell.
         p.environment = ["PATH":"/usr/bin:/bin:/usr/sbin:/sbin", "HOME":NSHomeDirectory(), "LANG":"en_US.UTF-8"]
+        // External CLI discovery only; AI execution keeps its isolated profile.
+        for key in ["CLAUDE_CONFIG_DIR", "ZDOTDIR"] {
+            if let value = ProcessInfo.processInfo.environment[key], value.hasPrefix("/") || value.hasPrefix("~/") { p.environment?[key] = value }
+        }
         p.standardInput = stdin; p.standardOutput = stdout; p.standardError = FileHandle.nullDevice
         received = ""; input = stdin; output = stdout; process = p; stopping = false
         configure.isEnabled = false; addAgent.isEnabled = false; changeProject.isEnabled = false; remoteSettings.isEnabled = false; start.isEnabled = false; status.stringValue = "작업 화면 시작 중…"

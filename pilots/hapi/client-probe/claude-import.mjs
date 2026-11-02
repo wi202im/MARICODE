@@ -2,6 +2,7 @@ import {open,mkdir,readdir,lstat,readFile,writeFile,rename,rm,realpath} from 'no
 import {constants} from 'node:fs';
 import {join,resolve,isAbsolute} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
+import {homedir} from 'node:os';
 
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const limit=64*1024*1024;
@@ -19,7 +20,13 @@ async function bytes(path){
  }finally{await fd.close();}
 }
 async function absent(path){try{await lstat(path);}catch(e){if(e.code==='ENOENT')return;throw e;}throw Error('같은 ID의 기록이 이미 있습니다. 기존 기록을 덮어쓰지 않습니다.');}
-function configRoot(source){if(typeof source!=='string'||!isAbsolute(source)||/[\x00-\x1f]/.test(source))fail();return resolve(source);}
+export function claudeSourcePath(source,home=homedir()){
+ if(typeof source!=='string'||/[\x00-\x1f]/.test(source))fail();
+ source=source.trim();if(source.startsWith('~/'))source=join(home,source.slice(2));
+ if(!isAbsolute(source))throw Error('Claude 기록 폴더의 절대 경로 또는 ~/ 경로를 선택하세요.');
+ return resolve(source);
+}
+const configRoot=claudeSourcePath;
 
 // Compatibility boundary: Claude's project transcript layout and HAPI 0.33.3
 // CLI session registration. No credentials, settings, hooks or MCP are copied.

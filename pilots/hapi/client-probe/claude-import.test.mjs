@@ -4,7 +4,7 @@ import {mkdtemp,mkdir,writeFile,readFile,rm,symlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
-import {claudeImports} from './claude-import.mjs';
+import {claudeImports,claudeSourcePath} from './claude-import.mjs';
 async function fixture(t){
  const root=await mkdtemp(join(tmpdir(),'maricode-import-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const project=join(root,'project'),source=join(root,'source'),destination=join(root,'app-profile'),id=randomUUID();
@@ -80,4 +80,11 @@ test('search distinguishes missing profile, missing project store and empty proj
  assert.equal((await f.api.list(f.project)).status,'store-missing');
  await rm(f.folder,{recursive:true});assert.equal((await f.api.list(f.source)).status,'project-missing');
  await mkdir(f.folder);assert.equal((await f.api.list(f.source)).status,'empty');
+});
+
+test('custom hidden profile paths expand only the current home prefix',()=>{
+ assert.equal(claudeSourcePath(' ~/.claude-global ', '/fixture/home'),'/fixture/home/.claude-global');
+ assert.equal(claudeSourcePath('/fixture/profile with spaces'),'/fixture/profile with spaces');
+ assert.throws(()=>claudeSourcePath('.claude-global'));
+ assert.throws(()=>claudeSourcePath('~another/.claude'));
 });
