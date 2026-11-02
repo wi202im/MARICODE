@@ -33,7 +33,7 @@ const collapsedProjects=new Set();
 let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JSON.parse(localStorage.getItem('maricode-display-preferences')));}catch{}
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
-let alertSnapshots=new Map(),unseenAlerts=0;
+let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false;
 let commandSuggest=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
@@ -74,7 +74,7 @@ function render(){
   $('check-handoff').hidden=!handoffEnabled||!['pending','verifying'].includes(handoffState);
   $('check-handoff').disabled=busy||!connected;
   $('new-handoff').disabled=!!session?.resumeUnconfirmed||handoffEnabled&&!['none','created'].includes(handoffState)||busy||!connected||!session||session.thinking||!!actions?.pending||Object.keys(session?.agentState?.requests??{}).length>0;
-  if(workspaceLayout)$('handoff-controls').hidden=!handoffEnabled&&!relation?.parentId;
+  if(workspaceLayout)$('handoff-controls').hidden=!handoffEnabled&&!runnerHandoff&&!relation?.parentId;
  $('parent-session').hidden=!relation?.parentId;$('parent-session').disabled=busy;
   $('lineage').textContent=relation?.parentId?`별도 인계 세션 · 출처: ${trialSessions.find(s=>s.id===relation.parentId)?.label??relation.parentId}. 원래 native 세션을 이어가는 것이 아닙니다. 맥락 전송은 별도입니다.`:'';
   $('older').disabled=loadingHistory||!connected||!history.hasMore||history.limited||messages.length>=1000;
@@ -214,7 +214,7 @@ async function stream(authEpoch){
   }
 }
 async function openWorkspace(){
- const auth=token;const config=await api('/config');if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled;
+ const auth=token;const config=await api('/config');if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
  $('session-select').replaceChildren(...trialSessions.map(s=>{const option=document.createElement('option');option.value=s.id;option.textContent=s.label;return option;}));
  if(!trialSessions.length){
   rememberChat();$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();
@@ -430,7 +430,24 @@ async function prepareNewHandoff(checkOnly=false){
   notice('출처별 인계 세션은 하나만 만듭니다. 같은 요청은 기존 인계 세션을 엽니다.');
  }catch(e){if(mine===epoch){await refresh().catch(()=>{});notice(e.message+' 인계 생성 결과 확인으로 조회할 수 있습니다.');}}finally{busy=false;render();}
 }
-$('new-handoff').onclick=()=>prepareNewHandoff();
+// Runner workspaces hand off through the normal new-session request (same requestId guard and
+// check flow); the excerpt is only placed in the composer for review, never sent automatically.
+const handoffPlaceholder='00000000-0000-4000-8000-000000000000';
+async function prepareRunnerHandoff(){
+ if($('new-handoff').disabled||taskCreating)return;
+ if($('prompt').value.trim()){notice('작성 중인 메시지를 먼저 보내거나 비워 주세요.');return;}
+ if(taskPending()){notice('확인되지 않은 새 대화 생성 요청이 있습니다. 새 대화 화면에서 결과를 먼저 확인하세요. 새로 만들지 않았습니다.');return;}
+ try{await refresh();}catch{}
+ if(!session||session.thinking||actions.pending||Object.keys(session.agentState?.requests??{}).length){notice('현재 작업이 끝난 뒤 인계해 주세요.');return;}
+ const source=trialSessions.find(s=>s.id===sessionId),agent=session.metadata?.flavor==='codex'?'claude':'codex',project=projectCatalog.find(p=>p.path===source?.project);
+ if(!source||!project){notice('이 대화의 프로젝트를 찾지 못해 인계하지 않았습니다.');return;}
+ let text;try{text=buildHandoff(source,{id:handoffPlaceholder,label:'새 인계 세션'},messages,{hasOlder:history.hasMore||history.limited,limited:history.limited});}catch(e){notice(e.message);return;}
+ const request={requestId:crypto.randomUUID(),agent,project:project.key,...(draftSupportsGit?{workspace:{mode:'current'}}:{})};
+ try{sessionStorage.setItem('maricode-handoff:'+request.requestId,JSON.stringify({text,source:source.label,report:handoffExcerpt(messages)}));sessionStorage.setItem(taskPendingKey,JSON.stringify(request));}catch{notice('요청을 보관하지 못해 인계하지 않았습니다.');return;}
+ draftContinue=true;await createTask(false);
+ if(taskPending())notice('인계 세션 생성 결과를 확인하지 못했습니다. 새 대화 화면의 결과 확인을 눌러 주세요. 다시 만들지 않습니다.');
+}
+$('new-handoff').onclick=()=>runnerHandoff&&!handoffEnabled?prepareRunnerHandoff():prepareNewHandoff();
 $('check-handoff').onclick=()=>prepareNewHandoff(true);
 
 const gitReview=workspaceLayout?createGitReview({element:$('git-review'),api,base,owner:()=>sessionId&&token?`${epoch}:${sessionId}`:null,untracked:()=>gitView.data?.state==='ready'?gitView.data.untracked:0}):null;
@@ -827,7 +844,15 @@ async function createTask(checkOnly){
     if(settingsData?.current?.[field]!==inherited[field]){settingsNote='이전 설정을 적용하지 못했습니다. 채팅의 모델·추론 설정에서 확인하세요.';break;}
    }
   }
-  notice('세션을 열었습니다. '+settingsNote);$('prompt').focus();
+  notice('세션을 열었습니다. '+settingsNote);
+  let handoff=null;try{handoff=JSON.parse(sessionStorage.getItem('maricode-handoff:'+request.requestId));sessionStorage.removeItem('maricode-handoff:'+request.requestId);}catch{}
+  if(handoff?.text){
+   const label=trialSessions.find(s=>s.id===result.session.id)?.label??'새 인계 세션';
+   $('prompt').value=handoff.text.replace(`대상: 새 인계 세션 (${handoffPlaceholder})`,`대상: ${label} (${result.session.id})`);
+   const r=handoff.report??{};$('handoff-note').textContent=`새 인계 세션 · ${handoff.source} → ${request.agent==='codex'?'Codex':'Claude'} · 텍스트 ${r.included??'?'}개 포함, ${r.omitted??'?'}개 생략, ${r.truncated??'?'}개 일부 잘림. 아직 전송하지 않았습니다. 내용을 검토하고 보내기를 누르세요.`;
+   notice('인계용 새 세션을 열고 최근 대화 일부를 입력창에 넣었습니다. 원래 세션은 그대로이며 파일·도구 결과·승인은 전달하지 않습니다.');
+  }
+  $('prompt').focus();
  }catch(error){
   if(error.rejected)sessionStorage.removeItem(taskPendingKey);
   draftMessage=error.message;if(error.reason==='AI_SETUP')await refreshDraftAccount();
