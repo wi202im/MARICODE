@@ -2,7 +2,7 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**MARICODE 1.0.6 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.6/MARICODE-1.0.6-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.6). HAPI 0.33.3 and Node are included.
+**MARICODE 1.0.7 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.7/MARICODE-1.0.7-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.7). HAPI 0.33.3 and Node are included.
 
 ## What it does
 
@@ -48,7 +48,8 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 - No QR pairing, multiple account selection for the same AI, or cross-machine native session migration.
 - AI settings and approval choices are limited to the capabilities exposed by the provider and HAPI; not every upstream AI feature is supported.
 - Actual Codex question UI, full sub-agent lifecycle, a clean second Mac installation and long sleep/wake behavior have not all been verified.
-- Version 1.0.6 includes 269 automated checks. Claude session discovery now uses a paginated catalog, keeps problematic records visible with reasons, and prefers stored native titles. A real browser with synthetic records verified pagination, selection and import registration. Company records, native update shutdown-to-Finder handoff and installation over an existing app remain unverified.
+- Version 1.0.7 includes 276 automated checks. Imported conversations open automatically alongside live chat. Enter sends and Shift+Enter inserts a newline, with IME guards. The composer exposes provider-specific access modes; the selected mode persists in the same session without automatic reset. Browser tests used synthetic data. Real HAPI/Claude with a local model stub verified imported-context forwarding and Bypass retention through stop/resume and a subsequent turn. Company records and real subscription responses remain unverified.
+- Access changes are only offered while idle. A change made immediately after resume, before the engine RPC is ready, can remain unconfirmed and lock sending; recovery UX for that case still needs improvement. The app never silently resends the change.
 - Claude record discovery checks an explicit selection, the inherited CLI environment, and one literal shell-profile path before using ~/.claude. Conditional settings, aliases, functions and multiple candidates require manual folder selection; shell files are never executed. The exact company-machine configuration and a signed-in Claude response recalling imported context remain unverified. Actual AI/MCP responses in the general-conversation flow also remain unverified.
 - Import does not copy credentials, MCP/settings, memory or attachment files. The copied transcript and original diverge after import. Cross-machine import and external Codex transcript import are not supported.
 - Version 1.0.0 was tested for native local connection and a Codex response/stop/resume. Installing this new DMG over an existing app, mounting it and real use on another Mac were not tested in this release.
