@@ -12,9 +12,11 @@ export function renderEdit(input){
  }
  return box;
 }
-export function renderTool(tool,open=false){
+export function renderTool(tool,open=false,root=null){
  const v=describeTool(tool),detail=node('details','activity-tool');detail.dataset.callId=tool.id;detail.open=open;
- const summary=node('summary');summary.append(node('span','tool-kind',v.label),node('span','tool-description',v.summary),node('span','tool-state '+tool.state,v.status),node('time','',formatDuration(tool.duration)));detail.append(summary);
+ // Project paths read better relative; the full value stays in the tooltip.
+ const target=root&&v.summary.startsWith(root+'/')?v.summary.slice(root.length+1):v.summary,description=node('span','tool-description',target);description.title=v.summary;
+ const summary=node('summary');summary.append(node('span','tool-kind',v.label),description,node('span','tool-state '+tool.state,v.status),node('time','',formatDuration(tool.duration)));detail.append(summary);
  if(tool.parent)detail.append(node('p','nested-label','하위 에이전트의 작업'));
  const plan=tool.input?.todos??tool.input?.plan;
  if(v.plan&&Array.isArray(plan)){
@@ -45,7 +47,7 @@ export function renderConversation(container,messages,{engine,session,onFork}={}
    const failed=row.tools.filter(t=>t.state==='error').length,waiting=row.tools.filter(t=>t.state==='waiting').length;
    const labels=[...new Set(row.tools.map(t=>describeTool(t).label))];
    const heading=node('summary');heading.append(node('span','activity-dot '+(waiting?'waiting':failed?'error':'result')),node('span','',`${row.parent?'하위 작업 · ':''}${labels.join(' · ')} ${row.tools.length}건`),node('span','activity-summary',waiting?`${waiting}건 결과 대기`:failed?`${failed}건 실패`:'결과 수신'));group.append(heading);
-   for(const tool of row.tools)group.append(renderTool(tool,opened.has(tool.id)));return group;
+   for(const tool of row.tools)group.append(renderTool(tool,opened.has(tool.id),session?.metadata?.path));return group;
   }
   const el=node('div',`bubble ${row.view.role}${row.parent?' child-message':''}`),label=node('small','message-byline',row.view.role==='user'?'나':row.parent?'하위 에이전트':engine??'에이전트');
   if(Number.isFinite(row.at)){const time=node('time','',new Date(row.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));time.title=new Date(row.at).toLocaleString('ko-KR');label.append(time);}

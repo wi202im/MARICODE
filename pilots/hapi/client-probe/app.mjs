@@ -157,7 +157,7 @@ function renderWorkflow(){
   $('permission-list').replaceChildren(...nodes);
   }
   const opened=new Set([...$('tools').querySelectorAll('details[open]')].map(x=>x.dataset.callId));
-  const tools=toolViews(messages).map(tool=>renderTool(tool,opened.has(tool.id)));
+  const tools=toolViews(messages).map(tool=>renderTool(tool,opened.has(tool.id),session?.metadata?.path));
   $('tools').replaceChildren(...tools);$('tools-empty').hidden=tools.length>0;
 }
 async function decidePermission(id,request,action,scope,answers){
