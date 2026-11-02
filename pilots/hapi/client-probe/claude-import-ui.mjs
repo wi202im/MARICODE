@@ -26,29 +26,39 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
   $('claude-import-find').disabled=blocked||!!pending||!c.projectAvailable;
   $('claude-import-select').disabled=blocked||!!pending||!selection?.rows.length;
   $('claude-import-confirm').disabled=blocked||!!pending;
-  $('claude-import-start').disabled=blocked||!!pending||!selection?.rows.length||selection.project!==c.project||!$('claude-import-confirm').checked;
+  const chosen=selection?.rows.find(row=>row.id===$('claude-import-select').value);
+  $('claude-import-detail').textContent=chosen?`${chosen.size==null?'':(chosen.size/1024/1024).toFixed(1)+' MiB · '}ID ${chosen.id.slice(0,8)}${chosen.warning?' · '+chosen.warning:''}`:'';
+  $('claude-import-more').hidden=selection?.nextOffset==null;
+  $('claude-import-more').disabled=blocked||!!pending;
+  $('claude-import-start').disabled=blocked||!!pending||!chosen||chosen.importable===false||selection.project!==c.project||!$('claude-import-confirm').checked;
   $('claude-import-check').hidden=!pending;$('claude-import-check').disabled=blocked;
   if(owner!==c.project){owner=c.project;selection=null;searchedOwner=null;serial++;$('claude-import-status').textContent='';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();$('claude-import-confirm').checked=false;}
   if(element.open&&!element.hidden&&!blocked&&!pending&&c.projectAvailable&&searchedOwner!==c.project)queueMicrotask(()=>{if(element.open&&!element.hidden&&!loading&&!pending&&searchedOwner!==context().project)$('claude-import-find').click();});
   if(pending)$('claude-import-status').textContent=loading?'선택한 기록을 복사하고 등록 결과를 확인하고 있습니다…':'이전 가져오기 결과 확인이 필요합니다. 선택을 바꾸거나 다시 등록하지 않습니다.';
  }
- $('claude-import-find').onclick=async()=>{
-  if(loading||pending||!context().projectAvailable)return;
-  const c=context(),request={project:c.project,source:$('claude-import-source').value.trim()},ticket=++serial;searchedOwner=c.project;loading=true;selection=null;render();
+ async function search(more=false){
+  if(loading||pending||context().busy||!context().projectAvailable||more&&selection?.nextOffset==null)return;
+  const previous=more?selection:null,selectedId=more?$('claude-import-select').value:null;
+  const c=context(),request={project:c.project,source:previous?.source??$('claude-import-source').value.trim(),...(more?{offset:previous.nextOffset}:{})},ticket=++serial;searchedOwner=c.project;loading=true;if(!more)selection=null;render();
   $('claude-import-status').textContent='선택한 작업 폴더의 Claude 기록을 찾고 있습니다…';
   try{
    const result=await api('/api/claude-import/list',{method:'POST',body:request});
    if(ticket!==serial||context().project!==request.project)return;
-   selection={...request,source:result.searched?.source??request.source,rows:result.sessions};
+   const rows=[...new Map([...(previous?.rows??[]),...result.sessions].map(row=>[row.id,row])).values()];
+   selection={...request,source:result.searched?.source??request.source,rows,total:result.total??rows.length,nextOffset:result.nextOffset??null};
    $('claude-import-source-status').textContent=result.searched?`${({'selected':'선택한 기록 폴더','environment':'CLI 환경변수에서 찾은 폴더','shell-file':'셸 설정에서 찾은 경로 후보','default':'기본 Claude 기록 폴더'})[result.sourceOrigin]??'기록 폴더'}: ${result.searched.source}`:'저장 위치를 자동으로 확인하지 못했습니다. 기록 폴더를 선택해 주세요.';
    $('claude-import-confirm').checked=false;
    $('claude-import-searched').textContent=result.searched?`작업 폴더: ${result.searched.project}\n기록 저장소: ${result.searched.source}\n검색한 기록 폴더: ${result.searched.records}`:'';
-   $('claude-import-select').replaceChildren(...result.sessions.map(row=>{const o=document.createElement('option');o.value=row.id;o.textContent=row.title+' · '+new Date(row.modifiedAt).toLocaleString()+' · '+row.messageCount+'개 메시지';return o;}));
-   $('claude-import-status').textContent=result.sessions.length?`${result.sessions.length}개 기록을 찾았습니다.`:({ 'source-unresolved':'CLI 설정이 동적이거나 후보가 여러 개여서 저장 위치를 확정하지 않았습니다. 기록 폴더를 직접 선택하세요.', 'profile-missing':'표시된 Claude 기록 폴더가 없습니다. 기록 폴더 선택 또는 직접 입력으로 지정하세요.', 'store-missing':'지정한 위치에 Claude 기록 저장소가 없습니다. 프로젝트 폴더가 아닌 Claude 프로필 위치인지 확인하세요.', 'project-missing':'이 작업 폴더에 대응하는 기록을 찾지 못했습니다. CLI에서 Claude를 실행했던 폴더와 위 작업 폴더가 같은지 확인하세요.', excluded:'기록 파일은 있지만 현재 지원하는 형식으로 읽지 못했습니다.', empty:'이 작업 폴더에 저장된 대화가 없습니다.' }[result.status]??'이 작업 폴더의 기록을 찾지 못했습니다.');
-   if(result.skipped)$('claude-import-status').textContent+=` 검색 한도·형식 확인 문제로 ${result.skipped}개는 제외했습니다.`;
+   $('claude-import-select').replaceChildren(...rows.map(row=>{const o=document.createElement('option');o.value=row.id;o.textContent=row.title+' · '+new Date(row.modifiedAt).toLocaleString()+(row.messageCount==null?'':' · '+row.messageCount+'개 메시지')+(row.importable===false?' · 확인 필요':'');return o;}));
+   if(selectedId&&rows.some(row=>row.id===selectedId))$('claude-import-select').value=selectedId;
+   $('claude-import-status').textContent=rows.length?`전체 ${selection.total}개 중 ${rows.length}개 표시. 가져오기 전 확인이 필요한 기록도 목록에 표시합니다.`:({ 'source-unresolved':'CLI 설정이 동적이거나 후보가 여러 개여서 저장 위치를 확정하지 않았습니다. 기록 폴더를 직접 선택하세요.', 'profile-missing':'표시된 Claude 기록 폴더가 없습니다. 기록 폴더 선택 또는 직접 입력으로 지정하세요.', 'store-missing':'지정한 위치에 Claude 기록 저장소가 없습니다. 프로젝트 폴더가 아닌 Claude 프로필 위치인지 확인하세요.', 'project-missing':'이 작업 폴더에 대응하는 기록을 찾지 못했습니다. CLI에서 Claude를 실행했던 폴더와 위 작업 폴더가 같은지 확인하세요.', excluded:'기록 파일은 있지만 현재 지원하는 형식으로 읽지 못했습니다.', empty:'이 작업 폴더에 저장된 대화가 없습니다.' }[result.status]??'이 작업 폴더의 기록을 찾지 못했습니다.');
+
   }catch{if(ticket===serial)$('claude-import-status').textContent='기록을 찾지 못했습니다. 이 컴퓨터의 Claude 설정 폴더와 파일 접근 권한을 확인하세요.';}
   finally{loading=false;render();}
- };
+ }
+ $('claude-import-find').onclick=()=>search();
+ $('claude-import-more').onclick=()=>search(true);
+ $('claude-import-select').onchange=()=>{$('claude-import-confirm').checked=false;render();};
  $('claude-import-browse').onclick=async()=>{
   if(!pickSource||$('claude-import-browse').disabled||element.hidden)return;
   const project=context().project,ticket=++serial;searchedOwner=project;loading=true;render();let search=false;

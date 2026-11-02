@@ -16,8 +16,8 @@ async function fixture(t){
 }
 test('lists only matching root sessions with a short title, imports once and preserves source',async t=>{
  const f=await fixture(t);await writeFile(join(f.folder,randomUUID()+'.jsonl'),'{broken');
- const rows=await f.api.list(f.source);assert.equal(rows.sessions.length,1);assert.equal(rows.skipped,1);assert.equal(rows.sessions[0].title,'synthetic private text');assert.equal(rows.sessions[0].files,undefined);assert.equal(rows.sessions[0].message,undefined);
- const request={source:f.source,id:f.id,fingerprint:rows.sessions[0].fingerprint};let posts=0,stored;
+ const rows=await f.api.list(f.source);assert.equal(rows.sessions.length,2);assert.equal(rows.skipped,0);const selected=rows.sessions.find(r=>r.id===f.id);assert.equal(selected.title,'synthetic private text');assert.equal(rows.sessions[0].files,undefined);assert.equal(rows.sessions[0].message,undefined);
+ const request={source:f.source,id:f.id,fingerprint:selected.fingerprint};let posts=0,stored;
  const register=async record=>{posts++;stored={id:record.hubId,active:false,metadata:record.metadata};};
  const lookup=async()=>stored;
  const result=await f.api.import(request,{register,lookup});assert.equal(result.state,'registered');assert.equal(posts,1);
@@ -29,8 +29,8 @@ test('rejects changed source, mismatched cwd, symlinks and existing destination 
  const f=await fixture(t),row=(await f.api.list(f.source)).sessions[0];let posts=0;
  const callbacks={register:async()=>{posts++;},lookup:async()=>null};
  await writeFile(f.file,f.raw+'\n');await assert.rejects(f.api.import({source:f.source,...row},callbacks));assert.equal(posts,0);
- await writeFile(f.file,f.raw.replace(f.project,'/another-project'));assert.equal((await f.api.list(f.source)).sessions.length,0);
- await rm(f.file);await writeFile(join(f.root,'outside'),f.raw);await symlink(join(f.root,'outside'),f.file);assert.equal((await f.api.list(f.source)).sessions.length,0);
+ await writeFile(f.file,f.raw.replace(f.project,'/another-project'));assert.equal((await f.api.list(f.source)).sessions[0].importable,false);
+ await rm(f.file);await writeFile(join(f.root,'outside'),f.raw);await symlink(join(f.root,'outside'),f.file);assert.equal((await f.api.list(f.source)).sessions[0].importable,false);
  await rm(f.file);await writeFile(f.file,f.raw);const dir=join(f.destination,'projects',f.project.replace(/[^a-zA-Z0-9]/g,'-'));await mkdir(dir,{recursive:true});await writeFile(join(dir,f.id+'.jsonl'),'preserve');
  await assert.rejects(f.api.import({source:f.source,...row},callbacks));assert.equal(posts,0);assert.equal(await readFile(join(dir,f.id+'.jsonl'),'utf8'),'preserve');
 });

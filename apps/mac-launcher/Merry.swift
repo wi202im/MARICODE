@@ -20,6 +20,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     var input: Pipe?
     var output: Pipe?
     var url: URL?
+    var runtimeExitIsSafe = true
+    let updateInstall = UpdateInstallFlow()
     var quitting = false
     var quitReviewNonce: String?
     var stopping = false
@@ -84,6 +86,11 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         connectionIndicator.heightAnchor.constraint(equalToConstant: 7).isActive = true
         let computer = NSStackView(views: [connectionIndicator, machineLabel]); computer.spacing = 6; computer.alignment = .centerY
         updateNotice.isHidden = true; updateNotice.bezelStyle = .recessed; updateNotice.target = self; updateNotice.action = #selector(showAppUpdates)
+        appUpdater.onInstall = { [weak self] image, release in
+            guard let self, !self.quitting, !self.stopping, self.quitReviewNonce == nil, self.pendingConfiguration == nil,
+                  self.updateInstall.begin(file: image, size: release.size, sha256: release.sha256) else { return false }
+            DispatchQueue.main.async { NSApp.terminate(nil) }; return true
+        }
         appUpdater.onAvailable = { [weak self] version in self?.updateNotice.isHidden = version == nil; self?.updateNotice.title = version.map { "업데이트 \($0)" } ?? "새 업데이트" }
         let controls = NSStackView(views: [updateNotice, status, computer, rightPanelButton]); controls.spacing = 12
         let chrome = NSView(); chrome.wantsLayer = true
@@ -332,8 +339,12 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
         guard (message.webView === webView || message.webView === utilityViews["settings"] || message.webView === utilityViews["connections"]), let rawAction = message.body as? String else { return }
-        let action = rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
+        let action = rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
         guard desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
+        if action == "quit-cancelled" {
+            guard message.webView === webView, let nonce = quitReviewNonce, rawAction == "quit-cancelled:" + nonce else { return }
+            quitReviewNonce = nil; cancelUpdateInstallation(); return
+        }
         if action == "quit-ready" {
             guard message.webView === webView, let nonce = quitReviewNonce, rawAction == "quit-ready:" + nonce else { return }
             quitReviewNonce = nil; NSApp.terminate(nil); return
@@ -407,7 +418,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         panel.beginSheetModal(for: window) { answer in completionHandler(answer == .OK ? panel.urls : nil) }
     }
 
-    @objc func showAppUpdates() { appUpdater.show(); appUpdater.checkNow() }
+    @objc func showAppUpdates() { appUpdater.showFromMenu() }
     @objc func openUserGuide() {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent("USER-GUIDE.txt"),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return }
@@ -747,6 +758,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                             let nonce = UUID().uuidString; self.quitReviewNonce = nonce
                             self.webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('maricode-close-request',{detail:'\(nonce)'}))", completionHandler: nil)
                         } else {
+                            self.cancelUpdateInstallation()
                             let alert = NSAlert(); alert.messageText = "작업 화면에서 종료 상태를 확인해 주세요"
                             alert.informativeText = "이 Mac의 작업 화면에 연결한 뒤 다시 앱을 닫으면 종료할 세션을 확인할 수 있습니다. 미확인 작업이나 연결 오류가 있으면 강제로 종료하지 않습니다."
                             alert.addButton(withTitle: "작업 화면 열기"); alert.addButton(withTitle: "돌아가기")
@@ -761,6 +773,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         p.terminationHandler = { [weak self] p in DispatchQueue.main.async {
             guard let self else { return }
             self.output?.fileHandleForReading.readabilityHandler = nil
+            self.runtimeExitIsSafe = p.terminationStatus == 0
             self.process = nil; self.input = nil; self.output = nil; self.url = nil
             self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = false; self.open.isEnabled = false; self.stop.isEnabled = false; self.connect.isEnabled = false; self.start.isEnabled = true; self.configure.isEnabled = true; self.addAgent.isEnabled = true; self.changeProject.isEnabled = true; self.remoteSettings.isEnabled = true
             switch p.terminationStatus {
@@ -774,11 +787,17 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             case 27: self.status.stringValue = "실행 자료 폴더에 접근할 수 없습니다. 폴더와 접근 권한을 확인하세요."; self.showFileAccessHelp()
             default: self.status.stringValue = "실행하지 못했습니다. 기존 데이터를 보존하고 실행 파일·폴더와 포트 상태를 확인하세요."
             }
-            if self.quitting { NSApp.reply(toApplicationShouldTerminate: true) }
+            if self.quitting {
+                let ready = self.finishUpdateInstallation(normalShutdown: p.terminationStatus == 0)
+                if !ready { self.quitting = false; self.stopping = false }
+                NSApp.reply(toApplicationShouldTerminate: ready)
+            }
+            else if self.updateInstall.pending { self.quitReviewNonce = nil; self.cancelUpdateInstallation() }
             else if p.terminationStatus == 0, let action = self.pendingConfiguration {
                 self.pendingConfiguration = nil; self.performConfiguration(action)
             }
         }}
+        runtimeExitIsSafe = false
         do { try p.run() } catch {
             stdout.fileHandleForReading.readabilityHandler = nil; process = nil; input = nil; output = nil
             configure.isEnabled = true; addAgent.isEnabled = true; changeProject.isEnabled = true; remoteSettings.isEnabled = true; start.isEnabled = true; status.stringValue = "포함된 Node 실행 파일을 시작하지 못했습니다."
@@ -797,15 +816,28 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         do { try input?.fileHandleForWriting.write(contentsOf: Data("quit\n".utf8)) } catch {
             stopping = false; stop.isEnabled = true; open.isEnabled = url != nil
             status.stringValue = "종료 요청 전달 실패 · 강제로 다른 프로세스를 종료하지 않습니다."
-            if quitting { quitting = false; NSApp.reply(toApplicationShouldTerminate: false) }
+            if quitting { quitting = false; cancelUpdateInstallation(); NSApp.reply(toApplicationShouldTerminate: false) }
         }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if process != nil { NSApp.terminate(nil); return false }
         return true
     }
+    func cancelUpdateInstallation() {
+        guard updateInstall.pending else { return }
+        updateInstall.cancel(); appUpdater.installationCancelled("종료를 취소하여 설치하지 않았습니다. 준비된 설치 파일은 유지됩니다.")
+    }
+    func finishUpdateInstallation(normalShutdown: Bool) -> Bool {
+        let ready = updateInstall.finish(normalShutdown: normalShutdown) { NSWorkspace.shared.open($0) }
+        if !ready {
+            appUpdater.installationCancelled("정상 종료 또는 설치 파일 열기를 확인하지 못했습니다. 앱을 열어 두었습니다.")
+            appUpdater.show()
+        }
+        return ready
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard process != nil else { return .terminateNow }
+        guard quitReviewNonce == nil else { return .terminateCancel }
+        guard process != nil else { return finishUpdateInstallation(normalShutdown: runtimeExitIsSafe) ? .terminateNow : .terminateCancel }
         quitting = true; stopWeb(); return .terminateLater
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

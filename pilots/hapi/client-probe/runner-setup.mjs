@@ -189,7 +189,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   },
   async claudeImport(authorization,input,action){
    await authorize(authorization);
-   if(!input||Object.keys(input).some(k=>!['project','source','id','fingerprint'].includes(k))||typeof input.project!=='string'||!['list','import','check'].includes(action))throw Error('가져오기 요청을 확인하세요.');
+   if(!input||Object.keys(input).some(k=>!['project','source','id','fingerprint',...(action==='list'?['offset']:[])].includes(k))||typeof input.project!=='string'||!['list','import','check'].includes(action))throw Error('가져오기 요청을 확인하세요.');
    return exclusive(async()=>{
     const p=await selectedProject(authorization,input.project);
     // A selected list result supplies an absolute source for import/check, so
@@ -212,7 +212,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      target={machineId:await machineId(c)};
     }else target=await createRunnerWorkspace(c).target(authorization);
     const imports=claudeImports({directory:slot+'.claude-imports',project:p.path,destination:env.CLAUDE_CONFIG_DIR,machineId:target.machineId});
-    if(action==='list')return {...await imports.list(source),sourceOrigin:discovery.origin};
+    if(action==='list')return {...await imports.list(source,input.offset??0),sourceOrigin:discovery.origin};
     // Bind the caller to this machine's namespace before using owner CLI auth.
     const sessions=await authorize(authorization);
     if(sessions.sessions?.some(s=>s.metadata?.machineId===target.machineId&&s.metadata?.claudeSessionId===input.id&&s.metadata?.path!==p.path))throw Error('이 세션 ID가 다른 작업 폴더에 연결돼 있습니다.');

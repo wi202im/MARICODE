@@ -932,10 +932,11 @@ const quitFlow=createQuitFlow({
  finish:()=>{const bridge=window.webkit?.messageHandlers?.maricode;if(bridge&&quitNonce){const nonce=quitNonce;quitNonce=null;bridge.postMessage('quit-ready:'+nonce);}}
 });
 let quitNonce=null;
+window.addEventListener('pagehide',()=>{if(quitNonce)window.webkit?.messageHandlers?.maricode?.postMessage('quit-cancelled:'+quitNonce);quitNonce=null;});
 window.addEventListener('maricode-close-request',async event=>{
  if(!workspaceLayout||!window.webkit?.messageHandlers?.maricode)return;
- if(quitDialogOpen){const message=document.getElementById('quit-close-status');if(message)message.textContent='서버 종료가 아직 차단되어 있습니다. 돌아가기로 작업·연결·미확인 상태를 확인해 주세요.';quitNonce=null;return;}
  const nonce=event.detail;if(typeof nonce!=='string'||!/^[-a-f0-9]{36}$/i.test(nonce))return;
+ if(quitDialogOpen){quitNonce=nonce;const message=document.getElementById('quit-close-status');if(message)message.textContent='서버 종료가 아직 차단되어 있습니다. 돌아가기로 작업·연결·미확인 상태를 확인해 주세요.';return;}
  quitNonce=nonce;quitDialogOpen=true;
  const dialog=document.createElement('dialog');dialog.className='archive-dialog';dialog.setAttribute('aria-label','실행 종료 후 앱 닫기');
  const heading=document.createElement('h2');heading.textContent='앱을 닫기 전에 실행을 종료할까요?';
@@ -945,7 +946,7 @@ window.addEventListener('maricode-close-request',async event=>{
  const cancel=document.createElement('button');cancel.textContent='돌아가기';cancel.autofocus=true;
  const confirm=document.createElement('button');confirm.textContent='실행 종료 후 앱 닫기';confirm.className='archive-confirm';confirm.disabled=true;
  cancel.onclick=()=>dialog.close();buttons.append(cancel,confirm);dialog.append(heading,details,rows,status,buttons);document.body.append(dialog);dialog.showModal();
- dialog.addEventListener('close',()=>{quitDialogOpen=false;quitNonce=null;dialog.remove();},{once:true});
+ dialog.addEventListener('close',()=>{quitDialogOpen=false;if(quitNonce)window.webkit.messageHandlers.maricode.postMessage('quit-cancelled:'+quitNonce);quitNonce=null;dialog.remove();},{once:true});
  let approved;
  try{
   if(!token||busy||actions?.pending||permissionActions?.pending||settingsPending())throw Error('로그인·진행 중 요청·미확인 결과를 먼저 확인한 뒤 닫아 주세요.');

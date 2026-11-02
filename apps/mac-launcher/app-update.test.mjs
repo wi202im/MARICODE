@@ -21,6 +21,18 @@ let bytes = Data("fixture".utf8), file=URL(fileURLWithPath:CommandLine.arguments
 let valid = try verifyUpdateFile(file,size:7,sha256:SHA256.hash(data:bytes).map{String(format:"%02x",$0)}.joined()); assert(valid)
 let wrongSize = try verifyUpdateFile(file,size:8,sha256:sha); assert(!wrongSize)
 let wrongHash = try verifyUpdateFile(file,size:7,sha256:sha); assert(!wrongHash)
+let digest = SHA256.hash(data:bytes).map{String(format:"%02x",$0)}.joined()
+let flow = UpdateInstallFlow(); var opened = 0
+func begin() -> Bool { flow.begin(file:file,size:7,sha256:digest) }
+func finish(_ normal:Bool) -> Bool { flow.finish(normalShutdown:normal){ _ in opened += 1; return true } }
+assert(begin()); assert(!begin()); assert(flow.pending)
+flow.cancel(); assert(!flow.pending); assert(finish(true)); assert(opened == 0)
+assert(begin()); assert(!finish(false)); assert(opened == 0); assert(!flow.pending)
+assert(begin()); try Data("changed".utf8).write(to:file)
+assert(!finish(true)); assert(opened == 0); assert(!flow.pending)
+try bytes.write(to:file); assert(begin()); assert(finish(true)); assert(opened == 1)
+assert(finish(true)); assert(opened == 1)
+assert(begin()); assert(!flow.finish(normalShutdown:true){ _ in false }); assert(!flow.pending)
 print("PASS")
 `);
  execFileSync('/usr/bin/swiftc',[resolve('apps/mac-launcher/AppUpdate.swift'),join(dir,'main.swift'),'-framework','AppKit','-o',join(dir,'check')],{stdio:'pipe'});
