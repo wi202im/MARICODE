@@ -8,6 +8,7 @@ import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
 import {turnAlerts,alertText} from './turn-alerts.mjs';
+import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
@@ -33,7 +34,7 @@ const collapsedProjects=new Set();
 let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JSON.parse(localStorage.getItem('maricode-display-preferences')));}catch{}
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
-let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false;
+let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null;
 let commandSuggest=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
@@ -104,7 +105,7 @@ function render(){
   renderWorkflow();
   const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
   const canFork=workspaceLayout&&session?.metadata?.capabilities?.conversationHistory?.forkAtMessage===true&&session.active&&!session.thinking&&!busy&&!actions?.pending;
-  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null});
+  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null});finder?.refresh();
   if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
    el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
@@ -1020,6 +1021,26 @@ if(workspaceLayout){
  document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
  commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>session?.active&&sessionId?`${epoch}:${sessionId}`:null,fetch:async()=>{const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);return {commands:c?.success?c.commands:[],skills:s?.success?s.skills:[]};}}});
  bindComposerEnter({input:$('prompt'),form:$('send-form'),button:$('send')});
+ finder=createFind({bar:$('find-bar'),input:$('find-input'),count:$('find-count'),scope:()=>$('messages')});$('find-close').onclick=()=>finder.close();
+ const shortcuts=[['⌘K','명령 팔레트'],['⌘F','대화에서 찾기'],['Enter','메시지 보내기'],['Shift+Enter','줄바꿈'],['Esc','패널·팝업 닫기']];
+ const click=id=>()=>{const b=$(id);if(b&&!b.disabled&&!b.hidden)b.click();};
+ palette=createPalette({root:$('palette'),input:$('palette-input'),list:$('palette-list'),items:()=>[
+  {group:'동작',label:'새 대화',run:()=>{click('new-task-toggle')();click('session-entry-new')();}},
+  {group:'동작',label:'기존 대화 가져오기',keywords:'import 가져오기',run:()=>{click('new-task-toggle')();setTimeout(click('session-entry-import'),50);}},
+  {group:'동작',label:'대화에서 찾기',hint:'⌘F',run:()=>finder.open()},
+  {group:'동작',label:'프로젝트 사이드바 보이기/숨기기',keywords:'sidebar',run:click('open-nav')},
+  {group:'동작',label:'상세 패널 보이기/숨기기',keywords:'inspector 세션 정보',run:click('info-tab')},
+  {group:'동작',label:'AI 계정·로그인 상태',keywords:'account login 계정',run:click('accounts-tab')},
+  {group:'동작',label:'세션 목록 새로고침',keywords:'refresh',run:click('refresh-list')},
+  ...trialSessions.map(s=>({group:'대화',label:s.displayName??s.label,detail:[s.agent==='claude'?'Claude':s.agent==='codex'?'Codex':'',s.projectLabel].filter(Boolean).join(' · '),run:()=>selectSession(s.id)})),
+  ...shortcuts.map(([k,l])=>({group:'단축키',label:l,hint:k,keywords:'shortcut 단축키',run:()=>{}}))]});
+ // Shortcuts only open existing UI; IME composition and modifier-less keys are left alone.
+ document.addEventListener('keydown',e=>{
+  if(!(e.metaKey||e.ctrlKey)||e.altKey||e.isComposing||e.keyCode===229||!token)return;
+  const key=e.key.toLowerCase();
+  if(key==='k'){e.preventDefault();palette.isOpen?palette.close():palette.open();}
+  else if(key==='f'&&!e.shiftKey&&sessionId){e.preventDefault();finder.open();}
+ });
  $('prompt').addEventListener('input',()=>{const input=$('prompt');input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';});
 }
 
