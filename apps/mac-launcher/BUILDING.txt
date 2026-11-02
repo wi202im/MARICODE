@@ -1,4 +1,4 @@
-MARICODE 1.0.10 — source build
+MARICODE 1.0.11 — source build
 
 This product source archive contains only apps/mac-launcher and
 pilots/hapi/client-probe. It excludes private Git history, execution data,
@@ -21,7 +21,7 @@ different artifacts. Existing app bundles include these files under
 Contents/Resources/hapi before signing; signed releases provide the source
 archive separately. Node's license is Contents/Resources/Node-LICENSE.txt.
 
-Extract MARICODE-1.0.10-source.tar.gz into an empty directory and run from it:
+Extract MARICODE-1.0.11-source.tar.gz into an empty directory and run from it:
 
 /path/to/node/bin/node apps/mac-launcher/build.mjs /path/to/node /new/app-output /path/to/hapi-artifacts --release
 /path/to/node/bin/node apps/mac-launcher/dmg.mjs /new/app-output/Maricode.app /new/dmg-output /path/to/upstream-sources
@@ -214,9 +214,9 @@ Source repository: https://github.com/wi202im/MARICODE
 Publish the matching product source, Bun/WebKit archives, BUILDING.txt,
 NOTICES.txt, LICENSE and SHA256SUMS with each DMG. GitHub release attachments
 are flat; local dmg.mjs puts the two runtime archives in upstream-sources/.
-The HAPI matching source archive is in the installed app at
-Contents/Resources/hapi/source.tar.gz. Its digest is recorded in
-Contents/Resources/hapi/release.json. Node source is available from
+For Developer ID releases, the HAPI matching source archive is a separate
+HAPI-0.33.3-source.tar.gz release attachment, outside the installed app.
+Its original digest is recorded in Contents/Resources/hapi/release.json. Node source is available from
 https://nodejs.org/dist/v26.12.1/ and its complete notices are bundled.
 
 Read USER-GUIDE.txt for installation and current product limitations.

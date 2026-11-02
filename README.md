@@ -2,7 +2,7 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Maricode 1.0.10 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.10/MARICODE-1.0.10-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.10). HAPI 0.33.3 and Node are included.
+**Maricode 1.0.11 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.11/MARICODE-1.0.11-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.11). HAPI 0.33.3 and Node are included.
 
 App, menu and Dock names use **Maricode**; the native title bar displays the installed version. HAPI corresponding source is provided as a separate release attachment, with licenses and notices retained inside the app.
 
@@ -11,8 +11,12 @@ App, menu and Dock names use **Maricode**; the native title bar displays the ins
 - Organize projects, workspaces and AI sessions in one window. A sole default workspace shows its sessions directly under the project; additional workspaces keep their location groups.
 - Work directly in an existing folder or choose a Git branch/worktree. Start a general conversation without choosing a project; its CLI working folder is managed separately by the app.
 - Default new sessions to the most recent AI in the same workspace, carrying over supported model/reasoning settings without copying approval grants.
-- Import selected local Claude Code transcripts for the same working folder, preserve the originals and inspect a read-only history snapshot. Continue from the copied native session through HAPI.
+- Import selected local Claude Code or Codex conversations for the project, preserve the originals and automatically resume the copied native session through HAPI.
 - Read conversations, tool activity and file changes; answer questions and approval requests near the composer.
+- Register named AI accounts and switch one active account per AI; conversations resume only from their original account profile.
+- Inspect Git diffs, hand recent conversation text to another AI as a draft, or branch supported Codex conversations at a message.
+- Use model/reasoning/access controls, supported Codex Fast/plan options, context usage, command/skill suggestions, conversation search and in-app turn alerts.
+- Connect another device with a short-lived one-time code, without putting a long-lived token in a URL.
 - Attach files or paste images/Finder files, preview them and remove individual attachments.
 - Combine local, server and remote roles. Connect to multiple running computers over LAN or Tailscale.
 - Use the native Mac app locally and a browser or optional PWA remotely.
@@ -44,20 +48,16 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 - [Current state and next work](docs/handoff.md)
 - [Contributor workflow](AGENTS.md)
 
-## Current limitations
+## Verification and limitations
 
-- No Intel Mac build or App Store release. The app checks for updates and downloads a verified DMG; app replacement is manual.
-- No QR pairing, multiple account selection for the same AI, or cross-machine native session migration.
-- AI settings and approval choices are limited to the capabilities exposed by the provider and HAPI; not every upstream AI feature is supported.
-- Actual Codex question UI, full sub-agent lifecycle, a clean second Mac installation and long sleep/wake behavior have not all been verified.
-- Claude imports accept the same session continued in a project subfolder, while retaining project/session boundaries. Validation errors identify the row and cause without exposing paths or conversation text. The history refresh button is aligned with its selector.
-- New conversation and existing transcript import now have separate entry paths. The draft keeps its action/error area visible, hides redundant workspace and account setup controls, and displays meaningful conversation titles. Imported history counts are separate from the continued conversation.
-- The native quit flow now keeps processing runtime shutdown callbacks before closing. This was verified with an isolated AppKit test; company-machine update installation remains unverified.
-- Version 1.0.10 includes 291 automated checks. Imported conversations open automatically alongside live chat. Enter sends and Shift+Enter inserts a newline, with IME guards. The composer exposes provider-specific access modes; the selected mode persists in the same session without automatic reset. Browser tests used synthetic data. Real HAPI/Claude with a local model stub verified imported-context forwarding and Bypass retention through stop/resume and a subsequent turn. Company records and real subscription responses remain unverified.
-- Access changes are only offered while idle. A change made immediately after resume, before the engine RPC is ready, can remain unconfirmed and lock sending; recovery UX for that case still needs improvement. The app never silently resends the change.
-- Claude record discovery checks an explicit selection, the inherited CLI environment, and one literal shell-profile path before using ~/.claude. Conditional settings, aliases, functions and multiple candidates require manual folder selection; shell files are never executed. The exact company-machine configuration and a signed-in Claude response recalling imported context remain unverified. Actual AI/MCP responses in the general-conversation flow also remain unverified.
-- Import does not copy credentials, MCP/settings, memory or attachment files. The copied transcript and original diverge after import. Cross-machine import and external Codex transcript import are not supported.
-- Version 1.0.0 was tested for native local connection and a Codex response/stop/resume. The 1.0.10 DMG was mounted and its app signature, notarization ticket, Gatekeeper acceptance and isolated HAPI startup were checked. Replacing an existing installed app and real use on another Mac remain unverified.
+- Version 1.0.11 passes 320 automated checks. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
+- No Intel Mac build or App Store release. The app downloads a verified DMG; replacing the installed app is manual and preserves the external data directory.
+- Accounts are registered by name, but each AI has only one active account at a time. Switching is blocked during active or unconfirmed work. Different subscription accounts and Claude account switching have not been fully tested.
+- No QR image, cross-machine automatic session synchronization, integrated MCP management, built-in terminal or subscription quota display. Connection codes still require an accessible LAN/Tailscale server.
+- Import does not copy credentials, MCP/settings, memory or attachment files. Originals and copies diverge after import. Codex subfolder discovery has automated coverage; resuming those specific subfolder conversations remains unverified.
+- AI settings and approval choices depend on provider/HAPI support. Fast/plan option values were verified at the server; their actual response differences were not. Claude does not support the exposed per-message branching flow.
+- A failed resume can recover after the Runner and Hub confirm it did not start; ambiguous requests are never automatically resent. Forced backend termination with unresolved state, or a settings change before engine readiness, may still require manual recovery.
+- Clean second-Mac installation, company records, long sleep/wake, full sub-agent lifecycle and all new controls/shortcuts in native WKWebView remain unverified. Source and headless-engine checks are not a claim that those workflows have passed.
 
 ## License
 
