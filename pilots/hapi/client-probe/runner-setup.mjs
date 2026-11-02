@@ -9,6 +9,7 @@ import {prepareRunner,accountRevision} from './machine-setup.mjs';
 import {launchRunner} from './runner-launch.mjs';
 import {claudeImports} from './claude-import.mjs';
 import {codexImports} from './codex-import.mjs';
+import {accountProfiles} from './account-profiles.mjs';
 import {discoverClaudeSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
 async function ownerAuthorization(config){
@@ -263,6 +264,24 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     return {state:'registered',id};
    });
   },
+  async accountProfiles(authorization){await authorize(authorization);return accountProfiles(c.accountConfig).list();},
+  async accountProfile(authorization,input){
+   await authorize(authorization);
+   if(!input||Object.keys(input).some(k=>!['action','agent','alias','id'].includes(k))||!['add','switch'].includes(input.action)||!['claude','codex'].includes(input.agent))throw Object.assign(Error('계정 요청을 확인하세요.'),{rejected:true,status:400});
+   const profiles=accountProfiles(c.accountConfig);
+   if(input.action==='add')return exclusive(()=>profiles.add(input.agent,input.alias));
+   return exclusive(async()=>{
+    if((await profiles.list())[input.agent]?.active===input.id)return profiles.list();
+    const before=await state();
+    if(!['unprepared','prepared','exited','running'].includes(before)||before==='running'&&!child)throw Object.assign(Error('실행기 상태를 확인한 뒤 전환하세요. 계정을 바꾸지 않았습니다.'),{rejected:true});
+    if(await unresolvedTasks()||(before==='running'?await hasActive(c):await activeAuthorizedSessions(authorization)))throw Object.assign(Error('실행 중인 대화나 확인되지 않은 생성 요청이 있어 계정을 바꾸지 않았습니다. 실행을 종료한 뒤 다시 시도하세요.'),{rejected:true});
+    // Stop before rewriting the environment: if anything fails afterwards the Runner is not left on the old login.
+    if(before==='running')await stopOwned();
+    const result=await profiles.activate(input.agent,input.id);
+    await ensureReady(authorization);
+    return result;
+   });
+  },
   async navigation(authorization){await authorize(authorization);if(!c.projectsPath)throw Error('목록 관리 미지원');return projectRegistry(c.projectsPath).navigation();},
   async manage(authorization,input){
    await authorize(authorization);
@@ -319,6 +338,9 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      const m=resume.metadata;
      if(!/^[a-f0-9-]{36}$/.test(resume.id??'')||resume.active!==false||!['codex','claude'].includes(m?.flavor)||m.machineId!==await machineId(c))throw Error('Resume identity unavailable');
      const nativeKey=m.flavor==='codex'?'codexSessionId':'claudeSessionId';
+     // One account is active at a time; resuming under another account would continue it with the wrong login.
+     const owner=await accountProfiles(c.accountConfig).owner(m.flavor,m[nativeKey]??m.agentSessionId,m.path).catch(()=>null);
+     if(owner&&!owner.active)throw Object.assign(Error(`이 대화는 다른 계정(‘${owner.alias}’)에서 만들었습니다. AI 계정 패널에서 그 계정으로 전환한 뒤 재개하세요.`),{rejected:true,status:409,reason:'ACCOUNT_MISMATCH'});
      pending={id:resume.id,machineId:m.machineId,path:m.path,flavor:m.flavor,nativeKey,nativeId:typeof m[nativeKey]==='string'?m[nativeKey]:null,child,directory:c.directory};
     }
     const marker=join(c.directory,'session-operation.json');let recorded=false;

@@ -219,6 +219,16 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
         try{const result=await runnerService.generalChat(req.headers.authorization);res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(result));}
         catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({error:'일반 대화 공간을 준비하지 못했습니다. 연결과 파일 접근 권한을 확인하세요.'}));}return;
       }
+      if(u.pathname==='/api/account-profiles'&&runnerService?.accountProfiles){
+        // Adding or switching accounts restarts this computer's Runner; only the local app may do it.
+        if(u.search||!['GET','POST'].includes(req.method)||req.method==='POST'&&!localImport){res.writeHead(403).end();return;}
+        try{
+          let raw='';if(req.method==='POST')for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>4096){res.writeHead(413).end();return;}}
+          const result=req.method==='GET'?await runnerService.accountProfiles(req.headers.authorization):await runnerService.accountProfile(req.headers.authorization,JSON.parse(raw));
+          res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify(result));
+        }catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,error:error.rejected?(error.userMessage??error.message):'계정 전환 결과를 확인하지 못했습니다. AI 계정 상태를 다시 확인하세요.'}));}
+        return;
+      }
       const importRoute=/^\/api\/(claude|codex)-import(\/list|\/check)?$/.exec(u.pathname);
       if(importRoute){
         const importer=runnerService?.[importRoute[1]+'Import'];
@@ -532,7 +542,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
       };
       let r;
       try{r=runnerWorkspace&&runnerService.runSessionMutation&&req.method==='POST'&&u.pathname.endsWith('/resume')?await runnerService.runSessionMutation(forward,{resume:resumeSource}):await forward();}
-      catch(error){res.writeHead(error.status===409?409:502,{'Content-Type':'application/json'}).end(JSON.stringify(error.status===409?{rejected:true,reason:'RUNNER_OFFLINE',error:'실행 환경이 꺼져 있습니다. 컴퓨터 설정에서 실행 환경을 시작한 뒤 같은 세션을 재개해 주세요.'}:{error:'응답을 확인하지 못했습니다. 다시 보내기 전에 상태를 조회해 주세요.'}));return;}
+      catch(error){res.writeHead(error.status===409?409:502,{'Content-Type':'application/json'}).end(JSON.stringify(error.reason==='ACCOUNT_MISMATCH'?{rejected:true,reason:error.reason,error:error.message}:error.status===409?{rejected:true,reason:'RUNNER_OFFLINE',error:'실행 환경이 꺼져 있습니다. 컴퓨터 설정에서 실행 환경을 시작한 뒤 같은 세션을 재개해 주세요.'}:{error:'응답을 확인하지 못했습니다. 다시 보내기 전에 상태를 조회해 주세요.'}));return;}
       if(sessionRead&&r.ok&&resumeUnconfirmed){const data=await r.json();res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify({...data,session:{...data.session,resumeUnconfirmed:true}}));return;}
       if(req.method==='GET'&&u.pathname.endsWith('/git-status')){
         res.writeHead(r.status,{'Content-Type':'application/json','Cache-Control':'no-store'});

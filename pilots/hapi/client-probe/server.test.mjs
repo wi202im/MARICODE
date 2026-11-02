@@ -399,3 +399,16 @@ test('read-only diff routes accept only project-relative paths',()=>{
  assert.equal(ok('/api/sessions/s1/git-diff-file?path=../secret'),false);assert.equal(ok('/api/sessions/s1/git-diff-file?path=/etc/passwd'),false);
  assert.equal(ok('/api/sessions/s1/git-diff-file?path=a&extra=1'),false);assert.equal(allowedRoute('POST',new URL('http://x/api/sessions/s1/git-diff-numstat'),'s1'),false);
 });
+
+test('account switching is local-only, authenticated and passes rejection messages through',async t=>{
+ const calls=[];const service={accountProfiles:async auth=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});return {codex:{active:'default',accounts:[]}};},
+  accountProfile:async(auth,input)=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});calls.push(input);if(input.id==='busy')throw Object.assign(Error('실행 중'),{rejected:true});return {ok:true};}};
+ const server=createServer({upstream:'http://127.0.0.1:1',runnerService:service});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
+ const url=`http://127.0.0.1:${server.address().port}`,post=(body,headers={})=>fetch(url+'/api/account-profiles',{method:'POST',headers:{origin:url,'content-type':'application/json',authorization:'Bearer fixture',...headers},body:JSON.stringify(body)});
+ assert.equal((await fetch(url+'/api/account-profiles')).status,401);
+ assert.equal((await fetch(url+'/api/account-profiles',{headers:{authorization:'Bearer fixture'}})).status,200);
+ assert.equal((await post({action:'switch',agent:'codex',id:'x'},{'x-forwarded-for':'10.0.0.2'})).status,403);
+ assert.equal((await post({action:'switch',agent:'codex',id:'x'},{origin:'https://untrusted.example'})).status,403);assert.equal(calls.length,0);
+ assert.equal((await post({action:'switch',agent:'codex',id:'x'})).status,200);
+ const busy=await post({action:'switch',agent:'codex',id:'busy'});assert.equal(busy.status,409);assert.deepEqual(await busy.json(),{rejected:true,error:'실행 중'});
+});

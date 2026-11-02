@@ -59,7 +59,7 @@ async function api(path,{method='GET',body,signal}={}){
   const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
@@ -906,16 +906,34 @@ async function refreshAccounts(){
  if(accountsBusy||!token)return;
  const auth=token;accountsBusy=true;$('refresh-accounts').disabled=true;$('account-notice').textContent='실행 머신의 로그인 상태를 확인 중입니다.';
  try{
-  const data=await api('/api/accounts');if(auth!==token)return;
+  const [data,profiles]=await Promise.all([api('/api/accounts'),api('/api/account-profiles').catch(()=>null)]);if(auth!==token)return;
   $('account-host').textContent=`확인 대상: ${data.host}`;
   const labels={connected:'구독 로그인 확인', 'signed-out':'로그인 필요', 'not-installed':'설치 경로에서 CLI를 찾지 못함','other-auth':'다른 인증 방식 사용 중 · 자동 변경 안 함','not-configured':'아직 연결하지 않은 AI',unknown:'상태 확인 실패 · 기존 인증을 변경하지 않음'};
   $('account-list').replaceChildren(...data.providers.map(p=>{
    const card=document.createElement('article'),h=document.createElement('h3'),status=document.createElement('p'),button=document.createElement('button');h.textContent=p.agent==='claude'?'Claude Code':'Codex';status.textContent=labels[p.state]??labels.unknown;
    const note=document.createElement('small');note.textContent=p.loginPending?'로그인 창 실행/진행 중입니다. Mac에서 완료한 뒤 상태를 다시 확인하세요.':data.localLogin?'계정 식별 정보는 공식 CLI에서 확인하세요.':'새 로그인은 해당 서버 Mac에서 진행해 주세요.';
-   button.textContent='Mac에서 공식 로그인 시작';button.disabled=!data.localLogin||p.state!=='signed-out'||p.loginPending;button.onclick=()=>startAccountLogin(p.agent);card.append(h,status,note,button);return card;
+   button.textContent='Mac에서 공식 로그인 시작';button.disabled=!data.localLogin||p.state!=='signed-out'||p.loginPending;button.onclick=()=>startAccountLogin(p.agent);card.append(h,status,note,button);const prof=profiles?.[p.agent];if(prof)card.append(accountProfileControls(p.agent,prof,status,data.localLogin));return card;
   }));$('account-notice').textContent='상태 확인 완료. 기존 로그인은 그대로 사용합니다.';
  }catch{if(auth===token)$('account-notice').textContent='계정 상태를 확인하지 못했습니다. 연결과 서버 설정을 확인해 주세요.';}
  finally{accountsBusy=false;$('refresh-accounts').disabled=false;}
+}
+// One account per AI is active at a time; switching restarts this computer's Runner (server refuses while anything runs).
+function accountProfileControls(agent,prof,status,local){
+ const box=document.createElement('div'),select=document.createElement('select'),apply=document.createElement('button'),name=document.createElement('input'),add=document.createElement('button'),hint=document.createElement('small');
+ box.className='account-profiles';const active=prof.accounts.find(a=>a.active);
+ status.textContent=`${active?`‘${active.alias}’`:'현재 계정'} · ${status.textContent}`;
+ select.setAttribute('aria-label',(agent==='claude'?'Claude':'Codex')+' 사용할 계정');
+ select.replaceChildren(...prof.accounts.map(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.alias+(a.active?' (사용 중)':'');return o;}));select.value=prof.active??'';
+ apply.type='button';apply.textContent='이 계정으로 전환';name.placeholder='새 계정 이름 (예: 회사)';name.maxLength=40;name.setAttribute('aria-label','새 계정 이름');add.type='button';add.textContent='계정 추가';
+ hint.textContent='한 번에 한 계정만 사용합니다. 전환하면 실행기를 다시 시작하며 실행 중인 대화가 없어야 합니다. 다른 계정으로 만든 대화는 그 계정으로 전환해야 재개됩니다. 새 계정은 전환 후 로그인합니다.';
+ const sync=()=>{apply.disabled=!local||accountsBusy||select.value===prof.active;add.disabled=!local||accountsBusy||!name.value.trim();};
+ select.onchange=sync;name.oninput=sync;sync();
+ const run=async(body,doing)=>{if(accountsBusy)return;accountsBusy=true;sync();$('account-notice').textContent=doing;
+  try{await api('/api/account-profiles',{method:'POST',body});accountsBusy=false;await refreshAccounts();if(body.action==='switch'){await refreshCatalog();$('account-notice').textContent='계정을 전환했습니다. 로그인 상태를 확인하세요.';}}
+  catch(e){$('account-notice').textContent=e.message||'계정 요청 결과를 확인하지 못했습니다.';}finally{accountsBusy=false;sync();}};
+ apply.onclick=()=>run({action:'switch',agent,id:select.value},'계정을 전환하고 실행기를 다시 시작하는 중입니다…');
+ add.onclick=()=>run({action:'add',agent,alias:name.value},'계정을 추가하는 중입니다…');
+ const row=document.createElement('div'),addRow=document.createElement('div');row.className=addRow.className='account-profile-row';row.append(select,apply);addRow.append(name,add);box.append(row,addRow,hint);return box;
 }
 async function startAccountLogin(agent){
  if(accountsBusy)return;accountsBusy=true;for(const b of $('account-list').querySelectorAll('button'))b.disabled=true;
