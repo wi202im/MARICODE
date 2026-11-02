@@ -412,3 +412,8 @@ test('account switching is local-only, authenticated and passes rejection messag
  assert.equal((await post({action:'switch',agent:'codex',id:'x'})).status,200);
  const busy=await post({action:'switch',agent:'codex',id:'busy'});assert.equal(busy.status,409);assert.deepEqual(await busy.json(),{rejected:true,error:'실행 중'});
 });
+test('forking is a POST-only session route without query parameters',()=>{
+ assert.equal(allowedRoute('POST',new URL('http://x/api/sessions/s1/fork'),'s1'),true);
+ assert.equal(allowedRoute('GET',new URL('http://x/api/sessions/s1/fork'),'s1'),false);
+ assert.equal(allowedRoute('POST',new URL('http://x/api/sessions/other/fork'),'s1'),false);
+});

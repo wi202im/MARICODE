@@ -48,7 +48,7 @@ export function allowedRoute(method,url,sessionId) {
     return true;
   }
   if(method==='POST'&&p.startsWith(base+'/permissions/')&&/^\/api\/sessions\/[^/]+\/permissions\/(?:[A-Za-z0-9_-]|%3[Aa]|:)+\/(approve|deny)$/.test(p))return true;
-  return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload'].some(x=>p===base+x);
+  return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork'].some(x=>p===base+x);
 }
 export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
   if(runnerConfig&&(runnerConfig.accountConfig!==accountConfig||new URL(runnerConfig.hubUrl).origin!==new URL(upstream).origin))throw Error('Runner must use the displayed account configuration and Hub');
@@ -330,7 +330,7 @@ export function createServer({desktopAccess,upstream,sessionId,sessions=[{id:ses
         body=Buffer.concat(parts);JSON.parse(body.toString());headers['Content-Type']='application/json';
       }
       const sessionRead=req.method==='GET'&&/^\/api\/sessions\/([^/]+)$/.exec(u.pathname);
-      const changingSession=req.method==='POST'&&/^\/api\/sessions\/([^/]+)\/(messages|upload|resume|archive|settings|permissions\/[^/]+\/(approve|deny))$/.exec(u.pathname);
+      const changingSession=req.method==='POST'&&/^\/api\/sessions\/([^/]+)\/(messages|upload|resume|archive|fork|settings|permissions\/[^/]+\/(approve|deny))$/.exec(u.pathname);
       let resumeUnconfirmed=false;
       if((sessionRead||changingSession)&&runnerWorkspace&&runnerService.reconcileResume){
         resumeUnconfirmed=!await runnerService.reconcileResume((sessionRead||changingSession)[1],req.headers.authorization);

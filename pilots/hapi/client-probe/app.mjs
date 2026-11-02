@@ -103,7 +103,8 @@ function render(){
   attachmentComposer?.render();renderProgress();
   renderWorkflow();
   const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
-  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session});
+  const canFork=workspaceLayout&&session?.metadata?.capabilities?.conversationHistory?.forkAtMessage===true&&session.active&&!session.thinking&&!busy&&!actions?.pending;
+  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null});
   if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
    el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
@@ -548,6 +549,16 @@ function showTurnAlerts(list){
  if(document.hidden){unseenAlerts+=list.length;document.title=`(${unseenAlerts}) ${baseTitle}`;}
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){unseenAlerts=0;document.title=baseTitle;}});
+async function forkAt(localId){
+ if(busy)return;const from=sessionId;busy=true;render();notice('이 메시지 직전까지의 대화로 새 세션을 만드는 중입니다…');
+ try{
+  const r=await api(base()+'/fork',{method:'POST',body:{messageLocalId:localId}});
+  if(typeof r?.sessionId!=='string'||!/^[-a-f0-9]{36}$/.test(r.sessionId))throw Error('새 세션을 확인하지 못했습니다.');
+  await refreshCatalog();await selectSession(r.sessionId);
+  notice('분기한 새 대화입니다. 원래 대화는 그대로 남아 있고, 파일 변경은 되돌리지 않았습니다.');
+ }catch(e){if(sessionId===from)notice(`분기하지 못했습니다(${e.message}). 다시 보내기 전에 대화 목록에서 새 세션이 생겼는지 확인하세요.`);await refreshCatalog().catch(()=>{});}
+ finally{busy=false;render();}
+}
 async function refreshCatalog(){
  if(!workspaceLayout||!token||catalogBusy)return;
  const mine=++catalogSerial,usedToken=token;catalogBusy=true;renderWorkspace();

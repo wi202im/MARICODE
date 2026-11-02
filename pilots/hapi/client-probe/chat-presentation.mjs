@@ -35,7 +35,7 @@ export function chatTimeline(messages){
   const ids=[];
   if(d?.type==='tool-call'||d?.type==='tool-call-result')ids.push({id:d.callId,result:d.type==='tool-call-result'});
   if(m.content?.content?.type==='output'&&Array.isArray(d?.message?.content))for(const b of d.message.content){if(b.type==='tool_use')ids.push({id:b.id});if(b.type==='tool_result')ids.push({id:b.tool_use_id,result:true});}
-  const view=messageView(m);if(view)rows.push({kind:'message',key:m.id??m.seq,view,parent,at:m.createdAt,attachments:m.content?.content?.attachments??m.content?.meta?.attachments??[]});
+  const view=messageView(m);if(view)rows.push({kind:'message',key:m.id??m.seq,localId:typeof m.localId==='string'?m.localId:null,view,parent,at:m.createdAt,attachments:m.content?.content?.attachments??m.content?.meta?.attachments??[]});
   for(const ref of ids){
    const tool=tools.get(ref.id);if(!tool)continue;
    if(ref.result)tool.end=m.createdAt;else tool.start=m.createdAt;
