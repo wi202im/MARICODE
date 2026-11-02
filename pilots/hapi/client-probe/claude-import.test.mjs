@@ -100,9 +100,18 @@ test('same native session can continue inside a child folder without losing its 
  assert.equal((await f.api.history(result.id)).total,2);
 });
 
-test('outside cwd, different session and invalid message IDs remain rejected with distinct safe reasons',async t=>{
+test('native session continued from a different device path still imports once its session id matches',async t=>{
+ const f=await fixture(t);
+ const raw=f.raw+JSON.stringify({type:'assistant',uuid:randomUUID(),sessionId:f.id,cwd:'/office-machine/workspace/'+f.id,message:{content:'continued on another device'}})+'\n';
+ await writeFile(f.file,raw);
+ const row=(await f.api.list(f.source)).sessions[0];assert.equal(row.importable,true);let stored;
+ const result=await f.api.import({source:f.source,...row},{register:async r=>stored={id:r.hubId,metadata:r.metadata},lookup:async()=>stored});
+ assert.equal(result.state,'registered');
+ assert.equal(await readFile(join(f.destination,'projects',f.project.replace(/[^a-zA-Z0-9]/g,'-'),f.id+'.jsonl'),'utf8'),raw);
+});
+test('different session and invalid message IDs remain rejected with distinct safe reasons',async t=>{
  const f=await fixture(t);let posts=0;const callbacks={register:async()=>posts++,lookup:async()=>null};
- for(const [overrides,reason] of [[{cwd:f.project+'-other'},'IMPORT_CWD_OUTSIDE'],[{sessionId:randomUUID()},'IMPORT_SESSION_ID'],[{uuid:'broken'},'IMPORT_MESSAGE_ID']]){
+ for(const [overrides,reason] of [[{sessionId:randomUUID()},'IMPORT_SESSION_ID'],[{uuid:'broken'},'IMPORT_MESSAGE_ID']]){
   const row={type:'assistant',uuid:randomUUID(),sessionId:f.id,cwd:f.project,message:{content:'private payload'},...overrides};
   await writeFile(f.file,f.raw+JSON.stringify(row)+'\n');const selected=(await f.api.list(f.source)).sessions[0];
   await assert.rejects(f.api.import({source:f.source,...selected},callbacks),e=>e.rejected===true&&e.reason===reason&&e.userMessage.includes('2행')&&!e.userMessage.includes(f.project)&&!e.userMessage.includes('private payload'));

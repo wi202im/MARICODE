@@ -62,10 +62,17 @@ export function claudeImports({directory,destination,project,machineId}){
     if(!uuid.test(row.uuid??''))reject('IMPORT_MESSAGE_ID','대화 메시지 ID가 없거나 지원하지 않는 형식입니다.');
     if(typeof row.cwd!=='string'||!isAbsolute(row.cwd)||row.cwd.includes('\0'))reject('IMPORT_CWD_MISSING','대화 기록의 실행 폴더를 확인할 수 없습니다.');
     const lexical=relative(resolve(project),resolve(row.cwd));
-    if(lexical==='..'||lexical.startsWith('../')||isAbsolute(lexical))reject('IMPORT_CWD_OUTSIDE','선택한 프로젝트 밖에서 이어간 기록이 있습니다. 원래 작업 폴더를 확인하세요.');
-    if(!paths.has(row.cwd))paths.set(row.cwd,await historicalLocation(row.cwd));
-    const location=relative(root,paths.get(row.cwd));
-    if(location==='..'||location.startsWith('../')||isAbsolute(location))reject('IMPORT_CWD_OUTSIDE','프로젝트 밖으로 연결된 실행 폴더의 기록입니다.');
+    // Same native session id already pins identity; a cwd that is lexically
+    // outside the project just means this turn ran on another device/path
+    // (e.g. iCloud-shared history continued from a different machine) and is
+    // not a cross-session mix. Only verify boundary for cwds that claim to be
+    // inside the project, where a symlink could otherwise smuggle an escape.
+    const withinProject=lexical===''||(!lexical.startsWith('..')&&!isAbsolute(lexical));
+    if(withinProject){
+     if(!paths.has(row.cwd))paths.set(row.cwd,await historicalLocation(row.cwd));
+     const location=relative(root,paths.get(row.cwd));
+     if(location==='..'||location.startsWith('../')||isAbsolute(location))reject('IMPORT_CWD_OUTSIDE','프로젝트 밖으로 연결된 실행 폴더의 기록입니다.');
+    }
     if(!count&&lexical!=='')reject('IMPORT_CWD_ROOT','처음 대화의 실행 폴더가 선택한 작업 폴더와 다릅니다.');
     count++;
    }
