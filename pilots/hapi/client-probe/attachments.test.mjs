@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {selectedFiles,validateFiles,uploadPayload,attachmentMetadata} from './attachments.mjs';
+import {formatSize} from './attachments.mjs';
 test('paste and drop consume only real files, never clipboard HTML or local path text',()=>{
  const file=new File(['hi'],'note.txt',{type:'text/plain'});
  assert.deepEqual(selectedFiles({items:[{kind:'string',getAsFile:()=>null},{kind:'file',getAsFile:()=>file}]}),[file]);
@@ -13,3 +14,4 @@ test('upload validation binds a bounded binary payload; no caller-selected files
  assert.deepEqual(attachmentMetadata({id:p.requestId,name:'hello.txt',type:'text/plain',size:2},{success:true,path:'/owned/upload'}),{id:p.requestId,filename:'hello.txt',mimeType:'text/plain',size:2,path:'/owned/upload'});
  assert.throws(()=>attachmentMetadata({},{success:false}));
 });
+test('attachment sizes read naturally from bytes to megabytes',()=>{assert.equal(formatSize(18),'18 B');assert.equal(formatSize(1500),'2 KB');assert.equal(formatSize(5*1024*1024),'5.0 MB');});

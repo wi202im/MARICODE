@@ -1,5 +1,6 @@
 import {chatTimeline,describeTool,editPreview,formatDuration} from './chat-presentation.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
+import {formatSize} from './attachments.mjs';
 const node=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
 const readable=v=>typeof v==='string'?v:JSON.stringify(v??null,null,2);
 const rendered=new WeakMap();
@@ -49,7 +50,7 @@ export function renderConversation(container,messages,{engine,session,onFork}={}
   const el=node('div',`bubble ${row.view.role}${row.parent?' child-message':''}`),label=node('small','message-byline',row.view.role==='user'?'나':row.parent?'하위 에이전트':engine??'에이전트');
   if(Number.isFinite(row.at)){const time=node('time','',new Date(row.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));time.title=new Date(row.at).toLocaleString('ko-KR');label.append(time);}
   el.append(label,row.view.role==='agent'?renderMarkdown(row.view.text):node('span','',row.view.text));
-  if(Array.isArray(row.attachments))for(const a of row.attachments)el.append(node('span','sent-attachment',`▧ ${a.filename??'첨부파일'}${a.size?` · ${Math.ceil(a.size/1024)} KB`:''}`));
+  if(Array.isArray(row.attachments))for(const a of row.attachments)el.append(node('span','sent-attachment',`▧ ${a.filename??'첨부파일'}${a.size?` · ${formatSize(a.size)}`:''}`));
   if(row.view.text)el.append(copyButton(row.view.text,row.view.role==='user'?'메시지 복사':'답변 복사'));
   if(onFork&&row.view.role==='user'&&row.localId&&!row.parent)el.append(forkButton(row.localId,onFork));return el;
  });

@@ -14,3 +14,4 @@ export function attachmentMetadata(file,result){
  return {id:file.id,filename:file.name,mimeType:file.type||'application/octet-stream',size:file.size,path:result.path};
 }
 export async function fileBase64(file){const bytes=new Uint8Array(await file.arrayBuffer());let raw='';for(let i=0;i<bytes.length;i+=32768)raw+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(raw);}
+export const formatSize=n=>!Number.isFinite(n)?'':n<1024?`${n} B`:n<1024*1024?`${Math.ceil(n/1024)} KB`:`${(n/1024/1024).toFixed(1)} MB`;
