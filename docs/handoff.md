@@ -2,21 +2,17 @@
 
 상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다.
 
-## Developer ID 서명·공증 — 앱 승인 완료, DMG 후속 대기
+## Developer ID 서명·공증 — 검증 완료, 새 공개 버전 준비 전
 
-- **된다 — 예약 확인 결과:** 사용자 요청10분 뒤인2026-11-02 20:03 KST에 명시적인 login 키체인과 복구 프로필로 조회했다. source-separated 및 pipeline-dmg 앱 제출이 모두 **Accepted**다. 조회 시 접수 후 각각 약44분/37분이 경과했으며 정확한 승인 시각/처리 소요시간은 조회 결과만으로 알 수 없다. 티켓 부착·Gatekeeper·DMG 공증 완료를 뜻하지 않는다.
-- 사용자 요청으로 기존 Apple Developer 멤버십을 사용했다. 사용자가 약관 동의, 인증서 발급·Mac 키체인 등록 허용, 키체인 사용 허용을 마쳤다. 공증용 앱 암호도 직접 생성하고 보안 터미널에 입력해 `maricode-notary` 키체인 프로필에 저장했다. 암호/개인 키를 출력하거나 커밋하지 않았다. 계정·자동 갱신·기존 설치 앱/서버/AI 계정은 변경하지 않았다.
-- **된다 — 인증·서명:** Developer ID Application(G2) 발급, CSR 공개 키 일치, Apple G2 중간 인증서의 기존 루트 신뢰 검증과 로그인 키체인 등록, 유효한 identity 확인. 앱 복사본의 Node·HAPI·앱을 안쪽부터 Developer ID + timestamp + hardened runtime으로 서명했다. 엔진 entitlement는 allow-jit 하나이며 get-task-allow를 제거했다. deep/strict 검증, Node 반복 연산과 자동 검사287개, 서명 HAPI 버전 실행·격리 Hub 인증·빈 세션 조회·정상 종료가 통과했다.
-- **안 된다 — 첫 공증:** Apple이 HAPI 원본 `source.tar.gz` 안의 macOS 개발용 ripgrep/difftastic 바이너리에 Developer ID/timestamp/hardened runtime이 없다는 이유로 Invalid 판정했다. 실제 앱·Node·HAPI 실행 파일에 대한 오류는 이 결과에 없었다. 로그와 제출 ID는 Git 제외 `.runtime/apple-signing/`에 있다.
-- **수정:** HAPI 원본 소스 압축파일의 바이트·SHA-256을 그대로 보존하면서 앱/DMG 밖 `HAPI-0.33.3-source.tar.gz` 릴리스 첨부로 분리한다. 라이선스·고지는 앱 안에도 유지한다. 원본 입력 해시와 재서명된 HAPI 해시를 구분한다. 이 구성의 격리 수정본을 제출했고 최신 조회는 Accepted다(`.runtime/apple-signing/source-separated/submission.json`).
-- **된다 — 제품 패키저:** 명시적인 `MARICODE_SIGN_IDENTITY`와 `MARICODE_NOTARY_PROFILE`을 모두 지정하면 새 stage 복사본만 서명한다. 앱 공증 Accepted → 티켓 부착/검증/Gatekeeper → DMG 서명·공증·티켓/검증 → 최종 체크섬 순서다. 실패 시 ad-hoc으로 대체하지 않는다. 요청 전에 receipt를 독점 생성해 접수 불명의 자동 중복 제출을 막는다. 기존 인자만 사용한 기본 ad-hoc 경로는 유지한다. 공증용 설치 안내와 소스/빌드/고지도 반영했다.
-- **된다 — 검증:** 자동 검사290개. 새 제품 source를 포함한 release 빌드 완료. 제품 패키저가 만든 서명 stage에서도 원본 HAPI 소스 체크섬 보존, 격리 Hub 로그인·빈 세션·종료를 확인했다.
-- **된다 — 공증 인증 복구:** 기본 Data Protection 키체인에서 신규 프로세스가 프로필을 찾지 못했다. 사용자가 기존 앱 암호를 보안 터미널에 다시 입력해 파일 기반 login 키체인에 `maricode-notary-local`로 저장했고, `--keychain`을 같은 경로로 명시한 독립 notarytool 조회 두 건이 성공했다. 기존 인증 항목·인증서·접수 ID는 보존했으며 파일을 재제출하지 않았다. 기존 Data Protection 항목의 삭제/잠금/접근 제한 중 정확한 원인은 미확인이다.
-- **된다 — 재발 방지:** 패키저가 기본 login 키체인 파일을 명시적으로 넘긴다. 다른 파일은 `MARICODE_NOTARY_KEYCHAIN` 절대 경로로 지정하며 저장·submit·wait·수동 info/log/history 모두 같은 경로를 사용한다. 상대 경로나 서명 옵션 없이 키체인만 지정한 설정은 거부한다. 기본/사용자 지정 경로의 일치와 중복 제출 방지 테스트 포함 자동 검사291개 통과. 파일 기반 키체인도 잠기면 사용자 해제가 필요하며 보안 잠금은 해제하지 않는다. 로컬 로그인용 command도 동일 설정으로 갱신했다.
-
-- **대기 중:** `.runtime/apple-signing/pipeline-final-build/Maricode.app` → `.runtime/apple-signing/pipeline-dmg` 패키저는 Apple 처리 대기가20분을 넘어 종료됐다. Apple 접수 취소/실패를 뜻하지 않는다. 20:03 KST 후속 조회에서 source-separated 및 pipeline-dmg 앱 제출은 둘 다 Accepted로 바뀌었다. 기존 접수 ID는 각 `submission.json`/`app-notary-submission.json`, 최신 복구 조회는 `recovery-status.json`, 실행 로그는 `pipeline-dmg.log`에 있다. 자동 패키저는 현재 실행 중이 아니며 새 DMG/최종 체크섬은 아직 없다. 이 후보는 로컬 검증용이고 Bun/WebKit 별도 소스 첨부를 복사하지 않았다.
-
-- **확인 안 함/다음:** 티켓/Gatekeeper·전체 DMG 패키징 완료, 서명 앱의 실제 AI 세션과 새 DMG 설치. 앱 Accepted는 확인됐으므로 보존한 동일 stage 앱의 티켓/Gatekeeper부터 이어가며 앱을 새로 서명하거나 재제출하지 않는다. 후속 DMG 공증에는 `maricode-notary-local`과 명시적인 login 키체인 경로를 사용한다. Invalid면 해당 로그 원인만 수정하며 불명 요청을 재제출하지 않는다. 성공 후 최종 DMG/소스/체크섬과 공증 설치 안내를 검증한다. 공개1.0.9 첨부는 그대로이며 새 공개는 다음 배포 요청의 새 버전으로 한다.
+- **된다 — 앱과 DMG:** 기존에 Accepted를 받은 `pipeline-dmg/stage/Maricode.app`을 다시 서명/제출하지 않고 티켓 부착 → 티켓 검증 → deep/strict 서명 → Gatekeeper 실행 검사를 통과했다. 이 앱으로 DMG를 만들고 Developer ID 서명 후 별도 공증을 제출해 **Accepted**, DMG 티켓 부착/검증·서명·Gatekeeper open 검사·디스크 이미지 검증까지 통과했다. DMG 서명 시 사용자가 codesign 키 사용을 직접 허용했다.
+- **된다 — 최종 파일:** `.runtime/apple-signing/pipeline-dmg/MARICODE-1.0.9-arm64.dmg`,122,261,796바이트, 최종 SHA-256 `3ead23a589a342550e81b73bc7a77c8565023fd91d07b8637014c8fd4cc85601`. 티켓 부착 후 계산한 체크섬과 일치한다. 이는 로컬 공증 검증 후보이며 기존 공개1.0.9 첨부를 교체하지 않았다.
+- **된다 — 실제 DMG 내용:** 이미지의 내부 앱을 마운트해 deep/strict 서명·티켓·Gatekeeper 실행 검사를 다시 통과했다. 공증용 설치 안내, 라이선스/고지 보존, 앱 내부 HAPI 원본 소스 압축파일과 이전 ‘보안 설정 열기’ 링크 제외를 확인했다. 대응 제품 소스107개가 번들 원본과 일치하고 별도 HAPI 소스 SHA-256도 원본과 같다. `hdiutil attach` 권한 오류 및 `diskutil image attach` 지연 후 Finder 열기를 통해 실제 마운트를 확인했고, 검증 후 본 시험 이미지의 장치만 정상 detach했다.
+- **인증:** 사용자가 기존 Apple Developer 약관 동의, Developer ID Application(G2) 발급·키체인 등록·키 사용 허용을 마쳤다. CSR/인증서 공개 키와 Apple 중간 인증서 신뢰를 확인했다. 개인 키는 로컬 암호화 자료/키체인에만 있으며 비밀·계정 정보를 출력/커밋하지 않았다. 계정·자동 갱신·기존 설치 앱/서버/AI 계정은 변경하지 않았다.
+- **인증 복구/재발 방지:** notarytool 기본 Data Protection 키체인의 프로필 조회가 실패했다. 사용자가 같은 앱 암호를 명시적인 login 키체인 파일에 `maricode-notary-local`로 저장했고 독립 조회 및 DMG 공증이 성공했다. 제품 패키저도 기본 login 키체인 파일을 명시하며 다른 파일은 `MARICODE_NOTARY_KEYCHAIN` 절대 경로로 선택한다. 저장/submit/wait/info/log/history에 동일 경로를 사용한다. Data Protection 항목 삭제/잠금/접근 제한 중 정확한 원인은 미확인이다. 보안 잠금은 해제하지 않는다.
+- **제품 반영:** `MARICODE_SIGN_IDENTITY`(명시적 인증서 SHA-1)와 `MARICODE_NOTARY_PROFILE`을 함께 지정하면 새 stage 복사본만 서명한다. Node/HAPI는 hardened runtime·timestamp·allow-jit 하나를 사용하고 get-task-allow를 제거한다. 앱 승인/티켓/Gatekeeper → DMG 서명/승인/티켓/Gatekeeper → 최종 체크섬 순서이며 오류 시 ad-hoc으로 대체하지 않는다. 요청 전 receipt를 독점 생성해 접수 불명의 자동 중복 제출을 막는다. 기본 ad-hoc 경로는 유지한다.
+- **HAPI 소스 분리:** 첫 공증은 원본 HAPI 소스 압축파일 안의 미서명 macOS 개발용 ripgrep/difftastic 때문에 Invalid였다. 압축파일은 원본 바이트·체크섬 그대로 `HAPI-0.33.3-source.tar.gz`로 앱/DMG 밖 같은 릴리스에 첨부하며 라이선스·고지는 앱 안에도 둔다. 원본 입력 해시와 재서명된 HAPI 해시를 구분한다. 설치·사용·빌드 안내/요구사항도 반영했다.
+- **검증 범위:** 제품 자동 검사291개, release 빌드, 서명된 Node 반복 연산 및 자동 검사, 서명 HAPI 버전·격리 Hub 인증·빈 세션 조회·정상 종료가 통과했다. 패키저의 앱 대기 제한20분은 넘어서 종료됐으며, 사용자 후속 요청으로 기존 Accepted 접수를 확인하고 보존된 stage부터 수동 재개했다. 모든 접수/로그는 `.runtime/apple-signing/`에만 있다. 시험 프로세스/마운트는 종료됐고 현재 자동 패키저는 실행 중이 아니다.
+- **확인 안 함/다음:** 실제 사용자 설치·서명 앱의 AI 세션·새 공개 DMG 배포. 검증 후보의 내장 제품 소스는 인증 복구 코드 반영 전 빌드이며, 공개 시에는 현재 main을 새 버전(다음1.0.10)으로 빌드/공증해 제품·HAPI·Bun/WebKit 소스, 고지, 안내, 최종 체크섬을 함께 준비한다. 기존1.0.9 첨부/태그는 덮어쓰지 않는다. 이 후보는 Bun/WebKit 별도 소스 첨부를 복사하지 않았으므로 그대로 공개하지 않는다.
 - 도구의 이전 작업 경로가 삭제된 저장소를 가리켜 실행이 실패하여, 옛 로컬 경로에는 현재 저장소를 가리키는 심볼릭 링크만 만들었다. 소스/과거 데이터를 복제하거나 복구하지 않았다.
 
 ## 표시 이름·제목 버전 — 다음 배포 대기
