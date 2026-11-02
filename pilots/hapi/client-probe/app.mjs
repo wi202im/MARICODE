@@ -1102,6 +1102,9 @@ function openNavigation(target){
  $('navigation-context').textContent=target.name+' · '+target.path;$('navigation-name').value=target.name;$('navigation-status').textContent='';
  $('navigation-remove').hidden=target.default===true;$('navigation-remove').textContent=target.kind==='session'?'목록에서 숨기기':'등록 해제';
  $('navigation-remove-help').textContent=target.default?'기본 작업공간은 프로젝트와 함께 등록 해제합니다.':target.kind==='session'?'실행이 끝난 세션을 목록에서 숨깁니다. 대화 기록은 삭제하지 않습니다.':target.kind==='project'?'하위 작업공간과 세션도 목록에서 제외합니다. 소스·Git·대화 기록은 그대로 남습니다.':'이 작업공간과 세션을 목록에서 제외합니다. 실제 폴더와 Git 워크트리는 삭제하지 않습니다.';
+ // The server refuses to hide a running session; say so up front instead of failing after confirmation.
+ const running=target.kind==='session'&&(target.id===sessionId?session?.active:sessionCards.get(target.id)?.snapshot?.active)===true;
+ $('navigation-remove').disabled=running;if(running)$('navigation-remove-help').textContent='실행 중인 세션은 숨길 수 없습니다. 먼저 제목줄 ⋯ 메뉴의 ‘세션 실행 종료’를 누르세요. 대화 기록은 삭제하지 않습니다.';
  $('navigation-name').focus();
 }
 async function changeNavigation(input){
