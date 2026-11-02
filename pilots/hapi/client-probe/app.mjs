@@ -44,7 +44,7 @@ const connectionBanner=document.createElement('section');connectionBanner.classN
 const serverLabel=document.createElement('span'),connectionLabel=document.createElement('strong'),reconnectButton=document.createElement('button');
 serverLabel.textContent=location.origin;connectionLabel.setAttribute('role','status');reconnectButton.textContent='연결 상태 다시 조회';reconnectButton.type='button';
 connectionBanner.append(serverLabel,connectionLabel,reconnectButton);if(workspaceLayout)document.querySelector('.connection-panel').append(connectionBanner);else document.body.prepend(connectionBanner);
-function showConnection(state){connectionState=state;connectionLabel.textContent=connectionLabels[state]??state;if($('connection')){$('connection').textContent=connectionLabel.textContent;$('connection').dataset.connectionState=state;}reconnectButton.disabled=!token||['restoring','connecting'].includes(state);}
+function showConnection(state){connectionState=state;const dot=document.querySelector('.host .dot');if(dot){dot.dataset.state=state;dot.title=connectionLabels[state]??state;}connectionLabel.textContent=connectionLabels[state]??state;if($('connection')){$('connection').textContent=connectionLabel.textContent;$('connection').dataset.connectionState=state;}reconnectButton.disabled=!token||['restoring','connecting'].includes(state);}
 const pendingKey=()=>`hapi-d1-pending:${sessionId}`;
 const notice=text=>{$('notice').textContent=text;};
 // Success confirmations would otherwise sit in the status strip long after the reply arrives.
