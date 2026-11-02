@@ -102,22 +102,23 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
  return {render,configure(enabled){supported=enabled;render();}};
 }
 
-export function createImportedHistory({element,api}){
+export function createImportedHistory({element,api,scroller}){
  let owner='',serial=0,before,rows=[];
  const summary=element.querySelector('summary'),list=element.querySelector('.imported-records'),more=element.querySelector('button'),note=element.querySelector('p');
  async function load(id,enabled,older=false){
-  const ticket=++serial;
+  const ticket=++serial,top=scroller?.scrollTop??0,height=scroller?.scrollHeight??0;
   if(!older){owner=id;rows=[];before=undefined;element.hidden=true;list.replaceChildren();element.open=false;}
   if(!enabled||!id)return;more.disabled=true;
   try{
    const r=await api('/api/sessions/'+encodeURIComponent(id)+'/import-history'+(older?'?before='+before:''));
    if(ticket!==serial||owner!==id||!r.imported)return;
-   rows=older?[...r.messages,...rows]:r.messages;before=r.before;element.hidden=false;
+   rows=older?[...r.messages,...rows]:r.messages;before=r.before;element.hidden=false;if(!older)element.open=true;
    summary.textContent=`가져온 이전 기록 · ${rows.length}/${r.total}개`;
-   note.textContent='가져온 시점의 텍스트 기록입니다. 도구·첨부는 요약 표시하며 과거 승인은 다시 실행하지 않습니다. 이후 대화는 아래에 표시됩니다.';
+   note.textContent='가져온 시점의 이전 대화입니다. 내용을 확인한 뒤 같은 세션을 재개하세요. 도구·첨부는 요약 표시하며 과거 승인은 실행하지 않습니다. 이후 대화는 아래에 이어집니다.';
    more.hidden=!r.hasMore;
    list.replaceChildren(...rows.map(row=>{const article=document.createElement('article'),label=document.createElement('strong'),text=document.createElement('p');label.textContent=(row.role==='user'?'사용자':'Claude')+(row.timestamp?' · '+new Date(row.timestamp).toLocaleString():'');text.textContent=row.text+(row.truncated?'\n[화면 표시 일부 생략]':'');article.append(label,text);return article;}));
-  }catch{if(ticket===serial){element.hidden=false;summary.textContent='가져온 기록 확인 필요';note.textContent='이전 기록을 읽지 못했습니다. 세션을 다시 선택해 확인하세요. 원래 대화와 실행 상태는 변경하지 않았습니다.';}}
+   if(scroller)scroller.scrollTop=older?top+(scroller.scrollHeight-height):scroller.scrollHeight;
+  }catch{if(ticket===serial){element.hidden=false;element.open=true;summary.textContent='가져온 기록 확인 필요';note.textContent='이전 기록을 읽지 못했습니다. 세션을 다시 선택해 확인하세요. 원래 대화와 실행 상태는 변경하지 않았습니다.';}}
   finally{if(ticket===serial)more.disabled=false;}
  }
  more.onclick=()=>load(owner,true,true);

@@ -25,3 +25,16 @@ test('Claude 0.33.3 presets include haiku and preserve a legacy current selectio
  assert.ok(values.includes('haiku'));assert.ok(values.includes('opus[1m]'));assert.ok(!values.includes('sonnet[1m]'));
  assert.match(settingsView(c).source,/0\.33\.3/);
 });
+
+test('access modes are provider specific and require the current provider and permission snapshot',()=>{
+ const c={...session,metadata:{flavor:'claude'},permissionMode:'default',effort:'high'};
+ const view=settingsView(c),expected={...view.current,flavor:'claude'};
+ assert.deepEqual(view.permissionModes.map(o=>o.value),['default','acceptEdits','auto','bypassPermissions','plan']);
+ assert.deepEqual(settingsView(session,catalog).permissionModes.map(o=>o.value),['default','read-only','autoReview','yolo']);
+ assert.deepEqual(settingChange(c,null,{field:'permissionMode',value:'bypassPermissions',expected}),{route:'permission-mode',body:{mode:'bypassPermissions'}});
+ for(const bad of [{...expected,permissionMode:'plan'},{model:'m1',effort:'high'},{...expected,flavor:'codex'}])assert.throws(()=>settingChange(c,null,{field:'permissionMode',value:'bypassPermissions',expected:bad}));
+ assert.throws(()=>settingChange(c,null,{field:'permissionMode',value:'yolo',expected}));
+ assert.throws(()=>settingChange({...c,thinking:true},null,{field:'permissionMode',value:'bypassPermissions',expected}));
+ assert.throws(()=>settingChange({...c,agentState:{controlledByUser:false,requests:{pending:{}}}},null,{field:'permissionMode',value:'bypassPermissions',expected}));
+ assert.deepEqual(settingsView({...c,metadata:{flavor:'other'}}).permissionModes,[]);
+});

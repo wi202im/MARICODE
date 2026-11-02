@@ -119,7 +119,7 @@ test('project selection is authenticated and selected directory survives task cr
  assert.equal(result.project,sub);assert.equal(result.agent,'claude');assert.equal(spawns,2);
 });
 
-test('settings authorize session, validate stale choices and never forward permission or duplicate changes',async t=>{
+test('settings authorize session, validate stale choices and reject unscoped permission and duplicate changes',async t=>{
  let changes=0,failReadback=false;const state={active:true,metadata:{flavor:'codex'},agentState:{controlledByUser:false,requests:{}},model:'m1',modelReasoningEffort:'high'};
  const upstream=http.createServer(async(req,res)=>{
   res.setHeader('Content-Type','application/json');
@@ -350,4 +350,26 @@ test('general conversation preparation rejects cross-origin, unauthenticated and
  assert.equal((await send()).status,401);assert.equal((await send('{}',{authorization:'Bearer fixture',origin:'https://wrong.example'})).status,403);
  assert.equal((await send('{"path":"/another-project"}',{authorization:'Bearer fixture'})).status,400);assert.equal(calls,0);
  assert.equal((await send('{}',{authorization:'Bearer fixture'})).status,200);assert.equal(calls,1);
+});
+
+test('access setting stays scoped, rejects stale providers and does not resend after lost readback',async t=>{
+ let writes=0,drop=false;const state={active:true,metadata:{flavor:'claude'},permissionMode:'default',agentState:{controlledByUser:false,requests:{}}};
+ const upstream=http.createServer(async(req,res)=>{
+  res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end('{}');return;}
+  if(req.method==='POST'){assert.equal(req.url,`/api/sessions/${id}/permission-mode`);let raw='';for await(const c of req)raw+=c;assert.deepEqual(JSON.parse(raw),{mode:'bypassPermissions'});writes++;state.permissionMode='bypassPermissions';res.end('{"ok":true}');return;}
+  if(drop&&writes){drop=false;res.writeHead(503).end('{}');return;}
+  res.end(JSON.stringify({session:state}));
+ });await new Promise(r=>upstream.listen(0,'127.0.0.1',r));
+ const server=createServer({upstream:`http://127.0.0.1:${upstream.address().port}`,sessionId:id});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(()=>{server.closeAllConnections();server.close();upstream.closeAllConnections();upstream.close();});
+ const origin=`http://127.0.0.1:${server.address().port}`,path=origin+`/api/sessions/${id}/settings`,headers={Origin:origin,Authorization:'Bearer synthetic','Content-Type':'application/json'};
+ const input={field:'permissionMode',value:'bypassPermissions',expected:{model:null,effort:null,permissionMode:'default',flavor:'claude'}};
+ const post=body=>fetch(path,{method:'POST',headers,body:JSON.stringify(body)});
+ assert.equal((await fetch(path)).status,401);
+ assert.equal((await post({...input,expected:{...input.expected,flavor:'codex'}})).status,409);
+ state.agentState.requests={pending:{}};assert.equal((await post(input)).status,409);assert.equal(writes,0);state.agentState.requests={};
+ drop=true;const lost=await post(input);assert.equal(lost.status,503);assert.equal((await lost.json()).rejected,false);assert.equal(writes,1);
+ assert.equal((await (await fetch(path,{headers})).json()).current.permissionMode,'bypassPermissions');assert.equal(writes,1);
+ assert.equal((await post(input)).status,409);assert.equal(writes,1);
+ assert.equal(allowedRoute('POST',url(`/api/sessions/${id}/permission-mode`),id),false);
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createClaudeImportPanel,nativeClaudeSourcePicker} from './claude-import-ui.mjs';
+import {createClaudeImportPanel,nativeClaudeSourcePicker,createImportedHistory} from './claude-import-ui.mjs';
 
 function fixture(pickSource,respond=()=>({sessions:[],status:"empty"})){
  const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,{value:'',checked:false,disabled:false,hidden:false,textContent:'',replaceChildren(...rows){this.rows=rows;},click(){if(!this.disabled)return this.onclick?.();}});return nodes.get(id);};
@@ -43,4 +43,30 @@ test('older pages preserve the chosen session; blocked records explain why witho
  f.get('claude-import-select').value='older';f.get('claude-import-select').onchange();f.get('claude-import-confirm').checked=true;f.panel.render();
  assert.match(f.get('claude-import-detail').textContent,/too large/);assert.equal(f.get('claude-import-start').disabled,true);
  await f.get('claude-import-start').onclick();assert.equal(f.requests.length,2);
+});
+
+function historyFixture(api,scroller){
+ const nodes=new Map(),get=s=>{if(!nodes.has(s))nodes.set(s,{hidden:false,disabled:false,textContent:'',replaceChildren(...children){this.children=children;}});return nodes.get(s);};
+ globalThis.document={createElement:()=>({append(...children){this.children=children;}})};
+ const element={hidden:true,open:false,querySelector:get};
+ return {element,get,history:createImportedHistory({element,api,scroller})};
+}
+test('import opens prior conversation immediately; pagination preserves an explicit collapse',async()=>{
+ const f=historyFixture(async path=>({imported:true,total:2,messages:[{role:'user',text:path.includes('?')?'earlier':'recent'}],before:1,hasMore:!path.includes('?')}));
+ await f.history.load('one',true);assert.equal(f.element.hidden,false);assert.equal(f.element.open,true);
+ assert.match(f.get('summary').textContent,/1\/2/);assert.equal(f.get('.imported-records').children[0].children[1].textContent,'recent');
+ f.element.open=false;await f.get('button').onclick();assert.equal(f.element.open,false);assert.equal(f.get('.imported-records').children.length,2);
+ await f.history.load('normal',false);assert.equal(f.element.hidden,true);assert.equal(f.get('.imported-records').children.length,0);
+});
+test('late imported history cannot appear in a different session; read failures are visible',async()=>{
+ let resolve;const f=historyFixture(()=>new Promise(r=>resolve=r));
+ const first=f.history.load('one',true);await f.history.load('two',false);resolve({imported:true,messages:[{text:'private'}],total:1});await first;assert.equal(f.element.hidden,true);
+ const failed=historyFixture(async()=>{throw Error('unavailable');});await failed.history.load('one',true);assert.equal(failed.element.open,true);assert.match(failed.get('p').textContent,/읽지 못/);
+});
+
+test('initial transcript scrolls to recent content; older pages keep the reading position',async()=>{
+ const scroller={scrollTop:0,scrollHeight:1000};
+ const f=historyFixture(async path=>{if(path.includes('?'))scroller.scrollHeight=1400;return {imported:true,total:2,messages:[{role:'user',text:'history'}],before:1,hasMore:true};},scroller);
+ await f.history.load('one',true);assert.equal(scroller.scrollTop,1000);
+ scroller.scrollTop=100;await f.get('button').onclick();assert.equal(scroller.scrollTop,500);
 });

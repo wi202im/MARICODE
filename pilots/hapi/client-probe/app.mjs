@@ -1,3 +1,4 @@
+import {bindComposerEnter} from './composer-input.mjs';
 import {createClaudeImportPanel,createImportedHistory} from './claude-import-ui.mjs';
 import {createQuitFlow} from './quit-flow.mjs';
 import {requestQuestions,questionDecision} from './questions.mjs';
@@ -86,9 +87,9 @@ function render(){
   $('connection').textContent=connectionLabels[connectionState];
   attachmentComposer?.render();renderProgress();
   renderWorkflow();
-  const nearBottom=$('messages').scrollHeight-$('messages').scrollTop-$('messages').clientHeight<90;
+  const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
   renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session});
-  if(nearBottom)$('messages').scrollTop=$('messages').scrollHeight;
+  if(nearBottom)scroller.scrollTop=scroller.scrollHeight;
   if(workspaceLayout){renderWorkspace();renderSettings();}
 }
 const workProgress=workspaceLayout?document.createElement('div'):null;
@@ -229,7 +230,7 @@ async function selectSession(id){
   try{sessionStorage.setItem('hapi-trial-selected-session',id);}catch{}
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;
-  if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
+  if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
   sessionId=id;if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
@@ -263,7 +264,7 @@ $('older').onclick=async()=>{
     const page=await api(base()+`/messages?limit=50&beforeAt=${cursor.at}&beforeSeq=${cursor.seq}`);
     if(mine!==epoch||held!==history||cursor!==history.cursor)return;
     if(!history.older(page)){await refresh();notice('이력이 변경돼 최근 내용부터 다시 확인했습니다.');return;}
-    const panel=$('messages'),height=panel.scrollHeight,top=panel.scrollTop;
+    const panel=$('conversation-history')??$('messages'),height=panel.scrollHeight,top=panel.scrollTop;
     messages=history.messages;render();panel.scrollTop=top+(panel.scrollHeight-height);
     notice('이전 이력을 추가로 불러왔습니다.');
   }catch(e){if(mine===epoch)notice(e.message);}finally{if(mine===epoch){loadingHistory=false;render();}}
@@ -590,7 +591,7 @@ restoreLogin();
 const taskPendingKey='hapi-trial-new-task';
 let taskCreating=false,taskProjectsReady=false,projectCatalog=[],selectedProject='';
 let importHistorySupported=false;
-const importedHistory=workspaceLayout?createImportedHistory({element:$('imported-history'),api}):null;
+const importedHistory=workspaceLayout?createImportedHistory({element:$('imported-history'),api,scroller:$('conversation-history')}):null;
 let draftProject=null,draftOptions=null,draftLoading=false,draftSerial=0,draftMessage='',draftContinue=false,draftSupportsGit=false,draftAccountSerial=0,draftGeneralSupported=false,draftDefaultsSerial=0,draftDefaultsLoading=false;
 try{selectedProject=sessionStorage.getItem('maricode-project')||'';}catch{}
 const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('claude-import-panel'),api,
@@ -721,7 +722,7 @@ async function createTask(checkOnly){
    for(const field of ['model','effort']){
     await loadSettings();
     if(settingsPending()){settingsNote='설정 변경 결과 확인이 필요합니다.';break;}
-    const options=settingsData?.[field==='model'?'models':'efforts'];
+    const options=settingsData?.[field==='model'?'models':field==='effort'?'efforts':'permissionModes'];
     if(settingsOwner!==sessionId||!settingsData?.editable||!options?.some(o=>o.value===inherited[field])){settingsNote='일부 이전 설정은 지원 여부를 확인하지 못해 적용하지 않았습니다.';continue;}
     if(settingsData.current[field]===inherited[field])continue;
     $(`setting-${field}`).value=inherited[field]??'';
@@ -771,18 +772,19 @@ if(workspaceLayout){
  }
 }
 function settingsPending(){try{return JSON.parse(sessionStorage.getItem(`hapi-settings-pending:${sessionId}`));}catch{return null;}}
-function settingsCurrent(){return {model:session?.model??null,effort:(session?.metadata?.flavor==='codex'?session?.modelReasoningEffort:session?.effort)??null};}
+function settingsCurrent(){return {model:session?.model??null,effort:(session?.metadata?.flavor==='codex'?session?.modelReasoningEffort:session?.effort)??null,permissionMode:session?.permissionMode??null};}
 function renderSettings(){
  if(!workspaceLayout)return;
  const current=settingsCurrent(),pending=settingsPending(),label=v=>v??'자동 (실제 값 미확정)';
  $('model-name').textContent=({claude:'Claude',codex:'Codex'})[session?.metadata?.flavor]??'에이전트';
  $('model-chip').textContent=`모델: ${current.model??'자동'} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
+ $('permissionMode-chip').textContent=`액세스: ${settingsData?.permissionModes?.find(o=>o.value===current.permissionMode)?.label??current.permissionMode??'미확인'} ▾`;
  $('model-chip').title=$('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
- $('settings-current').textContent=`서버 보고값: 모델 ${label(current.model)} / 추론 ${label(current.effort)}`;
+ $('settings-current').textContent=`서버 보고값: 모델 ${label(current.model)} / 추론 ${label(current.effort)} / 액세스 ${current.permissionMode??'미확인'}`;
  const allowed=settingsOwner===sessionId&&settingsData?.editable&&session?.active&&!session?.thinking&&session?.agentState?.controlledByUser===false&&!Object.keys(session?.agentState?.requests??{}).length&&!busy&&!settingsLoading&&connected&&!pending&&!actions?.pending;
- for(const field of ['model','effort']){$(`setting-${field}`).disabled=!allowed;$(`apply-${field}`).disabled=!allowed||!settingsData?.[field==='model'?'models':'efforts']?.length;}
+ for(const field of ['model','effort','permissionMode']){$(`setting-${field}`).disabled=!allowed;$(`apply-${field}`).disabled=!allowed||!settingsData?.[field==='model'?'models':field==='effort'?'efforts':'permissionModes']?.length;}
  $('load-settings').disabled=busy||settingsLoading||!connected;
- if(pending)$('settings-status').textContent=`${pending.field==='model'?'모델':'추론'} 변경 결과 확인 필요 · 요청값 ${label(pending.value)}. 자동 재전송하지 않습니다. 결과 확인 전 대화 전송을 잠급니다.`;
+ if(pending)$('settings-status').textContent=`${pending.field==='model'?'모델':pending.field==='effort'?'추론':'액세스'} 변경 결과 확인 필요 · 요청값 ${label(pending.value)}. 자동 재전송하지 않습니다. 결과 확인 전 대화 전송을 잠급니다.`;
 }
 async function loadSettings(){
  const id=sessionId,mine=++settingsSerial;settingsLoading=true;renderSettings();
@@ -790,13 +792,13 @@ async function loadSettings(){
   const result=await api(`/api/sessions/${id}/settings`);
   if(id!==sessionId||mine!==settingsSerial)return;
   settingsData=result;settingsOwner=id;
-  for(const field of ['model','effort']){
-   const select=$(`setting-${field}`),options=result[field==='model'?'models':'efforts'];
+  for(const field of ['model','effort','permissionMode']){
+   const select=$(`setting-${field}`),options=result[field==='model'?'models':field==='effort'?'efforts':'permissionModes']??[];
    select.replaceChildren(...options.map(item=>{const o=document.createElement('option');o.value=item.value??'';o.textContent=item.label;return o;}));
-   if(!options.some(o=>o.value===result.current[field])){const o=document.createElement('option');o.value=result.current[field]??'';o.textContent=`현재: ${result.current[field]??'자동'} (목록 밖)`;o.disabled=true;select.prepend(o);}
+   if(!options.some(o=>o.value===result.current[field])){const o=document.createElement('option');o.value=result.current[field]??'';o.textContent=`현재: ${result.current[field]??(field==='permissionMode'?'미확인':'자동')} (목록 밖)`;o.disabled=true;select.prepend(o);}
    select.value=result.current[field]??'';
   }
-  $('settings-source').textContent=result.source;
+  $('settings-source').textContent=result.source;renderPermissionDescription();
   const pending=settingsPending();
   if(pending&&result.current[pending.field]===pending.value)sessionStorage.removeItem(`hapi-settings-pending:${id}`);
   $('settings-status').textContent= result.editable?'서버 설정을 조회했습니다. 한 항목씩 적용하세요.':'입력 대기 중인 원격 세션에서만 변경할 수 있습니다.';
@@ -806,7 +808,7 @@ async function loadSettings(){
 }
 async function applySetting(field,fromCreation=false){
  if($(`apply-${field}`).disabled&&!(fromCreation&&taskCreating&&settingsOwner===sessionId&&settingsData?.editable))return;
- const id=sessionId,value=$(`setting-${field}`).value||null,expected={...settingsData.current};
+ const id=sessionId,value=$(`setting-${field}`).value||null,expected={...settingsData.current,...(field==='permissionMode'?{flavor:settingsData.flavor}:{})};
  if(value===expected[field]){$('settings-status').textContent='이미 같은 값입니다.';return;}
  const key=`hapi-settings-pending:${id}`;
  try{sessionStorage.setItem(key,JSON.stringify({field,value}));}catch{$('settings-status').textContent='변경 요청 상태를 보관할 수 없어 실행하지 않았습니다.';return;}
@@ -816,7 +818,11 @@ async function applySetting(field,fromCreation=false){
  }catch(error){if(error.rejected)sessionStorage.removeItem(key);if(id===sessionId)$('settings-status').textContent=error.rejected?'전송 전에 거부됐습니다. 최신 설정을 확인해 주세요.':'설정 변경 결과가 불확실합니다. 결과 확인으로 조회해 주세요.';}
  finally{busy=fromCreation;if(id===sessionId){await loadSettings();render();}}
 }
-if(workspaceLayout){$('load-settings').onclick=loadSettings;$('apply-model').onclick=()=>applySetting('model');$('apply-effort').onclick=()=>applySetting('effort');}
+function renderPermissionDescription(){
+ const option=settingsOwner===sessionId?settingsData?.permissionModes?.find(o=>o.value===$('setting-permissionMode').value):null;
+ $('permission-description').textContent=option?option.description+' 이 실행 머신의 현재 세션에만 적용하며 다른 세션·macOS 권한은 변경하지 않습니다.':'';
+}
+if(workspaceLayout){$('setting-permissionMode').onchange=renderPermissionDescription;$('apply-permissionMode').onclick=()=>applySetting('permissionMode');$('load-settings').onclick=loadSettings;$('apply-model').onclick=()=>applySetting('model');$('apply-effort').onclick=()=>applySetting('effort');}
 
 let accountsBusy=false;
 async function refreshAccounts(){
@@ -844,17 +850,18 @@ if(workspaceLayout){$('accounts-tab').onclick=()=>{workspacePanel('info');$('acc
 
 if(workspaceLayout){
  const panel=$('composer-settings');
- function closeSettings(){panel.hidden=true;for(const id of ['model-chip','effort-chip'])$(id).setAttribute('aria-expanded','false');}
- for(const field of ['model','effort'])$(field+'-chip').onclick=()=>{
+ function closeSettings(){panel.hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');}
+ for(const field of ['model','effort','permissionMode'])$(field+'-chip').onclick=()=>{
   const opening=panel.hidden||panel.dataset.field!==field;closeSettings();if(!opening)return;
   panel.dataset.field=field;panel.hidden=false;$(field+'-chip').setAttribute('aria-expanded','true');
-  $('settings-title').textContent=field==='model'?'모델 선택':'추론 수준';
-  for(const f of ['model','effort'])$(f+'-field').hidden=f!==field;
+  $('settings-title').textContent=field==='model'?'모델 선택':field==='effort'?'추론 수준':'액세스 모드';
+  for(const f of ['model','effort','permissionMode'])$(f+'-field').hidden=f!==field;
   if(!settingsLoading&&!busy&&connected)loadSettings();
  };
  $('close-settings').onclick=closeSettings;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();workspacePanel('chat');workspaceDrawer(false);}});
  document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
+ bindComposerEnter({input:$('prompt'),form:$('send-form'),button:$('send')});
  $('prompt').addEventListener('input',()=>{const input=$('prompt');input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';});
 }
 

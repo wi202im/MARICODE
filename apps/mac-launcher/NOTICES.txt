@@ -77,3 +77,10 @@ Paseo UI reference and adapted design tokens
   packages/app/src/desktop/components/desktop-updates-section.tsx.
   MARICODE implements native AppKit version/status rows, release notes,
   download notification and manual installation, without bundling the updater.
+
+  Composer keyboard and per-provider mode control references (Apache-2.0):
+  https://github.com/getpaseo/paseo/tree/da8d58bfee5279369c1a733cf5cf4ddc3bd56bb8
+  packages/app/src/composer/input/{input.tsx,state.ts} and
+  packages/app/src/composer/agent-controls/mode-control.tsx.
+  MARICODE implements its own DOM form submit/IME handling and HAPI session-scoped
+  mode selector with stale-state validation; no Paseo runtime is included.
