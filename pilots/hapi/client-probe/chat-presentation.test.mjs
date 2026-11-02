@@ -19,3 +19,9 @@ test('nested assistant output remains attributed to its subagent and truncated c
  const result=chatTimeline([event('r',{type:'tool-call-result',callId:'missing',output:'ok'},3000)]);
  assert.equal(result[0].tools[0].duration,undefined);
 });
+test('engine session events surface as notices so silent launch failures are visible',()=>{
+ const ev=(id,data)=>({id,content:{role:'agent',content:{type:'event',data}}});
+ const rows=chatTimeline([ev('1',{type:'message',message:'Process exited unexpectedly: Not logged in'}),ev('2',{type:'message',message:'Process exited unexpectedly: Not logged in'}),ev('3',{type:'error',message:'boom'}),ev('4',{type:'ready'}),ev('5',{type:'message',message:'Process exited unexpectedly 3 times in a row: x. Dropping the queued message; resolve the issue and resend it.'})]);
+ assert.deepEqual(rows.map(r=>[r.kind,r.error]),[['notice',true],['notice',true],['notice',true]]);
+ assert.match(rows[0].text,/엔진 실행 실패.*Not logged in/);assert.match(rows[1].text,/^엔진 오류: boom/);assert.match(rows[2].text,/다시 보내/);
+});

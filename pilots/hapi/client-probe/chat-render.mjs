@@ -29,6 +29,7 @@ export function renderConversation(container,messages,{engine,session}={}){
  const opened=new Set([...container.querySelectorAll('details[open]')].map(e=>e.dataset.key??e.dataset.callId));
  const nodes=chatTimeline(messages).map(row=>{
   if(row.kind==='duration')return node('p','turn-duration',row.text);
+  if(row.kind==='notice'){return node('p','session-notice'+(row.error?' error':''),row.text);}
   if(row.kind==='activity'){
    const group=node('details','activity-group');group.dataset.key=row.key;group.open=opened.has(row.key);
    const failed=row.tools.filter(t=>t.state==='error').length,waiting=row.tools.filter(t=>t.state==='waiting').length;

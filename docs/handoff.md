@@ -12,14 +12,16 @@
 - **간헐·미재현:** Claude 첫 승인 대기 중 방금 보낸 사용자 메시지가 잠시 보이지 않았다. 재시도에서는 재현되지 않았다.
 - **된다 — 모드 유지:** Claude Bypass가 실행 종료→재개, 백엔드 전체 재시작→재개 후에도 서버 보고값 `bypassPermissions`로 유지된다. 다시 연 세션의 액세스 칩이 원시값 대신 프리셋 이름을 표시하도록 수정했다.
 - **확인 안 함:** 네이티브 WKWebView 창에서의 동일 흐름(헤드리스 Chrome으로 대체), plan/acceptEdits/autoReview 실제 동작, 첨부·질문 UI, 서명 DMG 설치본.
-- **안 된다 — 실패 미표시:** 격리 프로필에 로그인이 없을 때 Claude가 응답 스트림 오류 후 같은 메시지를 조용히 재시도만 하고 화면에는 '접수 확인'만 남았다(HAPI 로그 `response stream error`). 사용자가 실패 원인을 알 수 없으므로 다음 수정 우선순위 1순위다.
+- **수정 — 엔진 실패 표시:** 로그인이 없을 때 Claude가 응답 스트림 오류 후 같은 메시지를 조용히 재시도만 하고 화면에는 '접수 확인'만 남던 문제. 원인은 HAPI가 실패를 세션 이벤트(`type:'event'`, `Process exited unexpectedly…`, 3회 연속 시 메시지 폐기 안내)로만 보내는데 화면이 이 이벤트를 버리던 것이었다. `chat-presentation.mjs`에서 message/error 이벤트를 한국어 알림 줄로 표시하고 연속 중복은 합친다.
+- **된다 — 실제 확인:** 격리 인스턴스에서 HAPI가 실행하는 Claude 바이너리를 잠시 '종료 코드1' 스크립트로 바꿔(키체인 로그인은 건드리지 않음) 실제 HAPI 런처 경로로 실패를 일으켰다. 채팅에 '엔진 실행 실패 — 다시 시도합니다…'와 '연속으로 실패해… 다시 보내 주세요'가 표시되고 '작업 중'이 풀렸다. 바이너리 복원 후 같은 세션에서 다시 보내 정상 응답을 받았다. Codex는 인증 파일을 잠시 치웠을 때 이미 401 오류를 Codex 메시지로 표시하고 있었다(복원 완료).
+- **확인 안 함:** 실제 로그아웃 상태 Claude(키체인)에서의 문구, 네이티브 앱 창.
 
 ## Paseo 대조 미구현 목록 — 2026-11-02
 
-Paseo `835bc49`(2026-11-02, Apache-2.0)를 참고용으로 `.runtime/paseo-reference`에 받아 기능 영역만 대조했다. 코드는 가져오지 않았다. 아래 A는 이미 goals에 있는 요구, B는 Paseo에만 있는 후보로 **goals 추가 여부는 사용자 결정**이 필요하다.
+Paseo `835bc49`(2026-11-02, Apache-2.0)를 참고용으로 `.runtime/paseo-reference`에 받아 기능 영역만 대조했다. 코드는 가져오지 않았다. 아래 A는 이미 goals에 있는 요구, B는 Paseo에만 있는 후보로 2026-11-02 사용자 결정으로 goals의 'Paseo 대조 후속 후보'에 추가했다(예약 실행·음성·모바일 제외).
 
 **A. goals 요구 중 미구현 — Paseo 참고 지점**
-1. 엔진 실패 표시(위 '실패 미표시') — Paseo는 provider 진단 화면과 연결 실패 문구를 따로 둔다(`app/src/components/provider-diagnostic-sheet.tsx`, `connection-failure-copy.ts`).
+1. ~~엔진 실패 표시~~ 완료(위 참고) — Paseo는 provider 진단 화면과 연결 실패 문구를 따로 둔다(`app/src/components/provider-diagnostic-sheet.tsx`, `connection-failure-copy.ts`).
 2. 외부 Codex 기록 가져오기 — Paseo는 rollout 파일을 직접 읽지 않고 Codex app-server의 공식 `thread/list`로 cwd별 목록을 받는다(`server/src/server/agent/providers/codex-app-server-agent.ts` `listImportableSessions`, 가져오기 공통부 `server/agent/import-sessions.ts`).
 3. 실제 계정별 모델 목록·추론·Fast/Plan 등 세부 옵션 — Paseo `model-browser`, `provider-diagnostic-models`.
 4. 선택형 Git 자동화(diff 검토·PR·병합·정리) — Paseo `review/`, `diff-viewer.tsx`, `branch-switcher.tsx`.
@@ -29,7 +31,7 @@ Paseo `835bc49`(2026-11-02, Apache-2.0)를 참고용으로 `.runtime/paseo-refer
 8. QR/짧은 연결 — Paseo 페어링 링크(`pair-link-credentials.ts`).
 9. 여러 저장소 묶음·D5 기기 이식 — Paseo는 다중 호스트 위임(`docs/connected-hosts.md`)·타임라인 동기화(`docs/timeline-sync.md`)로 접근하며 직접 대응 기능은 없다.
 
-**B. Paseo에만 있는 후보 (결정 필요)**
+**B. Paseo에만 있는 후보 (goals 추가 완료)**
 - 컨텍스트 사용량·사용량 표시(`context-window-meter`, `usage/`) — 긴 가져온 대화에서 특히 유용.
 - 턴 종료 알림(`docs/notifications.md`) — goals의 '상시 알림'과 달리 앱 안의 작업 완료 알림이다.
 - 내장 터미널 패널(`terminal/`), 분할 패널·탭(`split-container.tsx`, `workspace-tabs/`).
@@ -37,7 +39,7 @@ Paseo `835bc49`(2026-11-02, Apache-2.0)를 참고용으로 `.runtime/paseo-refer
 - 대화 되감기(`rewind/`), 슬래시 명령·스킬(`client-slash-commands/`, `agent-skills/`).
 - 제외 권장: 예약 실행(`schedules/`, goals 범위 밖), 음성 입력(`voice/`), 모바일 네이티브 앱.
 
-**권장 순서:** 1 엔진 실패 표시 → 2 Codex 가져오기 → B의 컨텍스트 사용량 → 4 diff 검토 → 3 모델 세부 옵션.
+**권장 순서:** 2 Codex 가져오기 → B의 컨텍스트 사용량 → 4 diff 검토 → 3 모델 세부 옵션.
 
 ## 1.0.10 포함 수정 — 다기기(iCloud 공유) 세션 가져오기의 cwd 경계 오탐
 

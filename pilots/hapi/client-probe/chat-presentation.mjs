@@ -18,6 +18,14 @@ export function describeTool(tool){
  const summary=input.description??input.file_path??input.path??input.command??input.cmd??input.message??input.prompt??(plan?'작업 항목 갱신':tool.name??'도구');
  return {label,status,agent,edit,plan,summary:typeof summary==='string'?summary.slice(0,240):JSON.stringify(summary).slice(0,240)};
 }
+// HAPI reports engine launch failures only as session events (claudeRemoteLauncher); dropping them hid retries behind '접수 확인'.
+function noticeText({type,message}){
+ const m=message.trim(),dropped=/^Process exited unexpectedly \d+ times in a row: ([\s\S]*?)\. Dropping the queued message/.exec(m),failed=/^Process exited unexpectedly: ([\s\S]*)/.exec(m);
+ if(dropped)return {error:true,text:`엔진 실행이 연속으로 실패해 대기 중인 메시지를 보내지 못했습니다(${dropped[1]}). 로그인·설치 상태를 확인한 뒤 다시 보내 주세요.`};
+ if(failed)return {error:true,text:`엔진 실행 실패 — 다시 시도합니다(${failed[1]}).`};
+ if(type==='error')return {error:true,text:`엔진 오류: ${m}`};
+ return {error:false,text:m==='Aborted by user'?'사용자가 중단했습니다.':m};
+}
 // Keep activity at the original call position, even when its result arrives
 // after other messages. Never infer child-agent completion from spawn success.
 export function chatTimeline(messages){
@@ -35,6 +43,8 @@ export function chatTimeline(messages){
    if(seen.has(ref.id))continue;seen.add(ref.id);tool.parent=parent;
    const last=rows.at(-1);if(last?.kind==='activity'&&last.parent===parent)last.tools.push(tool);else rows.push({kind:'activity',key:'tool-'+ref.id,parent,tools:[tool]});
   }
+  const note=m.content?.content?.type==='event'&&['message','error'].includes(d?.type)&&typeof d.message==='string'?noticeText(d):null;
+  if(note&&!(rows.at(-1)?.kind==='notice'&&rows.at(-1).text===note.text))rows.push({kind:'notice',key:m.id??m.seq,...note});
   const duration=d?.duration_ms??d?.durationMs;
   if((d?.subtype==='turn_duration'||d?.type==='turn_duration')&&Number.isFinite(duration))rows.push({kind:'duration',key:m.id,text:`작업 시간 ${formatDuration(duration)}`});
  }
