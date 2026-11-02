@@ -612,7 +612,17 @@ const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('clau
   if(previous.imported!==true)throw Error('이전 대화 기록을 확인하지 못했습니다.');
   await openWorkspace();
   if(!trialSessions.some(s=>s.id===id))throw Error('등록된 대화를 목록에서 찾지 못했습니다.');
-  await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);notice('기존 Claude 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.');}
+  await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);
+  const mine=epoch,manual='기존 Claude 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.';
+  if(connected&&session&&!session.active&&!actions.pending){
+   busy=true;render();
+   try{
+    const request=actions.resume();render();await request;await refresh();
+    if(mine===epoch)notice(session?.active?'기존 Claude 기록을 가져와 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.':manual);
+   }catch(e){if(mine===epoch){notice('기존 Claude 기록을 가져왔습니다. 자동 재개에 실패했습니다('+e.message+'). 실행 재개를 눌러 다시 시도하세요. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.');await refresh().catch(()=>{});}}
+   finally{if(mine===epoch){busy=false;render();}}
+  }else notice(manual);
+ }
 }):null;
 
 function taskPending(){try{return JSON.parse(sessionStorage.getItem(taskPendingKey)||'null');}catch{return null;}}
