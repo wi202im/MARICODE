@@ -752,7 +752,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     self.open.isEnabled = self.url != nil; self.stop.isEnabled = true
                     self.status.stringValue = "종료할 수 없습니다. 작업·승인·미확인 요청과 실행 상태를 웹 화면에서 확인한 뒤 다시 종료하세요."
                     if self.quitting {
-                        self.quitting = false; NSApp.reply(toApplicationShouldTerminate: false)
+                        self.quitting = false
                         if self.webView.url?.path == "/workspace" {
                             self.selectMachine("local")
                             let nonce = UUID().uuidString; self.quitReviewNonce = nonce
@@ -790,7 +790,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             if self.quitting {
                 let ready = self.finishUpdateInstallation(normalShutdown: p.terminationStatus == 0)
                 if !ready { self.quitting = false; self.stopping = false }
-                NSApp.reply(toApplicationShouldTerminate: ready)
+                if ready { NSApp.terminate(nil) }
             }
             else if self.updateInstall.pending { self.quitReviewNonce = nil; self.cancelUpdateInstallation() }
             else if p.terminationStatus == 0, let action = self.pendingConfiguration {
@@ -816,7 +816,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         do { try input?.fileHandleForWriting.write(contentsOf: Data("quit\n".utf8)) } catch {
             stopping = false; stop.isEnabled = true; open.isEnabled = url != nil
             status.stringValue = "종료 요청 전달 실패 · 강제로 다른 프로세스를 종료하지 않습니다."
-            if quitting { quitting = false; cancelUpdateInstallation(); NSApp.reply(toApplicationShouldTerminate: false) }
+            if quitting { quitting = false; cancelUpdateInstallation() }
         }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -838,7 +838,12 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard quitReviewNonce == nil else { return .terminateCancel }
         guard process != nil else { return finishUpdateInstallation(normalShutdown: runtimeExitIsSafe) ? .terminateNow : .terminateCancel }
-        quitting = true; stopWeb(); return .terminateLater
+        // terminateLater enters AppKit's termination loop, which can starve the
+        // main-queue pipe/process callbacks needed to finish this shutdown.
+        // Decline this attempt, keep the normal event loop alive, then terminate
+        // again only after the owned runtime has actually exited.
+        guard !quitting else { return .terminateCancel }
+        quitting = true; stopWeb(); return .terminateCancel
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }

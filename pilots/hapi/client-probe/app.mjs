@@ -44,7 +44,7 @@ const notice=text=>{$('notice').textContent=text;};
 function storedPending(){try{return JSON.parse(sessionStorage.getItem(pendingKey()));}catch{return null;}}
 async function api(path,{method='GET',body,signal}={}){
   const usedToken=token;
-  const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path.endsWith('/resume')?120000:15000)});
+  const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
   if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
@@ -590,14 +590,19 @@ restoreLogin();
 // Creation has its own project target, separate from the selected conversation.
 const taskPendingKey='hapi-trial-new-task';
 let taskCreating=false,taskProjectsReady=false,projectCatalog=[],selectedProject='';
-let importHistorySupported=false;
+let importHistorySupported=false,draftSessionMode='new';
 const importedHistory=workspaceLayout?createImportedHistory({element:$('imported-history'),api,scroller:$('conversation-history')}):null;
 let draftProject=null,draftOptions=null,draftLoading=false,draftSerial=0,draftMessage='',draftContinue=false,draftSupportsGit=false,draftAccountSerial=0,draftGeneralSupported=false,draftDefaultsSerial=0,draftDefaultsLoading=false;
 try{selectedProject=sessionStorage.getItem('maricode-project')||'';}catch{}
 const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('claude-import-panel'),api,
- context:()=>({agent:$('task-agent').value,project:draftProject,path:projectCatalog.find(p=>p.key===draftProject)?.path,general:projectCatalog.find(p=>p.key===draftProject)?.general,projectAvailable:taskProjectsReady&&projectCatalog.some(p=>p.key===draftProject),busy:busy||taskCreating}),
+ context:()=>({mode:draftSessionMode,agent:$('task-agent').value,project:draftProject,path:projectCatalog.find(p=>p.key===draftProject)?.path,general:projectCatalog.find(p=>p.key===draftProject)?.general,projectAvailable:taskProjectsReady&&projectCatalog.some(p=>p.key===draftProject),busy:busy||taskCreating}),
  changed:value=>{taskCreating=value;busy=value;render();renderTaskCreation();},
- opened:async id=>{await openWorkspace();await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);notice('기존 Claude 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.');}
+ opened:async id=>{
+  const previous=await api('/api/sessions/'+encodeURIComponent(id)+'/import-history');
+  if(previous.imported!==true)throw Error('이전 대화 기록을 확인하지 못했습니다.');
+  await openWorkspace();
+  if(!trialSessions.some(s=>s.id===id))throw Error('등록된 대화를 목록에서 찾지 못했습니다.');
+  await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);notice('기존 Claude 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.');}
 }):null;
 
 function taskPending(){try{return JSON.parse(sessionStorage.getItem(taskPendingKey)||'null');}catch{return null;}}
@@ -610,7 +615,7 @@ async function loadTaskProjects(followSession=false){
  try{
   const result=await api('/api/projects');projectCatalog=result.projects;
   if(followSession&&$('new-task-panel').hidden)selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===sessionId),selectedProject);
-  const chosen=draftProjectSelection(projectCatalog,taskPending()?.project??draftProject,selectedProject);
+  const chosen=draftProjectSelection(projectCatalog,claudeImportPanel?.pendingProject??taskPending()?.project??draftProject,selectedProject);
   taskProjectsReady=chosen!==null;
   if(draftProject===null&&chosen!==null)draftProject=chosen;
   renderDraftLocations();
@@ -630,7 +635,8 @@ function renderDraftLocations(){
 async function openNewWorkspace(project=selectedProject){
  if(taskCreating||busy)return;
  rememberChat();notice('');
- draftProject=taskPending()?.project??(projectCatalog.some(p=>p.key===project)?project:draftProject);draftMessage='';draftContinue=false;draftOptions=null;
+ draftSessionMode=claudeImportPanel?.pending?'import':'new';
+ draftProject=claudeImportPanel?.pendingProject??taskPending()?.project??(projectCatalog.some(p=>p.key===project)?project:draftProject);draftMessage='';draftContinue=false;draftOptions=null;
  $('new-task-panel').hidden=false;$('draft-git-options').open=false;workspacePanel('chat');workspaceDrawer(false);renderWorkspace();
  await loadTaskProjects();await inheritDraftDefaults();await loadWorkspaceChoices();refreshDraftAccount();
 }
@@ -674,34 +680,43 @@ async function inheritDraftDefaults(){
 }
 let draftInherited=null;
 function renderTaskCreation(){
- if(!workspaceLayout)return;claudeImportPanel?.render();
+ if(!workspaceLayout)return;
+ if(claudeImportPanel?.pending){draftSessionMode='import';$('task-agent').value='claude';}
+ const importing=draftSessionMode==='import',importPending=!!claudeImportPanel?.pending;
+ $('claude-import-panel').open=importing;claudeImportPanel?.render();
+ $('session-entry-new').setAttribute('aria-pressed',String(!importing));$('session-entry-import').setAttribute('aria-pressed',String(importing));
+ $('session-entry-new').disabled=taskCreating||importPending;
+ $('session-entry-import').disabled=taskCreating||!!taskPending()||!importHistorySupported||$('task-agent').value!=='claude';
+ $('session-entry-note').textContent=importing?'기존 대화를 복사한 뒤 이전 기록을 확인하고 같은 세션을 재개합니다. 새 대화는 만들지 않습니다.':$('task-agent').value==='claude'?'새 대화를 시작합니다. 이전 CLI 대화를 이어가려면 기존 세션 가져오기를 선택하세요.':'새 대화를 시작합니다. 기존 CLI 대화 가져오기는 현재 Claude를 지원합니다.';
+ $('create-task').hidden=importing||importPending;$('draft-defaults').hidden=importing;
+ $('claude-import-panel').open=importing;
  const pending=taskPending();if(pending)$('task-agent').value=pending.agent;
  const project=projectCatalog.find(p=>p.key===draftProject),mode=$('task-mode').value,git=!project?.general&&draftOptions?.kind==='git';
  $('draft-project-fields').hidden=!!project?.general;$('draft-general-note').hidden=!project?.general;
  $('draft-general-mode').setAttribute('aria-pressed',String(!!project?.general));$('draft-project-mode').setAttribute('aria-pressed',String(!project?.general));
- $('draft-general-mode').disabled=$('draft-project-mode').disabled=taskCreating||!!pending;
+ $('draft-general-mode').disabled=$('draft-project-mode').disabled=taskCreating||importPending||!!pending;
  $('task-project').textContent=project?.path??'프로젝트 폴더를 선택하세요.';
- $('task-project-select').disabled=taskCreating||!!pending;$('task-workspace-select').disabled=taskCreating||!!pending;
+ $('task-project-select').disabled=taskCreating||importPending||!!pending;$('task-workspace-select').disabled=taskCreating||importPending||!!pending;
  $('check-task').hidden=!pending;$('check-task').disabled=taskCreating;
  $('park-task').hidden=!pending;$('park-task').disabled=taskCreating;
- for(const id of ['task-agent','task-mode','task-branch','task-worktree','task-worktree-name'])$(id).disabled=taskCreating||!!pending||id!=='task-agent'&&(!draftOptions||!git);
+ for(const id of ['task-agent','task-mode','task-branch','task-worktree','task-worktree-name'])$(id).disabled=taskCreating||importPending||!!pending||id!=='task-agent'&&(!draftOptions||!git);
  for(const option of $('task-mode').options)option.disabled=option.value!=='current'&&(!git||!draftOptions?.head);
- $('draft-git-options').hidden=!git;$('draft-git-summary').textContent='브랜치·워크트리 선택'+(draftOptions?.branch?' · '+draftOptions.branch:'');
+ $('draft-git-options').hidden=importing||!git;$('draft-git-summary').textContent='브랜치·워크트리 선택'+(draftOptions?.branch?' · '+draftOptions.branch:'');
  $('draft-branch-field').hidden=!git||mode==='existing';$('draft-worktree-field').hidden=mode!=='existing';$('draft-name-field').hidden=mode!=='new';
  const valid=mode==='new'?!!$('task-worktree-name').value.trim()&&!!$('task-branch').value:mode==='existing'?!!$('task-worktree').value:!git||!!$('task-branch').value||!draftOptions?.branches.length;
- $('create-task').disabled=draftDefaultsLoading||taskCreating||!!pending&&!draftContinue||!taskProjectsReady||draftLoading||!draftOptions||!valid;
+ $('create-task').disabled=draftDefaultsLoading||taskCreating||importPending||!!pending&&!draftContinue||!taskProjectsReady||draftLoading||!draftOptions||!valid;
  $('create-task').textContent=draftContinue?'준비된 작업에서 세션 만들기':project?.general?'대화 시작':'세션 만들고 채팅 시작';
- document.querySelector('.task-create-heading h2').textContent=project?.general?'무엇을 이야기할까요?':'어디에서 작업할까요?';
+ document.querySelector('.task-create-heading h2').textContent=importing?'어떤 대화를 이어갈까요?':project?.general?'무엇을 이야기할까요?':'어디에서 작업할까요?';
  $('draft-workspace-refresh').disabled=taskCreating||draftLoading||!!pending;
- $('draft-add-project').disabled=taskCreating||!!pending;
+ $('draft-add-project').disabled=taskCreating||importPending||!!pending;
  $('task-status').textContent=taskCreating?'작업 공간과 세션을 준비하고 있습니다…':pending?(draftContinue?'작업 공간은 준비됐고 세션 생성은 아직 시작되지 않았습니다. 같은 요청으로 계속할 수 있습니다.':'이전 요청의 결과 확인이 필요합니다. 작업 대상은 고정해 두었습니다.')+(draftMessage?'\n'+draftMessage:''):draftMessage;
  $('draft-workspace-note').textContent=draftLoading?'브랜치와 워크트리를 확인하고 있습니다…':mode==='new'?'선택한 브랜치의 커밋에서 새 작업 폴더를 만듭니다. 미커밋 변경은 옮기지 않습니다.':mode==='existing'?'기존 작업 폴더와 브랜치를 그대로 사용합니다. 기존 세션은 왼쪽 목록에서 이어갈 수 있습니다.':git&&$('task-branch').value!==draftOptions.branch?'선택한 브랜치로 현재 폴더를 전환합니다. 실행 중인 작업이나 미커밋 변경이 있으면 중단합니다.':draftOptions?.note??'현재 폴더의 파일과 작업 상태를 그대로 사용합니다.';
  const target=mode==='existing'?draftOptions?.worktrees.find(w=>w.key===$('task-worktree').value)?.path:mode==='new'?'앱 전용 폴더에 새 워크트리':project?.path;
- $('draft-target').hidden=!!project?.general;
+ $('draft-target').hidden=importing||!!project?.general;
  $('draft-target').textContent=(project?.projectLabel??project?.label??'프로젝트 미선택')+' → '+(mode==='new'?'새 작업공간':mode==='existing'?'기존 워크트리':project?.workspaceLabel??'기본 작업공간')+' → '+($('task-agent').value==='claude'?'Claude':'Codex')+'\n'+(target??'작업 위치 확인 중')+(git?'\n브랜치: '+(mode==='new'?$('task-worktree-name').value.trim()||'이름 입력':mode==='existing'?draftOptions?.worktrees.find(w=>w.key===$('task-worktree').value)?.branch:$('task-branch').value||'분리된 HEAD'):'');
 }
 async function createTask(checkOnly){
- if(taskCreating||busy||!token)return;
+ if(taskCreating||busy||!token||claudeImportPanel?.blocksCreation)return;
  let request=taskPending();
  if(!checkOnly&&request&&!draftContinue||checkOnly&&!request)return;
  if(!request){
@@ -749,7 +764,7 @@ async function refreshDraftAccount(){
 }
 if(workspaceLayout){
  $('draft-general-mode').onclick=$('empty-general').onclick=async()=>{
- if(busy||taskCreating||taskPending())return;busy=true;render();
+ if(busy||taskCreating||taskPending()||claudeImportPanel?.pending)return;busy=true;render();
  try{const r=await api('/api/conversations/prepare',{method:'POST',body:{}});await loadTaskProjects();busy=false;await openNewWorkspace(r.project);}
  catch(error){notice(error.message);}finally{busy=false;render();}
  };
@@ -761,10 +776,12 @@ if(workspaceLayout){
   if(!confirm('생성 결과가 미확인입니다. 기록을 보존하고 별도 요청을 준비할까요? 이미 생성된 작업은 삭제하지 않습니다.'))return;
   try{sessionStorage.setItem('hapi-trial-held-task:'+request.requestId,JSON.stringify(request));sessionStorage.removeItem(taskPendingKey);draftMessage='기존 기록은 보존했습니다.';renderTaskCreation();}catch{draftMessage='보관하지 못했습니다.';renderTaskCreation();}
  };
+ $('session-entry-new').onclick=()=>{if(taskCreating||claudeImportPanel?.pending)return;draftSessionMode='new';renderTaskCreation();};
+ $('session-entry-import').onclick=()=>{if($('session-entry-import').disabled)return;draftSessionMode='import';renderTaskCreation();};
  $('create-task').onclick=()=>createTask(false);$('check-task').onclick=()=>createTask(true);
  for(const id of ['task-mode','task-branch','task-worktree','task-worktree-name'])$(id).addEventListener(id==='task-worktree-name'?'input':'change',renderTaskCreation);
  $('draft-workspace-refresh').onclick=loadWorkspaceChoices;$('draft-account-check').onclick=refreshDraftAccount;
- $('task-agent').onchange=()=>{draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;$('draft-defaults').textContent='선택한 AI로 새 세션을 만듭니다.';renderTaskCreation();refreshDraftAccount();};
+ $('task-agent').onchange=()=>{if($('task-agent').value!=='claude')draftSessionMode='new';draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;$('draft-defaults').textContent='선택한 AI로 새 세션을 만듭니다.';renderTaskCreation();refreshDraftAccount();};
  $('draft-account-login').onclick=async()=>{const agent=$('task-agent').value;$('draft-account-login').disabled=true;try{await api('/api/accounts/'+agent+'/login',{method:'POST',body:{}});$('draft-account-state').textContent='공식 로그인 창에서 완료한 뒤 로그인 상태 확인을 눌러 주세요.';}catch{$('draft-account-state').textContent='로그인 시작 상태를 확인하세요. 자동으로 다시 실행하지 않습니다.';}finally{$('draft-account-login').disabled=false;}};
  for(const field of ['group','sort','ended','details','compact']){
   const el=$('display-'+field);if(el.type==='checkbox')el.checked=sidebarDisplay[field];else el.value=sidebarDisplay[field];

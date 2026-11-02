@@ -13,10 +13,11 @@ export function nativeClaudeSourcePicker(view=globalThis.window){
 }
 export function createClaudeImportPanel({element,api,context,opened,changed,pickSource=nativeClaudeSourcePicker()}){
  const $=id=>element.querySelector('#'+id),key='maricode-claude-import-pending';
- let supported=false,loading=false,selection=null,owner=null,serial=0,searchedOwner=null;
+ let supported=false,loading=false,selection=null,owner=null,serial=0,searchedOwner=null,lastChecked=null;
+ const freshness=()=>{const label=$('claude-import-updated');if(label)label.textContent=lastChecked?'마지막 확인 '+new Date(lastChecked).toLocaleString()+' · 원본 작업을 마친 뒤 새로고침하세요.':'목록을 확인한 적이 없습니다.';};
  let pending;try{pending=JSON.parse(sessionStorage.getItem(key)||'null');}catch{}
  function render(){
-  const c=context();element.hidden=!supported||c.agent!=='claude'||c.general;
+  freshness();const c=context();element.hidden=!supported||c.agent!=='claude'||c.general||c.mode!=='import';
   $('claude-import-project').textContent=c.path??'작업 폴더를 먼저 선택하세요.';
   if(pending)$('claude-import-source').value=pending.source??'';
   const blocked=loading||c.busy;
@@ -24,30 +25,30 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
   $('claude-import-browse').hidden=!pickSource;
   $('claude-import-browse').disabled=blocked||!!pending||!c.projectAvailable;
   $('claude-import-find').disabled=blocked||!!pending||!c.projectAvailable;
+  $('claude-import-find').title=loading?'목록 확인 중…':'대화 목록 새로고침';
   $('claude-import-select').disabled=blocked||!!pending||!selection?.rows.length;
-  $('claude-import-confirm').disabled=blocked||!!pending;
   const chosen=selection?.rows.find(row=>row.id===$('claude-import-select').value);
   $('claude-import-detail').textContent=chosen?`${chosen.size==null?'':(chosen.size/1024/1024).toFixed(1)+' MiB · '}ID ${chosen.id.slice(0,8)}${chosen.warning?' · '+chosen.warning:''}`:'';
   $('claude-import-more').hidden=selection?.nextOffset==null;
   $('claude-import-more').disabled=blocked||!!pending;
-  $('claude-import-start').disabled=blocked||!!pending||!chosen||chosen.importable===false||selection.project!==c.project||!$('claude-import-confirm').checked;
-  $('claude-import-check').hidden=!pending;$('claude-import-check').disabled=blocked;
-  if(owner!==c.project){owner=c.project;selection=null;searchedOwner=null;serial++;$('claude-import-status').textContent='';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();$('claude-import-confirm').checked=false;}
+  $('claude-import-start').disabled=blocked||!!pending||!chosen||chosen.importable===false||selection.project!==c.project;
+  $('claude-import-check').hidden=!pending;$('claude-import-check').disabled=blocked;$('claude-import-check').textContent=pending?.registeredId?'가져온 대화 다시 열기':'가져오기 결과 확인';
+  if(owner!==c.project){owner=c.project;selection=null;searchedOwner=null;lastChecked=null;serial++;$('claude-import-status').textContent='';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();}
   if(element.open&&!element.hidden&&!blocked&&!pending&&c.projectAvailable&&searchedOwner!==c.project)queueMicrotask(()=>{if(element.open&&!element.hidden&&!loading&&!pending&&searchedOwner!==context().project)$('claude-import-find').click();});
-  if(pending)$('claude-import-status').textContent=loading?'선택한 기록을 복사하고 등록 결과를 확인하고 있습니다…':'이전 가져오기 결과 확인이 필요합니다. 선택을 바꾸거나 다시 등록하지 않습니다.';
+  if(pending)$('claude-import-status').textContent=pending.registeredId?'등록은 완료됐습니다. 가져온 대화를 여는 중이거나 화면 확인이 필요합니다. 새 세션은 만들지 않습니다.':loading?'선택한 기록을 복사하고 등록 결과를 확인하고 있습니다…':'이전 가져오기 결과 확인이 필요합니다. 선택을 바꾸거나 다시 등록하지 않습니다.';
  }
  async function search(more=false){
   if(loading||pending||context().busy||!context().projectAvailable||more&&selection?.nextOffset==null)return;
-  const previous=more?selection:null,selectedId=more?$('claude-import-select').value:null;
+  const previous=more?selection:null,selectedId=$('claude-import-select').value;
   const c=context(),request={project:c.project,source:previous?.source??$('claude-import-source').value.trim(),...(more?{offset:previous.nextOffset}:{})},ticket=++serial;searchedOwner=c.project;loading=true;if(!more)selection=null;render();
   $('claude-import-status').textContent='선택한 작업 폴더의 Claude 기록을 찾고 있습니다…';
   try{
    const result=await api('/api/claude-import/list',{method:'POST',body:request});
    if(ticket!==serial||context().project!==request.project)return;
    const rows=[...new Map([...(previous?.rows??[]),...result.sessions].map(row=>[row.id,row])).values()];
-   selection={...request,source:result.searched?.source??request.source,rows,total:result.total??rows.length,nextOffset:result.nextOffset??null};
+   lastChecked=Date.now();selection={...request,source:result.searched?.source??request.source,rows,total:result.total??rows.length,nextOffset:result.nextOffset??null};
    $('claude-import-source-status').textContent=result.searched?`${({'selected':'선택한 기록 폴더','environment':'CLI 환경변수에서 찾은 폴더','shell-file':'셸 설정에서 찾은 경로 후보','default':'기본 Claude 기록 폴더'})[result.sourceOrigin]??'기록 폴더'}: ${result.searched.source}`:'저장 위치를 자동으로 확인하지 못했습니다. 기록 폴더를 선택해 주세요.';
-   $('claude-import-confirm').checked=false;
+
    $('claude-import-searched').textContent=result.searched?`작업 폴더: ${result.searched.project}\n기록 저장소: ${result.searched.source}\n검색한 기록 폴더: ${result.searched.records}`:'';
    $('claude-import-select').replaceChildren(...rows.map(row=>{const o=document.createElement('option');o.value=row.id;o.textContent=row.title+' · '+new Date(row.modifiedAt).toLocaleString()+(row.messageCount==null?'':' · '+row.messageCount+'개 메시지')+(row.importable===false?' · 확인 필요':'');return o;}));
    if(selectedId&&rows.some(row=>row.id===selectedId))$('claude-import-select').value=selectedId;
@@ -58,14 +59,14 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
  }
  $('claude-import-find').onclick=()=>search();
  $('claude-import-more').onclick=()=>search(true);
- $('claude-import-select').onchange=()=>{$('claude-import-confirm').checked=false;render();};
+ $('claude-import-select').onchange=()=>{render();};
  $('claude-import-browse').onclick=async()=>{
   if(!pickSource||$('claude-import-browse').disabled||element.hidden)return;
   const project=context().project,ticket=++serial;searchedOwner=project;loading=true;render();let search=false;
   try{
    const path=await pickSource();
    if(ticket!==serial||context().project!==project||context().busy||pending||element.hidden||!path)return;
-   $('claude-import-source').value=path;selection=null;$('claude-import-confirm').checked=false;
+   $('claude-import-source').value=path;selection=null;
    $('claude-import-select').replaceChildren();$('claude-import-searched').textContent='';search=true;
   }catch{$('claude-import-status').textContent='폴더 선택창을 열지 못했습니다. 경로를 직접 입력할 수도 있습니다.';}
   finally{loading=false;render();}
@@ -74,7 +75,7 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
  async function run(check){
   if(loading||context().busy)return;
   if(!check){
-   if($('claude-import-start').disabled)return;
+   if(element.hidden||$('claude-import-start').disabled)return;
    const row=selection.rows.find(r=>r.id===$('claude-import-select').value);if(!row)return;
    const request={project:selection.project,source:selection.source,id:row.id,fingerprint:row.fingerprint};
    try{sessionStorage.setItem(key,JSON.stringify(request));pending=request;}catch{$('claude-import-status').textContent='요청을 보관하지 못해 시작하지 않았습니다.';return;}
@@ -82,24 +83,26 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
   if(!pending)return;loading=true;changed(true);render();
   let message='';
   try{
-   const result=await api('/api/claude-import'+(check?'/check':''),{method:'POST',body:pending});
+   const result=pending.registeredId?{state:'registered',id:pending.registeredId}:await api('/api/claude-import'+(check?'/check':''),{method:'POST',body:pending});
    if(result.state==='registered'){
-    pending=null;sessionStorage.removeItem(key);selection=null;$('claude-import-confirm').checked=false;
+    if(typeof result.id!=='string'||!/^[-a-f0-9]{36}$/.test(result.id))throw Error('등록된 세션 ID를 확인하지 못했습니다.');
+    pending={...pending,registeredId:result.id};sessionStorage.setItem(key,JSON.stringify(pending));
     await opened(result.id);
+    pending=null;sessionStorage.removeItem(key);selection=null;
    }else if(result.state==='none'){
     pending=null;sessionStorage.removeItem(key);selection=null;message='등록 요청은 시작되지 않았습니다. 폴더와 실행기 준비 상태를 확인한 뒤 기록을 다시 찾으세요.';
    }else message='가져오기 결과가 미확인입니다. 결과 확인은 조회만 하며 원본 복사나 등록을 반복하지 않습니다.';
   }catch(error){
-   if(error.rejected){pending=null;sessionStorage.removeItem(key);selection=null;message=error.message;}
+   if(pending?.registeredId)message='등록은 완료됐지만 이전 대화 화면을 열지 못했습니다. 가져온 대화 다시 열기를 눌러 주세요. 새 세션을 만들거나 원본을 다시 복사하지 않습니다.';
+   else if(error.rejected){pending=null;sessionStorage.removeItem(key);selection=null;message=error.message;}
    else message='가져오기 결과를 확인하지 못했습니다. 결과 확인을 눌러 주세요. 원본 기록은 변경하지 않습니다.';
   }
   finally{loading=false;changed(false);render();if(message)$('claude-import-status').textContent=message;}
  }
  $('claude-import-start').onclick=()=>run(false);$('claude-import-check').onclick=()=>run(true);
- $('claude-import-confirm').onchange=render;
  element.addEventListener('toggle',()=>{if(element.open&&!element.hidden&&!loading&&!pending&&searchedOwner!==context().project)$('claude-import-find').click();});
- $('claude-import-source').oninput=()=>{$('claude-import-source-status').textContent='입력한 위치는 아직 검색하지 않았습니다.';serial++;searchedOwner=context().project;selection=null;$('claude-import-status').textContent='저장 위치를 입력한 뒤 기존 세션 다시 찾기를 누르세요.';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();$('claude-import-confirm').checked=false;render();};
- return {render,configure(enabled){supported=enabled;render();}};
+ $('claude-import-source').oninput=()=>{$('claude-import-source-status').textContent='입력한 위치는 아직 검색하지 않았습니다.';serial++;searchedOwner=context().project;selection=null;$('claude-import-status').textContent='저장 위치를 입력한 뒤 목록 옆 새로고침를 누르세요.';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();render();};
+ return {render,get pending(){return !!pending;},get pendingProject(){return pending?.project;},get blocksCreation(){return !!pending||context().mode==='import';},configure(enabled){supported=enabled;render();}};
 }
 
 export function createImportedHistory({element,api,scroller}){

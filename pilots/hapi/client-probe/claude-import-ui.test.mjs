@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createClaudeImportPanel,nativeClaudeSourcePicker,createImportedHistory} from './claude-import-ui.mjs';
 
-function fixture(pickSource,respond=()=>({sessions:[],status:"empty"})){
+function fixture(pickSource,respond=()=>({sessions:[],status:"empty"}),opened=()=>{}){
  const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,{value:'',checked:false,disabled:false,hidden:false,textContent:'',replaceChildren(...rows){this.rows=rows;},click(){if(!this.disabled)return this.onclick?.();}});return nodes.get(id);};
  const element={open:false,hidden:true,querySelector:s=>get(s.slice(1)),addEventListener(){}};
- globalThis.sessionStorage={getItem:()=>null};globalThis.document={createElement:()=>({})};
- const c={agent:'claude',project:'one',path:'/fixture/project',projectAvailable:true,busy:false},requests=[];
- const panel=createClaudeImportPanel({element,pickSource,context:()=>c,changed(){},opened(){},api:async(path,options)=>{requests.push({path,...options.body});return respond(options.body);}});
- panel.configure(true);return {get,c,requests,panel};
+ const store=new Map();globalThis.sessionStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};globalThis.document={createElement:()=>({})};
+ const c={agent:'claude',project:'one',path:'/fixture/project',projectAvailable:true,busy:false,mode:'import'},requests=[];
+ const panel=createClaudeImportPanel({element,pickSource,context:()=>c,changed(){},opened,api:async(path,options)=>{requests.push({path,...options.body});return respond(options.body,path);}});
+ panel.configure(true);return {get,c,requests,panel,store,element};
 }
 test('selected profile searches the current workspace once; cancel preserves the previous path',async()=>{
  let answer='/fixture/.claude-global';const f=fixture(async()=>answer);
@@ -36,11 +36,11 @@ test('native folder response is tied to one request and unavailable on remote pa
 
 test('older pages preserve the chosen session; blocked records explain why without enabling import',async()=>{
  const f=fixture(null,request=>request.offset?{sessions:[{id:'older',title:'Older',modifiedAt:0,importable:false,warning:'too large'}],total:2,nextOffset:null}:{sessions:[{id:'recent',title:'Recent',modifiedAt:0,importable:true}],total:2,nextOffset:50,searched:{source:'/resolved',project:'/fixture/project',records:'/records'}});
- await f.get('claude-import-find').onclick();f.get('claude-import-select').value='recent';f.get('claude-import-confirm').checked=true;f.panel.render();
+ await f.get('claude-import-find').onclick();f.get('claude-import-select').value='recent';f.panel.render();
  assert.equal(f.get('claude-import-start').disabled,false);assert.equal(f.get('claude-import-more').hidden,false);
  await f.get('claude-import-more').onclick();assert.equal(f.requests[1].offset,50);assert.equal(f.requests[1].source,'/resolved');
- assert.equal(f.get('claude-import-select').value,'recent');assert.equal(f.get('claude-import-select').rows.length,2);assert.equal(f.get('claude-import-more').hidden,true);assert.equal(f.get('claude-import-confirm').checked,false);
- f.get('claude-import-select').value='older';f.get('claude-import-select').onchange();f.get('claude-import-confirm').checked=true;f.panel.render();
+ assert.equal(f.get('claude-import-select').value,'recent');assert.equal(f.get('claude-import-select').rows.length,2);assert.equal(f.get('claude-import-more').hidden,true);
+ f.get('claude-import-select').value='older';f.get('claude-import-select').onchange();f.panel.render();
  assert.match(f.get('claude-import-detail').textContent,/too large/);assert.equal(f.get('claude-import-start').disabled,true);
  await f.get('claude-import-start').onclick();assert.equal(f.requests.length,2);
 });
@@ -69,4 +69,28 @@ test('initial transcript scrolls to recent content; older pages keep the reading
  const f=historyFixture(async path=>{if(path.includes('?'))scroller.scrollHeight=1400;return {imported:true,total:2,messages:[{role:'user',text:'history'}],before:1,hasMore:true};},scroller);
  await f.history.load('one',true);assert.equal(scroller.scrollTop,1000);
  scroller.scrollTop=100;await f.get('button').onclick();assert.equal(scroller.scrollTop,500);
+});
+
+
+test('new and existing session routes are exclusive, including an unresolved import',async()=>{
+ const f=fixture(null,(_,path)=>path.endsWith('/list')?{sessions:[{id:'source',title:'Prior',importable:true,fingerprint:'abc'}],searched:{source:'/fixture'}}:{state:'registering'});
+ f.c.mode='new';f.panel.render();assert.equal(f.element.hidden,true);assert.equal(f.panel.blocksCreation,false);
+ f.c.mode='import';f.panel.render();assert.equal(f.element.hidden,false);assert.equal(f.panel.blocksCreation,true);
+ await f.get('claude-import-find').onclick();f.get('claude-import-select').value='source';f.panel.render();
+ await f.get('claude-import-start').onclick();f.c.mode='new';f.panel.render();assert.equal(f.panel.blocksCreation,true);assert.equal(f.panel.pending,true);
+});
+test('a registered import retains its ID when opening fails and retries only opening that conversation',async()=>{
+ let opens=0;const id='11111111-1111-4111-8111-111111111111';
+ const f=fixture(null,(_,path)=>path.endsWith('/list')?{sessions:[{id:'source',title:'Prior',importable:true,fingerprint:'abc'}],searched:{source:'/fixture'}}:{state:'registered',id},async selected=>{assert.equal(selected,id);if(++opens===1)throw Error('history unavailable');});
+ await f.get('claude-import-find').onclick();f.get('claude-import-select').value='source';f.panel.render();
+ await f.get('claude-import-start').onclick();assert.equal(f.panel.pending,true);assert.equal(f.get('claude-import-check').hidden,false);assert.match(f.get('claude-import-status').textContent,/등록.*완료/);
+ assert.equal(JSON.parse(f.store.get('maricode-claude-import-pending')).registeredId,id);
+ await f.get('claude-import-check').onclick();assert.equal(opens,2);assert.equal(f.requests.length,2);assert.equal(f.panel.pending,false);
+});
+
+test('refresh replaces stale rows and fingerprints while retaining a still-present selection',async()=>{
+ let generation=0;const f=fixture(null,()=>({sessions:[{id:'same',title:'Latest '+generation,fingerprint:String(generation),importable:true}],searched:{source:'/fixture'}}));
+ await f.get('claude-import-find').onclick();f.get('claude-import-select').value='same';f.panel.render();assert.equal(f.get('claude-import-start').disabled,false);
+ generation++;await f.get('claude-import-find').onclick();assert.equal(f.get('claude-import-select').value,'same');assert.match(f.get('claude-import-select').rows[0].textContent,/Latest 1/);
+ assert.match(f.get('claude-import-updated').textContent,/마지막 확인/);assert.equal(f.requests.length,2);
 });
