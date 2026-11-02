@@ -1,6 +1,6 @@
-# MARICODE 1.0.0 — Mac 앱
+# MARICODE — Mac 앱
 
-제품 코드는 [AGPL-3.0-only](LICENSE)다. 적용 범위는 `apps/mac-launcher`와 `pilots/hapi/client-probe`이며 제3자 고지는 유지한다. [사용 안내](USER-GUIDE.txt), [빌드 방법](BUILDING.txt), [고지](NOTICES.txt)는 앱 도움말에서도 볼 수 있다. 현재는 공개 전 로컬 설치 후보이며, 작업 화면은 앱 안에서 열린다.
+제품 코드는 [AGPL-3.0-only](LICENSE)다. 적용 범위는 `apps/mac-launcher`와 `pilots/hapi/client-probe`이며 제3자 고지는 유지한다. [사용 안내](USER-GUIDE.txt), [빌드 방법](BUILDING.txt), [고지](NOTICES.txt)는 앱 도움말에서도 볼 수 있다. 공개 릴리스의 설치·검증 범위는 저장소 README와 릴리스 안내를 따른다. 작업 화면은 앱 안에서 열린다.
 
 ## 화면과 실행 구조
 

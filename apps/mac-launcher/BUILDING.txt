@@ -1,4 +1,4 @@
-MARICODE 1.0.7 — source build
+MARICODE 1.0.8 — source build
 
 This product source archive contains only apps/mac-launcher and
 pilots/hapi/client-probe. It excludes private Git history, execution data,
@@ -20,7 +20,7 @@ apps/mac-launcher/package-hapi.mjs pins all three SHA-256 hashes and rejects
 different artifacts. Existing app bundles include these files under
 Contents/Resources/hapi. Node's license is Contents/Resources/Node-LICENSE.txt.
 
-Extract MARICODE-1.0.7-source.tar.gz into an empty directory and run from it:
+Extract MARICODE-1.0.8-source.tar.gz into an empty directory and run from it:
 
 /path/to/node/bin/node apps/mac-launcher/build.mjs /path/to/node /new/app-output /path/to/hapi-artifacts --release
 /path/to/node/bin/node apps/mac-launcher/dmg.mjs /new/app-output/MARICODE.app /new/dmg-output /path/to/upstream-sources

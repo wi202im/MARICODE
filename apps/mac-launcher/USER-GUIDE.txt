@@ -1,4 +1,4 @@
-MARICODE 1.0.7 — 설치·사용 안내
+MARICODE 1.0.8 — 설치·사용 안내
 
 공개 배포는 GitHub 릴리스의 DMG를 기준으로 합니다. 소스의 후속 수정은 다음 배포본부터 적용됩니다.
 Apple Silicon Mac용이며 macOS 14 이상을 빌드 대상으로 합니다.
