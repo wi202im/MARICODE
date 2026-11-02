@@ -136,7 +136,9 @@ function renderWorkflow(){
     const card=document.createElement('article');card.className='permission-card';
     const title=document.createElement('h3');title.textContent=`${String(request.tool).replace(/^Codex(?=[A-Z])/,'Codex ')} 실행 허용`;
     const summary=document.createElement('p');summary.className='permission-summary';
-    summary.textContent=String(request.arguments?.command??request.arguments?.file_path??request.arguments?.path??request.arguments?.message??'AI가 다음 작업의 허용을 요청했습니다.');
+    const target=String(request.arguments?.command??request.arguments?.file_path??request.arguments?.path??request.arguments?.message??'AI가 다음 작업의 허용을 요청했습니다.'),root=session?.metadata?.path;
+    // Paths inside the project read better relative; the full path stays available on hover.
+    summary.textContent=root&&!request.arguments?.command&&target.startsWith(root+'/')?target.slice(root.length+1):target;summary.title=target;
     const detail=document.createElement('details');detail.dataset.requestId=id;detail.open=expanded.has(id);
     const heading=document.createElement('summary');heading.textContent='요청 상세';const raw=document.createElement('pre');raw.textContent=readable(request.arguments);detail.append(heading,raw);
     const buttons=document.createElement('div');buttons.className='buttons';
@@ -530,7 +532,8 @@ function renderWorkspace(){
    for(const w of project.workspaces){
     const workspaceMatch=projectMatch||(w.label+' '+w.path+' '+w.host).toLowerCase().includes(query);
     const matches=w.cards.filter(c=>(sidebarDisplay.ended||c.selected||c.active!==false)&&(workspaceMatch||(c.title+' '+c.engine+' '+c.config.id).toLowerCase().includes(query)));
-    matches.sort((a,b)=>sidebarDisplay.sort==='active'?(b.priority-a.priority||a.title.localeCompare(b.title)):a.title.localeCompare(b.title));
+    const recent=c=>c.snapshot?.updatedAt??c.config.updatedAt??c.config.createdAt??0;
+    matches.sort((a,b)=>sidebarDisplay.sort==='active'?(b.priority-a.priority||a.title.localeCompare(b.title)):sidebarDisplay.sort==='recent'?recent(b)-recent(a):a.title.localeCompare(b.title));
     if(query&&!workspaceMatch&&!matches.length)continue;
     const label=(sidebarDisplay.group==='flat'?project.label+' / ':'')+w.label+(w.project?.available===false?' · 폴더 확인 필요':'')+(w.kind==='worktree'?' · 워크트리':'')+(w.host?' · '+w.host:'');
     const onselect=async()=>{try{if(w.project)await chooseProject(w.project);else if(w.cards.length)await selectSession(w.cards[0].config.id);}catch(e){notice(e.message);}};

@@ -17,7 +17,7 @@ export function draftProjectSelection(projects,draft,current){
  return projects.some(p=>p.key===current)?current:projects[0]?.key??null;
 }
 export function displayPreferences(value={}){
- return {compact:value?.compact===true,ended:value?.ended!==false,details:value?.details!==false,group:value?.group==='flat'?'flat':'project',sort:value?.sort==='active'?'active':'name'};
+ return {compact:value?.compact===true,ended:value?.ended!==false,details:value?.details!==false,group:value?.group==='flat'?'flat':'project',sort:['active','name'].includes(value?.sort)?value.sort:'recent'};
 }
 
 // Window-memory only; never persist conversation drafts or transfer them to a new session.

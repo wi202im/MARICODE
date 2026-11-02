@@ -19,7 +19,7 @@ test('a new workspace target survives active-session changes and never falls bac
  assert.equal(draftProjectSelection(projects,'removed','a'),null);
  assert.equal(draftProjectSelection(projects,null,'a'),'a');
  assert.equal(draftProjectSelection([],null,'a'),null);
- assert.deepEqual(displayPreferences({compact:true,ended:false,sort:'bad',group:'flat',extra:'ignored'}),{compact:true,ended:false,details:true,group:'flat',sort:'name'});
+ assert.deepEqual(displayPreferences({compact:true,ended:false,sort:'bad',group:'flat',extra:'ignored'}),{compact:true,ended:false,details:true,group:'flat',sort:'recent'});assert.equal(displayPreferences({sort:'name'}).sort,'name');
 });
 
 test('chat drafts stay with their session when a new workspace or another conversation opens',async()=>{
