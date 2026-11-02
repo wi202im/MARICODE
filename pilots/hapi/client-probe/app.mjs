@@ -7,6 +7,7 @@ import {createAttachmentComposer} from './attachment-composer.mjs';
 import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
+import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {permissionLabel} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
@@ -32,6 +33,7 @@ const collapsedProjects=new Set();
 let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JSON.parse(localStorage.getItem('maricode-display-preferences')));}catch{}
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
+let alertSnapshots=new Map(),unseenAlerts=0;
 let commandSuggest=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
@@ -172,6 +174,7 @@ async function refresh(){
   handoffState=h?.state??null;session=s.session;sessionCards.set(sessionId,{snapshot:session,stale:false});const historyReset=history.latest(m);messages=history.messages;
   if(!history.hasMore&&!firstPrompts.has(sessionId)){const first=messages.map(messageView).find(v=>v?.role==='user'&&v.text?.trim());if(first)firstPrompts.set(sessionId,first.text.trim().replace(/\s+/g,' ').slice(0,80));}
   if(confirmedDraft(messages,actions.pending,$('prompt').value.trim())){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}
+  if(workspaceLayout&&session?.id===sessionId&&alertSnapshots.size)alertSnapshots.set(sessionId,session);
   const previousPending=actions.pending,released=actions.reconcile(messages,session.active,session.resumeUnconfirmed);
   permissionActions?.reconcile(session?.agentState?.requests??{});
   if(released==='resume-not-started')notice('재개가 시작되지 않았습니다. AI 연결·로그인 상태와 원래 기록을 확인한 뒤 같은 세션 재개를 다시 눌러 주세요. 자동으로 다시 시도하지 않습니다.');
@@ -533,6 +536,18 @@ function renderWorkspace(){
  $('session-count').textContent=String(groups.length);$('refresh-list').disabled=catalogBusy||busy||!token;
  $('list-state').textContent=!token?'로그인 필요':catalogBusy?'목록 상태 확인 중…':catalogChecked?`목록 조회 ${catalogChecked} · 선택한 대화는 실시간 갱신`:'목록 상태를 확인해 주세요.';
 }
+const baseTitle=document.title;
+function showTurnAlerts(list){
+ const box=$('turn-alerts');if(!box||!list.length)return;
+ for(const a of list){
+  const label=trialSessions.find(s=>s.id===a.id)?.label??'대화',item=document.createElement('div'),text=document.createElement('span'),open=document.createElement('button'),close=document.createElement('button');
+  item.className='turn-alert '+a.kind;text.textContent=`${alertText[a.kind]} · ${label}`;text.title=text.textContent;open.type=close.type='button';open.textContent='열기';close.textContent='×';close.setAttribute('aria-label','알림 닫기');
+  const dismiss=()=>item.remove();open.onclick=()=>{dismiss();selectSession(a.id);};close.onclick=dismiss;setTimeout(dismiss,30000);
+  item.append(text,open,close);box.append(item);while(box.children.length>4)box.firstElementChild.remove();
+ }
+ if(document.hidden){unseenAlerts+=list.length;document.title=`(${unseenAlerts}) ${baseTitle}`;}
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){unseenAlerts=0;document.title=baseTitle;}});
 async function refreshCatalog(){
  if(!workspaceLayout||!token||catalogBusy)return;
  const mine=++catalogSerial,usedToken=token;catalogBusy=true;renderWorkspace();
@@ -543,6 +558,9 @@ async function refreshCatalog(){
   allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
   results.forEach((r,i)=>{const id=config.sessions[i].id;if(id===sessionId&&session&&connected)return;sessionCards.set(id,r.status==='fulfilled'?{snapshot:r.value.session,stale:false}:{...sessionCards.get(id),stale:true});});
   $('session-select').replaceChildren(...trialSessions.map(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.label;return o;}));$('session-select').value=sessionId;
+  const snapshots=new Map(trialSessions.map(s=>[s.id,s.id===sessionId&&session?session:sessionCards.get(s.id)?.snapshot]));
+  if(alertSnapshots.size)showTurnAlerts(turnAlerts(alertSnapshots,snapshots,{selectedId:sessionId,visible:!document.hidden}));
+  alertSnapshots=snapshots;
   catalogChecked=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
  }catch(e){if(mine===catalogSerial&&usedToken===token){sessionCards.forEach(c=>c.stale=true);notice(e.message);}}
  finally{catalogBusy=false;renderWorkspace();}
@@ -579,7 +597,14 @@ if(workspaceLayout){
  compactSidebar.addEventListener('change',()=>workspaceDrawer(false));
  $('open-nav').onclick=()=>{if(compactSidebar.matches){workspaceDrawer(!$('sidebar').classList.contains('open'));return;}sidebarCollapsed=!sidebarCollapsed;try{sessionStorage.setItem('maricode-sidebar-collapsed',String(sidebarCollapsed));}catch{}updateSidebarToggle();};$('close-nav').onclick=()=>workspaceDrawer(false);$('scrim').onclick=()=>workspaceDrawer(false);
  $('search').oninput=renderWorkspace;$('refresh-list').onclick=refreshCatalog;
- setInterval(()=>{if(token&&!document.hidden&&!paused&&connectionState!=='denied'){refreshCatalog();loadGit();if(actions?.pending?.kind==='resume'&&!busy)refresh().catch(()=>{});}},30000);
+ let catalogTick=0;
+ setInterval(()=>{
+  const busyElsewhere=[...alertSnapshots].some(([id,s])=>(id!==sessionId||document.hidden)&&(s?.thinking||Object.keys(s?.agentState?.requests??{}).length));
+  if(!token||paused||connectionState==='denied'||(++catalogTick%3&&!busyElsewhere))return;
+  // Hidden windows still check busy conversations so a finished turn can be flagged in the title.
+  if(document.hidden&&!busyElsewhere)return;
+  refreshCatalog();if(!document.hidden)loadGit();if(actions?.pending?.kind==='resume'&&!busy)refresh().catch(()=>{});
+ },10000);
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&connectionState!=='denied')refreshCatalog();});
 }
 
