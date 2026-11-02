@@ -8,6 +8,7 @@ import {join,isAbsolute,dirname,basename} from 'node:path';
 import {prepareRunner,accountRevision} from './machine-setup.mjs';
 import {launchRunner} from './runner-launch.mjs';
 import {claudeImports} from './claude-import.mjs';
+import {codexImports} from './codex-import.mjs';
 import {discoverClaudeSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
 async function ownerAuthorization(config){
@@ -216,7 +217,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     if(action==='list')return {...await imports.list(source,input.offset??0),sourceOrigin:discovery.origin};
     // Bind the caller to this machine's namespace before using owner CLI auth.
     const sessions=await authorize(authorization);
-    if(sessions.sessions?.some(s=>s.metadata?.machineId===target.machineId&&s.metadata?.claudeSessionId===input.id&&s.metadata?.path!==p.path))throw Error('이 세션 ID가 다른 작업 폴더에 연결돼 있습니다.');
+    if(sessions.sessions?.some(s=>s.metadata?.machineId===target.machineId&&s.metadata?.flavor==='claude'&&(s.metadata?.claudeSessionId??s.metadata?.agentSessionId)===input.id&&s.metadata?.path!==p.path))throw Error('이 세션 ID가 다른 작업 폴더에 연결돼 있습니다.');
     return imports.import({...input,source},{
      register:async record=>{
       const token=await readFile(c.tokenFile,'utf8');
@@ -228,6 +229,38 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
       if(r.status===404)return null;if(!r.ok)throw Error('등록 결과 조회 실패');return (await r.json()).session;
      }
     },action==='check');
+   });
+  },
+  // HAPI's session list summarizes the native engine ID as metadata.agentSessionId.
+  async codexImport(authorization,input,action){
+   await authorize(authorization);
+   if(!input||Object.keys(input).some(k=>!['project','source','id','fingerprint',...(action==='list'?['offset']:[])].includes(k))||typeof input.project!=='string'||!['list','import','check'].includes(action))throw Error('가져오기 요청을 확인하세요.');
+   return exclusive(async()=>{
+    const p=await selectedProject(authorization,input.project);
+    const cfg=JSON.parse(await readFile(c.accountConfig,'utf8')),env=JSON.parse(await readFile(cfg.environment,'utf8'));
+    if(typeof env.CODEX_HOME!=='string'||!isAbsolute(env.CODEX_HOME))throw Error('분리된 Codex 프로필이 필요합니다.');
+    const source=input.source||join(homedir(),'.codex'),imports=codexImports({project:p.path,destination:env.CODEX_HOME});
+    if(action==='list')return {...await imports.list(source,input.offset??0),sourceOrigin:input.source?'selected':'default'};
+    const registered=async machineId=>(await authorize(authorization)).sessions?.find(s=>s.metadata?.machineId===machineId&&s.metadata?.flavor==='codex'&&(s.metadata?.codexSessionId??s.metadata?.agentSessionId)===input.id&&s.metadata?.path===p.path)?.id;
+    if(action==='check'){
+     if(!await exists(join(c.directory,'runner-home/settings.json')))return {state:'none'};
+     const id=await registered(await machineId(c));return id?{state:'registered',id}:{state:'none'};
+    }
+    await ensureReady(authorization,input.project,'codex');
+    let ready=false;for(let attempt=0;attempt<15;attempt++){try{ready=await connection(c);}catch{}if(ready)break;await new Promise(r=>setTimeout(r,300));}
+    if(!ready)throw Error('실행기 연결을 먼저 확인하세요. 가져오기를 실행하지 않았습니다.');
+    const target=await createRunnerWorkspace(c).target(authorization);
+    const {title}=await imports.copy(source,input.id,input.fingerprint),existing=await registered(target.machineId);
+    if(existing)return {state:'registered',id:existing};
+    // Register without messages: HAPI's Codex resume replays the thread with stable IDs, while
+    // /api/codex/sync-session's appended copies would show every earlier turn twice. The tag is
+    // deterministic, so getOrCreateSession returns the same session if this request is retried.
+    const token=await readFile(c.tokenFile,'utf8');
+    const r=await fetch(c.hubUrl+'/cli/sessions',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({tag:'maricode-codex-import-'+target.machineId+'-'+input.id,metadata:{path:p.path,machineId:target.machineId,flavor:'codex',codexSessionId:input.id,name:title,host:'이 컴퓨터'},agentState:{controlledByUser:false}}),redirect:'error',signal:AbortSignal.timeout(15000)});
+    if(!r.ok)throw Error('Codex 기록 등록 결과를 확인하지 못했습니다. 자동 재등록하지 않습니다.');
+    const id=await registered(target.machineId);
+    if(!id)throw Error('Codex 기록 등록 결과를 확인하지 못했습니다.');
+    return {state:'registered',id};
    });
   },
   async navigation(authorization){await authorize(authorization);if(!c.projectsPath)throw Error('목록 관리 미지원');return projectRegistry(c.projectsPath).navigation();},

@@ -610,13 +610,15 @@ try{selectedProject=sessionStorage.getItem('maricode-project')||'';}catch{}
 const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('claude-import-panel'),api,
  context:()=>({mode:draftSessionMode,agent:$('task-agent').value,project:draftProject,path:projectCatalog.find(p=>p.key===draftProject)?.path,general:projectCatalog.find(p=>p.key===draftProject)?.general,projectAvailable:taskProjectsReady&&projectCatalog.some(p=>p.key===draftProject),busy:busy||taskCreating}),
  changed:value=>{taskCreating=value;busy=value;render();renderTaskCreation();},
- opened:async id=>{
-  const previous=await api('/api/sessions/'+encodeURIComponent(id)+'/import-history');
-  if(previous.imported!==true)throw Error('이전 대화 기록을 확인하지 못했습니다.');
+ opened:async(id,agent)=>{
+  // Codex imports land as ordinary HAPI messages; only Claude keeps a separate imported-history snapshot.
+  if(agent!=='codex'){const previous=await api('/api/sessions/'+encodeURIComponent(id)+'/import-history');
+  if(previous.imported!==true)throw Error('이전 대화 기록을 확인하지 못했습니다.');}
+  const name=agent==='codex'?'Codex':'Claude',where=agent==='codex'?'위 대화':'‘가져온 이전 기록’';
   await openWorkspace();
   if(!trialSessions.some(s=>s.id===id))throw Error('등록된 대화를 목록에서 찾지 못했습니다.');
   await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);
-  const mine=epoch,manual='기존 Claude 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.';
+  const mine=epoch,manual=`기존 ${name} 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ${where}에서 볼 수 있습니다.`;
   // selectSession() starts the SSE stream without awaiting it; `connected`
   // only flips true once that handshake resolves, slightly after this point.
   const start=Date.now();while(mine===epoch&&!connected&&Date.now()-start<4000)await new Promise(r=>setTimeout(r,50));
@@ -624,8 +626,8 @@ const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('clau
    busy=true;render();
    try{
     const request=actions.resume();render();await request;await refresh();
-    if(mine===epoch)notice(session?.active?'기존 Claude 기록을 가져와 이어갑니다. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.':manual);
-   }catch(e){if(mine===epoch){notice('기존 Claude 기록을 가져왔습니다. 자동 재개에 실패했습니다('+e.message+'). 실행 재개를 눌러 다시 시도하세요. 이전 대화는 ‘가져온 이전 기록’에서 볼 수 있습니다.');await refresh().catch(()=>{});}}
+    if(mine===epoch)notice(session?.active?`기존 ${name} 기록을 가져와 이어갑니다. 이전 대화는 ${where}에서 볼 수 있습니다.`:manual);
+   }catch(e){if(mine===epoch){notice(`기존 ${name} 기록을 가져왔습니다. 자동 재개에 실패했습니다(${e.message}). 실행 재개를 눌러 다시 시도하세요. 이전 대화는 ${where}에서 볼 수 있습니다.`);await refresh().catch(()=>{});}}
    finally{if(mine===epoch){busy=false;render();}}
   }else notice(manual);
  }
@@ -633,7 +635,7 @@ const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('clau
 
 function taskPending(){try{return JSON.parse(sessionStorage.getItem(taskPendingKey)||'null');}catch{return null;}}
 async function configureTasks(config){
- $('new-task-toggle').hidden=!config.newTask;draftGeneralSupported=config.newTask?.generalChat===true;$('draft-general-mode').hidden=!draftGeneralSupported;$('empty-general').hidden=!draftGeneralSupported;draftSupportsGit=!!config.newTask?.workspaceChoices;claudeImportPanel?.configure(config.claudeImport===true);
+ $('new-task-toggle').hidden=!config.newTask;draftGeneralSupported=config.newTask?.generalChat===true;$('draft-general-mode').hidden=!draftGeneralSupported;$('empty-general').hidden=!draftGeneralSupported;draftSupportsGit=!!config.newTask?.workspaceChoices;claudeImportPanel?.configure(config.claudeImport===true,config.codexImport===true);
  if(config.newTask)await loadTaskProjects(true);
 }
 async function loadTaskProjects(followSession=false){
@@ -708,14 +710,14 @@ async function inheritDraftDefaults(){
 let draftInherited=null;
 function renderTaskCreation(){
  if(!workspaceLayout)return;
- if(claudeImportPanel?.pending){draftSessionMode='import';$('task-agent').value='claude';}
+ if(claudeImportPanel?.pending){draftSessionMode='import';$('task-agent').value=claudeImportPanel.pendingAgent;}
  const importing=draftSessionMode==='import',importPending=!!claudeImportPanel?.pending;
  $('claude-import-panel').open=importing;claudeImportPanel?.render();
  $('session-entry-new').setAttribute('aria-pressed',String(!importing));$('session-entry-import').setAttribute('aria-pressed',String(importing));
  $('session-entry-new').disabled=taskCreating||importPending;
  $('session-entry-import').disabled=taskCreating||!!taskPending()||!importHistorySupported||!projectCatalog.some(p=>!p.general);
  $('session-entry-import').title=!importHistorySupported?'이 실행 환경은 기존 대화 가져오기를 지원하지 않습니다.':!projectCatalog.some(p=>!p.general)?'먼저 원래 대화의 프로젝트 폴더를 등록하세요.':'';
- $('session-entry-note').textContent=importing?'이 컴퓨터에서 진행했던 Claude 대화를 이어갑니다.':'새로운 주제로 AI와 대화를 시작합니다.';
+ $('session-entry-note').textContent=importing?`이 컴퓨터에서 진행했던 ${$('task-agent').value==='codex'?'Codex':'Claude'} 대화를 이어갑니다.`:'새로운 주제로 AI와 대화를 시작합니다.';
  $('draft-new-actions').hidden=importing;$('draft-import-actions').hidden=!importing;
  $('draft-scope-modes').hidden=importing||!draftGeneralSupported;
  $('create-task').hidden=importing||importPending;$('draft-defaults').hidden=importing;
@@ -742,7 +744,7 @@ function renderTaskCreation(){
  $('draft-workspace-note').textContent=draftLoading?'브랜치와 워크트리를 확인하고 있습니다…':mode==='new'?'선택한 브랜치의 커밋에서 새 작업 폴더를 만듭니다. 미커밋 변경은 옮기지 않습니다.':mode==='existing'?'기존 작업 폴더와 브랜치를 그대로 사용합니다. 기존 세션은 왼쪽 목록에서 이어갈 수 있습니다.':git&&$('task-branch').value!==draftOptions.branch?'선택한 브랜치로 현재 폴더를 전환합니다. 실행 중인 작업이나 미커밋 변경이 있으면 중단합니다.':draftOptions?.note??'현재 폴더의 파일과 작업 상태를 그대로 사용합니다.';
  const target=mode==='existing'?draftOptions?.worktrees.find(w=>w.key===$('task-worktree').value)?.path:mode==='new'?'앱 전용 폴더에 새 워크트리':project?.path;
  $('draft-target').hidden=importing||!!project?.general||(mode==='current'&&draftWorkspace().mode==='current');
- $('task-agent').disabled=importing||taskCreating||importPending||!!pending;
+ $('task-agent').disabled=taskCreating||importPending||!!pending;
  renderDraftAccount();
  $('draft-target').textContent=(project?.projectLabel??project?.label??'프로젝트 미선택')+' → '+(mode==='new'?'새 작업공간':mode==='existing'?'기존 워크트리':project?.workspaceLabel??'기본 작업공간')+' → '+($('task-agent').value==='claude'?'Claude':'Codex')+'\n'+(target??'작업 위치 확인 중')+(git?'\n브랜치: '+(mode==='new'?$('task-worktree-name').value.trim()||'이름 입력':mode==='existing'?draftOptions?.worktrees.find(w=>w.key===$('task-worktree').value)?.branch:$('task-branch').value||'분리된 HEAD'):'');
 }
@@ -819,11 +821,11 @@ if(workspaceLayout){
   try{sessionStorage.setItem('hapi-trial-held-task:'+request.requestId,JSON.stringify(request));sessionStorage.removeItem(taskPendingKey);draftMessage='기존 기록은 보존했습니다.';renderTaskCreation();}catch{draftMessage='보관하지 못했습니다.';renderTaskCreation();}
  };
  $('session-entry-new').onclick=()=>{if(taskCreating||claudeImportPanel?.pending)return;draftSessionMode='new';renderTaskCreation();};
- $('session-entry-import').onclick=()=>{if($('session-entry-import').disabled)return;draftSessionMode='import';$('task-agent').value='claude';draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;if(projectCatalog.find(p=>p.key===draftProject)?.general){draftProject=projectCatalog.find(p=>!p.general).key;renderDraftLocations();loadWorkspaceChoices();}renderTaskCreation();refreshDraftAccount();};
+ $('session-entry-import').onclick=()=>{if($('session-entry-import').disabled)return;draftSessionMode='import';draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;if(projectCatalog.find(p=>p.key===draftProject)?.general){draftProject=projectCatalog.find(p=>!p.general).key;renderDraftLocations();loadWorkspaceChoices();}renderTaskCreation();refreshDraftAccount();};
  $('create-task').onclick=()=>createTask(false);$('check-task').onclick=()=>createTask(true);
  for(const id of ['task-mode','task-branch','task-worktree','task-worktree-name'])$(id).addEventListener(id==='task-worktree-name'?'input':'change',renderTaskCreation);
  $('draft-workspace-refresh').onclick=loadWorkspaceChoices;$('draft-account-check').onclick=refreshDraftAccount;
- $('task-agent').onchange=()=>{if($('task-agent').value!=='claude')draftSessionMode='new';draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;$('draft-defaults').textContent='선택한 AI로 새 대화를 시작합니다.';renderTaskCreation();refreshDraftAccount();};
+ $('task-agent').onchange=()=>{draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;$('draft-defaults').textContent='선택한 AI로 새 대화를 시작합니다.';renderTaskCreation();refreshDraftAccount();};
  $('draft-account-login').onclick=async()=>{const agent=$('task-agent').value;$('draft-account-login').disabled=true;try{await api('/api/accounts/'+agent+'/login',{method:'POST',body:{}});$('draft-account-state').textContent='공식 로그인 창에서 완료한 뒤 연결 다시 확인을 눌러 주세요.';}catch{$('draft-account-state').textContent='로그인 시작 상태를 확인하세요. 자동으로 다시 실행하지 않습니다.';}finally{$('draft-account-login').disabled=false;}};
  for(const field of ['group','sort','ended','details','compact']){
   const el=$('display-'+field);if(el.type==='checkbox')el.checked=sidebarDisplay[field];else el.value=sidebarDisplay[field];
