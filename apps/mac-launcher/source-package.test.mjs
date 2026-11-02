@@ -15,7 +15,7 @@ test('source packaging rejects hidden data and symlinks',async t=>{
  const {writeFile,symlink,unlink}=await import('node:fs/promises');
  const root=await mkdtemp(join(tmpdir(),'maricode-source-boundary-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const native=join(root,'source/apps/mac-launcher');await mkdir(native,{recursive:true});await mkdir(join(root,'source/pilots/hapi/client-probe'),{recursive:true});await mkdir(join(root,'output'));
- for(const name of ['Merry.swift','DesktopNavigation.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift','build.mjs','dmg.mjs','source-package.mjs','package-hapi.mjs','LICENSE','BUILDING.txt','Bun-LICENSE.md','HAPI-DEPENDENCY-NOTICES.txt'])await writeFile(join(native,name),'fixture');
+ for(const name of ['Merry.swift','DesktopNavigation.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift','build.mjs','dmg.mjs','signing.mjs','INSTALL-SIGNED.html','source-package.mjs','package-hapi.mjs','LICENSE','BUILDING.txt','Bun-LICENSE.md','HAPI-DEPENDENCY-NOTICES.txt'])await writeFile(join(native,name),'fixture');
  const hidden=join(native,'.private');await writeFile(hidden,'fixture-secret');
  await assert.rejects(packageProductSource(root,join(root,'output')),/Unexpected source entry/);
  await unlink(hidden);await symlink('/tmp',join(native,'linked'));

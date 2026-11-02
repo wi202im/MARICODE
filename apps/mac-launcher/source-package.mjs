@@ -7,7 +7,7 @@ import {execFileSync} from 'node:child_process';
 export async function packageProductSource(resources,output,version='1.0.0'){
  if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Invalid product version');
  const source=join(resources,'source');
- for(const name of ['Merry.swift','DesktopNavigation.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift','build.mjs','dmg.mjs','source-package.mjs','package-hapi.mjs','LICENSE','BUILDING.txt','Bun-LICENSE.md','HAPI-DEPENDENCY-NOTICES.txt']){
+ for(const name of ['Merry.swift','DesktopNavigation.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift','build.mjs','dmg.mjs','signing.mjs','INSTALL-SIGNED.html','source-package.mjs','package-hapi.mjs','LICENSE','BUILDING.txt','Bun-LICENSE.md','HAPI-DEPENDENCY-NOTICES.txt']){
   if(!(await lstat(join(source,'apps/mac-launcher',name))).isFile())throw Error('Complete product source required');
  }
  async function inspect(path){

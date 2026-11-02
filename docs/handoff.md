@@ -2,14 +2,16 @@
 
 상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다.
 
-## Developer ID 서명·공증 준비 — 진행 중
+## Developer ID 서명·공증 — Apple 심사 대기
 
-- 사용자 요청으로 기존 Apple Developer 멤버십을 이용한 앱 서명·공증을 시작했다. 사용자가 새 약관에 직접 동의했고, 인증서 발급·이 Mac 키체인 등록도 승인했다. 계정/자동 갱신 설정은 변경하지 않았다.
-- **된다 — 인증서:** Developer ID Application(G2) 인증서를 발급했다. 공개 CSR과 인증서의 공개 키 일치를 확인했고, 암호화한 개인 키와 인증서를 로그인 키체인에 등록했다. Apple 공식 G2 중간 인증서도 기존 루트 신뢰 검증 후 등록했다. 유효한 codesigning identity 1개를 확인했다. 사용자에게 키체인 암호 입력을 맡겼으며 비밀은 출력/커밋하지 않았다.
-- **된다 — 격리 서명:** `.runtime/apple-signing/Maricode.app` 복사본의 Node·HAPI·앱을 안쪽부터 Developer ID + timestamp + hardened runtime으로 서명했다. Node/HAPI entitlement는 allow-jit 하나만 사용하고 get-task-allow를 제거했다. deep/strict 서명 검증, 서명된 Node의 반복 연산, HAPI 버전 실행, 격리 Hub 인증·빈 세션 목록 조회·정상 종료를 확인했다. 기존 설치 앱/서버/AI 계정은 변경하지 않았다.
-- **다음:** Apple 계정의 앱 암호를 사용자가 직접 생성하고 로컬 `notary-login.command`의 보안 입력으로 `maricode-notary` 키체인 프로필에 저장 → 준비한 서명 앱 ZIP 제출 → Accepted/티켓 부착/Gatekeeper 확인 → 검증된 서명·공증 흐름을 패키저에 반영한다. Apple 계정 화면을 열고 앱 암호 생성을 요청한 상태다. 브라우저 로그인만으로 notarytool 인증이 되지는 않는다.
-- 현재 제품 DMG 패키저는 아직 ad-hoc 서명 전용이다. 서명한 앱을 기존 패키저에 그대로 넣으면 ad-hoc으로 바뀌므로 사용하지 않는다. 이미 공개한1.0.9 첨부는 교체하지 않았으며, 이후 배포는 새 버전과 최종 티켓 부착 후 체크섬이 필요하다.
-- **확인 안 함:** Apple 공증 접수/승인·티켓 부착·Gatekeeper·서명된 앱의 실제 AI 세션·새 DMG 설치. 인증서/개인 키/계정 정보는 Git 제외된 로컬 자료와 키체인에만 있다.
+- 사용자 요청으로 기존 Apple Developer 멤버십을 사용했다. 사용자가 약관 동의, 인증서 발급·Mac 키체인 등록 허용, 키체인 사용 허용을 마쳤다. 공증용 앱 암호도 직접 생성하고 보안 터미널에 입력해 `maricode-notary` 키체인 프로필에 저장했다. 암호/개인 키를 출력하거나 커밋하지 않았다. 계정·자동 갱신·기존 설치 앱/서버/AI 계정은 변경하지 않았다.
+- **된다 — 인증·서명:** Developer ID Application(G2) 발급, CSR 공개 키 일치, Apple G2 중간 인증서의 기존 루트 신뢰 검증과 로그인 키체인 등록, 유효한 identity 확인. 앱 복사본의 Node·HAPI·앱을 안쪽부터 Developer ID + timestamp + hardened runtime으로 서명했다. 엔진 entitlement는 allow-jit 하나이며 get-task-allow를 제거했다. deep/strict 검증, Node 반복 연산과 자동 검사287개, 서명 HAPI 버전 실행·격리 Hub 인증·빈 세션 조회·정상 종료가 통과했다.
+- **안 된다 — 첫 공증:** Apple이 HAPI 원본 `source.tar.gz` 안의 macOS 개발용 ripgrep/difftastic 바이너리에 Developer ID/timestamp/hardened runtime이 없다는 이유로 Invalid 판정했다. 실제 앱·Node·HAPI 실행 파일에 대한 오류는 이 결과에 없었다. 로그와 제출 ID는 Git 제외 `.runtime/apple-signing/`에 있다.
+- **수정:** HAPI 원본 소스 압축파일의 바이트·SHA-256을 그대로 보존하면서 앱/DMG 밖 `HAPI-0.33.3-source.tar.gz` 릴리스 첨부로 분리한다. 라이선스·고지는 앱 안에도 유지한다. 원본 입력 해시와 재서명된 HAPI 해시를 구분한다. 이 구성의 격리 수정본을 제출했고 최신 조회는 In Progress다(`.runtime/apple-signing/source-separated/submission.json`).
+- **된다 — 제품 패키저:** 명시적인 `MARICODE_SIGN_IDENTITY`와 `MARICODE_NOTARY_PROFILE`을 모두 지정하면 새 stage 복사본만 서명한다. 앱 공증 Accepted → 티켓 부착/검증/Gatekeeper → DMG 서명·공증·티켓/검증 → 최종 체크섬 순서다. 실패 시 ad-hoc으로 대체하지 않는다. 요청 전에 receipt를 독점 생성해 접수 불명의 자동 중복 제출을 막는다. 기존 인자만 사용한 기본 ad-hoc 경로는 유지한다. 공증용 설치 안내와 소스/빌드/고지도 반영했다.
+- **된다 — 검증:** 자동 검사290개. 새 제품 source를 포함한 release 빌드 완료. 제품 패키저가 만든 서명 stage에서도 원본 HAPI 소스 체크섬 보존, 격리 Hub 로그인·빈 세션·종료를 확인했다.
+- **진행 중:** `.runtime/apple-signing/pipeline-final-build/Maricode.app` → `.runtime/apple-signing/pipeline-dmg` 실제 패키징을 실행했다. `app-notary-submission.json`에 접수 ID가 있고 Apple 심사를 기다린다. 대기 제한은20분이며 Accepted면 티켓/DMG 생성·공증이 자동 진행된다. 출력은 `pipeline-dmg.log`, 단계별 접수 ID는 출력 폴더의 `*-notary-submission.json`이다. 기존 출력으로 다시 실행하지 말고 receipt와 notarytool info/log부터 조회한다. 이 후보는 로컬 검증용이며 Bun/WebKit 별도 소스 첨부를 복사하지 않았다.
+- **확인 안 함/다음:** Apple Accepted·티켓/Gatekeeper·전체 DMG 패키징 완료, 서명 앱의 실제 AI 세션과 새 DMG 설치. 먼저 위 두 접수 건 상태와 실행 중 패키저 결과를 확인한다. Invalid면 해당 로그 원인만 수정하며 불명 요청을 재제출하지 않는다. 성공 후 최종 DMG/소스/체크섬과 공증 설치 안내를 검증한다. 공개1.0.9 첨부는 그대로이며 새 공개는 다음 배포 요청의 새 버전으로 한다.
 - 도구의 이전 작업 경로가 삭제된 저장소를 가리켜 실행이 실패하여, 옛 로컬 경로에는 현재 저장소를 가리키는 심볼릭 링크만 만들었다. 소스/과거 데이터를 복제하거나 복구하지 않았다.
 
 ## 표시 이름·제목 버전 — 다음 배포 대기

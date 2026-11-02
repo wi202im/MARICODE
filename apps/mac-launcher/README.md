@@ -25,7 +25,7 @@ node apps/mac-launcher/build.mjs /existing/node-root /new/output /verified/hapi-
 '/new/output/Maricode.app/Contents/MacOS/Merry' --data-directory /absolute/path/to/isolated-data
 ```
 
-HAPI 입력 폴더는 `package-hapi.mjs`의 고정 SHA-256에 맞는 `hapi`, `LICENSE`, `source.tar.gz`를 포함해야 한다. 현재 고정 버전은0.33.3 arm64다. 앱에는 Node 전체 LICENSE·HAPI 고정 소스·고지·제품 소스가 포함된다. 원래 AI 계정·실행 자료는 포함하지 않는다.
+HAPI 입력 폴더는 `package-hapi.mjs`의 고정 SHA-256에 맞는 `hapi`, `LICENSE`, `source.tar.gz`를 포함해야 한다. 현재 고정 버전은0.33.3 arm64다. 앱에는 Node 전체 LICENSE·HAPI 고지·제품 소스가 포함된다. HAPI 고정 소스는 ad-hoc 빌드에는 앱 안에, Developer ID 공증본에는 같은 릴리스의 별도 첨부에 보관한다. 원래 AI 계정·실행 자료는 포함하지 않는다.
 
 release bundle ID는 `dev.maricode.desktop`, 데이터는 `~/Library/Application Support/MARICODE`다. 개발 빌드는 `dev.merry.launcher.preview`/`Merry Development`를 사용한다. 자동 이관하지 않으며 포트가 같아 동시에 시작할 수 없다. `--data-directory`는 격리 시험용이다.
 
@@ -35,7 +35,7 @@ release bundle ID는 `dev.maricode.desktop`, 데이터는 `~/Library/Application
 node apps/mac-launcher/dmg.mjs /built/Maricode.app /new/dmg-output /verified/upstream-sources
 ```
 
-앱 사본에 ad-hoc 서명한 뒤 검증하고 DMG·제품 소스·SHA-256·빌드 안내를 생성한다. Developer ID 서명·공증을 뜻하지 않는다. 원본 번들과 기존 출력은 덮어쓰지 않는다. 공개 저장소/릴리스 게시와 DMG 생성은 별개다.
+기본 명령은 앱 사본에 ad-hoc 서명한 뒤 DMG·제품 소스·SHA-256·빌드 안내를 생성한다. Developer ID 공증은 명시적인 `MARICODE_SIGN_IDENTITY`(인증서 SHA-1)와 `MARICODE_NOTARY_PROFILE`(기존 키체인 프로필)을 함께 지정한다. 공증 실패 시 멈추며 ad-hoc으로 대체하지 않는다. 자세한 절차와 별도 HAPI 소스 첨부는 `BUILDING.txt`를 따른다. 원본 번들과 기존 출력은 덮어쓰지 않는다. 공개 저장소/릴리스 게시와 DMG 생성은 별개다.
 
 업데이트는 작업을 안전하게 종료한 뒤 앱만 교체한다. Application Support의 설정·프로젝트·프로필·세션 자료를 삭제하지 않는다. 다른 깨끗한 Mac 전체 설치, 다운로드 격리 Gatekeeper 최초 허용, 실제 OS 파일 권한 왕복은 확인된 범위와 구분해 안내한다.
 

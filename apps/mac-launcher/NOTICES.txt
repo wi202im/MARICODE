@@ -13,8 +13,11 @@ Distribution inventory (paths below are relative to Contents/Resources)
   and packaging scripts. Paseo design adaptations are attributed below.
 - Node.js 26.12.1: node and Node-LICENSE.txt (upstream dependency notices
   included). Upstream source: https://nodejs.org/dist/v26.12.1/
-- Unmodified HAPI 0.33.3 darwin-arm64: hapi/hapi, hapi/LICENSE
-  (AGPL-3.0-only), hapi/NOTICE (happy-cli attribution), hapi/source.tar.gz.
+- HAPI 0.33.3 darwin-arm64: hapi/hapi, hapi/LICENSE
+  (AGPL-3.0-only), hapi/NOTICE (happy-cli attribution). Original source is
+  hapi/source.tar.gz in ad-hoc builds, or HAPI-0.33.3-source.tar.gz supplied
+  alongside Developer ID releases. Developer ID packaging changes the
+  executable signature only; original source bytes/checksums are preserved.
   Upstream: https://github.com/tiann/hapi
   Source commit: d9acc0c31e0d9115e09429fd788a414a522bd5c7
   Exact artifact/source checksums are enforced by package-hapi.mjs.

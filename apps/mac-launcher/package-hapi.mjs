@@ -4,7 +4,8 @@ import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 // Fixed, verified official npm darwin-arm64 artifact and its source commit archive.
 export const hapiRelease={version:'0.33.3',arch:'arm64',commit:'d9acc0c31e0d9115e09429fd788a414a522bd5c7',license:'AGPL-3.0-only'};
-const hashes={hapi:'e7e2721ac7b41bfea0957e55c22c1f7e537db8385d6e6dfcd71df198f03d4686',LICENSE:'9a32109537554d51dd83792f3e9d6999376e0974d1d309cb1f922acad3946d1c','source.tar.gz':'d23df25a9b63708d4916328ffcf72fb626f8d683ca91b82bca6729cf1d73e9ae'};
+export const hapiHashes=Object.freeze({hapi:'e7e2721ac7b41bfea0957e55c22c1f7e537db8385d6e6dfcd71df198f03d4686',LICENSE:'9a32109537554d51dd83792f3e9d6999376e0974d1d309cb1f922acad3946d1c','source.tar.gz':'d23df25a9b63708d4916328ffcf72fb626f8d683ca91b82bca6729cf1d73e9ae'});
+const hashes=hapiHashes;
 export async function packageHapi(source,resources){
  if(process.platform!=='darwin'||process.arch!==hapiRelease.arch)throw Error('HAPI bundle artifact is only verified for Apple Silicon');
  const bunLicense=await readFile(new URL('./Bun-LICENSE.md',import.meta.url));
