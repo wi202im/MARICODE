@@ -2,12 +2,13 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**MARICODE 1.0.2 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.2/MARICODE-1.0.2-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.2). HAPI 0.33.3 and Node are included.
+**MARICODE 1.0.3 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.3/MARICODE-1.0.3-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.3). HAPI 0.33.3 and Node are included.
 
 ## What it does
 
 - Organize projects, workspaces and AI sessions in one window. A sole default workspace shows its sessions directly under the project; additional workspaces keep their location groups.
 - Work directly in an existing folder or choose a Git branch/worktree.
+- Import selected local Claude Code transcripts for the same working folder, preserve the originals and inspect a read-only history snapshot. Continue from the copied native session through HAPI.
 - Read conversations, tool activity and file changes; answer questions and approval requests near the composer.
 - Attach files or paste images/Finder files, preview them and remove individual attachments.
 - Combine local, server and remote roles. Connect to multiple running computers over LAN or Tailscale.
@@ -46,7 +47,9 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 - No QR pairing, multiple account selection for the same AI, or cross-machine native session migration.
 - AI settings and approval choices are limited to the capabilities exposed by the provider and HAPI; not every upstream AI feature is supported.
 - Actual Codex question UI, full sub-agent lifecycle, a clean second Mac installation and long sleep/wake behavior have not all been verified.
-- Version 1.0.0 was tested for native local connection and a Codex session through response, stop and resume. Version 1.0.2 passed 243 automated tests, DMG image verification and signing checks during packaging. Its sidebar was checked in the product web UI with a synthetic Hub. The inherited quit flow was tested for 1.0.1 in native WebView with a synthetic Hub; replacing an installed app and closing a real AI session with 1.0.1 remain unverified. The new image could not be mounted on the test Mac due to OS permissions.
+- Version 1.0.3 passed 251 automated tests, app build, DMG image verification, packaging signature checks and source-to-commit comparisons. Local Claude import was checked with synthetic transcripts in the product web UI and real HAPI/Claude CLI, including the native resume ID. **A signed-in Claude model response recalling the imported context remains unverified**: the isolated test profile required login.
+- Import does not copy credentials, MCP/settings, memory or attachment files. The copied transcript and original diverge after import. Cross-machine import and external Codex transcript import are not supported.
+- Version 1.0.0 was tested for native local connection and a Codex response/stop/resume. Installing this new DMG over an existing app, mounting it and real use on another Mac were not tested in this release.
 
 ## License
 
