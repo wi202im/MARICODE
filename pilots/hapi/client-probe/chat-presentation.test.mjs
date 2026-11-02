@@ -25,3 +25,16 @@ test('engine session events surface as notices so silent launch failures are vis
  assert.deepEqual(rows.map(r=>[r.kind,r.error]),[['notice',true],['notice',true],['notice',true]]);
  assert.match(rows[0].text,/엔진 실행 실패.*Not logged in/);assert.match(rows[1].text,/^엔진 오류: boom/);assert.match(rows[2].text,/다시 보내/);
 });
+test('context usage comes from the latest parent-context engine report and stays unknown otherwise',async()=>{
+ const {contextUsage}=await import('./chat-presentation.mjs');
+ const claude=(usage,parent=null)=>({content:{role:'agent',content:{type:'output',data:{type:'assistant',parent_tool_use_id:parent,message:{usage}}}}});
+ assert.deepEqual(contextUsage([claude({input_tokens:2,cache_creation_input_tokens:2337,cache_read_input_tokens:28353,output_tokens:4,context_window:1000000})]),{used:30696,window:1000000});
+ assert.deepEqual(contextUsage([claude({input_tokens:10,output_tokens:1,context_window:200000}),claude({input_tokens:99999,output_tokens:1},'child')]),{used:11,window:200000});
+ const codex={content:{role:'agent',content:{type:'codex',data:{type:'token_count',info:{total:{totalTokens:31556},last:{totalTokens:16499,inputTokens:16492,outputTokens:7},modelContextWindow:475000}}}}};
+ assert.deepEqual(contextUsage([codex]),{used:16499,window:475000});
+ assert.deepEqual(contextUsage([claude({input_tokens:5,output_tokens:1})]),{used:6,window:null});
+ const compacted={content:{role:'agent',content:{type:'codex',data:{type:'token_count',info:{total:{inputTokens:0,outputTokens:0},contextTokens:4958,modelContextWindow:1000000}}}}};
+ assert.deepEqual(contextUsage([claude({input_tokens:30000,output_tokens:1,context_window:1000000}),compacted]),{used:4958,window:1000000});
+ assert.equal(chatTimeline([{id:'c',content:{role:'agent',content:{type:'event',data:{type:'compact-summary',summary:'x'}}}}])[0].kind,'notice');
+ assert.equal(contextUsage([]),null);
+});

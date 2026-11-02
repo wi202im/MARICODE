@@ -43,10 +43,25 @@ export function chatTimeline(messages){
    if(seen.has(ref.id))continue;seen.add(ref.id);tool.parent=parent;
    const last=rows.at(-1);if(last?.kind==='activity'&&last.parent===parent)last.tools.push(tool);else rows.push({kind:'activity',key:'tool-'+ref.id,parent,tools:[tool]});
   }
-  const note=m.content?.content?.type==='event'&&['message','error'].includes(d?.type)&&typeof d.message==='string'?noticeText(d):null;
+  const event=m.content?.content?.type==='event',note=event&&d?.type==='compact-summary'?{error:false,text:'대화를 요약해 컨텍스트를 줄였습니다. 이후 대화는 요약을 바탕으로 이어집니다.'}:event&&['message','error'].includes(d?.type)&&typeof d.message==='string'?noticeText(d):null;
   if(note&&!(rows.at(-1)?.kind==='notice'&&rows.at(-1).text===note.text))rows.push({kind:'notice',key:m.id??m.seq,...note});
   const duration=d?.duration_ms??d?.durationMs;
   if((d?.subtype==='turn_duration'||d?.type==='turn_duration')&&Number.isFinite(duration))rows.push({kind:'duration',key:m.id,text:`작업 시간 ${formatDuration(duration)}`});
  }
  return rows;
+}
+// Latest engine-reported context size for the parent conversation (sub-agent usage excluded).
+// Claude: last assistant usage (input + cache + output; context_window when HAPI reports it).
+// Codex: token_count `last` turn total with modelContextWindow. Unknown stays null, never 0.
+export function contextUsage(messages){
+ const n=v=>Number.isFinite(v)?v:0;
+ for(let i=(messages?.length??0)-1;i>=0;i--){
+  const c=messages[i]?.content?.content,d=c?.data;
+  // hapi.usage.v1 token_count is also emitted for Claude (e.g. after /compact) with contextTokens.
+  const used=c?.type==='codex'&&d?.type==='token_count'?d.info?.contextTokens??d.info?.last?.totalTokens:undefined;
+  if(Number.isFinite(used))return {used,window:Number.isFinite(d.info.modelContextWindow)?d.info.modelContextWindow:null};
+  const u=c?.type==='output'&&d?.type==='assistant'&&!d.parent_tool_use_id&&!d.isSidechain?d.message?.usage:null;
+  if(u&&Number.isFinite(u.input_tokens))return {used:n(u.input_tokens)+n(u.cache_creation_input_tokens)+n(u.cache_read_input_tokens)+n(u.output_tokens),window:Number.isFinite(u.context_window)?u.context_window:null};
+ }
+ return null;
 }

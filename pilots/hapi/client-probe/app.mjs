@@ -5,7 +5,8 @@ import {requestQuestions,questionDecision} from './questions.mjs';
 import {questionForm} from './question-form.mjs';
 import {createAttachmentComposer} from './attachment-composer.mjs';
 import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
-import {formatDuration,describeTool} from './chat-presentation.mjs';
+import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
+import {createCommandSuggest} from './composer-commands.mjs';
 import {permissionLabel} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
@@ -31,7 +32,7 @@ const collapsedProjects=new Set();
 let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JSON.parse(localStorage.getItem('maricode-display-preferences')));}catch{}
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
-let settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
+let commandSuggest=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
 let recovery=null,workspaceOpened=false,connectionState='login-needed';
@@ -101,6 +102,10 @@ function render(){
   renderWorkflow();
   const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
   renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session});
+  if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
+   el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
+   el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
+   el.title=usage?`마지막 응답 기준 엔진 보고값 · ${usage.used.toLocaleString()} 토큰${usage.window?` / 한도 ${usage.window.toLocaleString()}`:' · 한도 미보고'}`:'';}
   if(nearBottom)scroller.scrollTop=scroller.scrollHeight;
   if(workspaceLayout){renderWorkspace();renderSettings();}
 }
@@ -242,7 +247,7 @@ async function selectSession(id){
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
   try{sessionStorage.setItem('hapi-trial-selected-session',id);}catch{}
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
-  settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;
+  settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
   sessionId=id;if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
@@ -933,6 +938,7 @@ if(workspaceLayout){
  $('close-settings').onclick=closeSettings;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();workspacePanel('chat');workspaceDrawer(false);}});
  document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
+ commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>session?.active&&sessionId?`${epoch}:${sessionId}`:null,fetch:async()=>{const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);return {commands:c?.success?c.commands:[],skills:s?.success?s.skills:[]};}}});
  bindComposerEnter({input:$('prompt'),form:$('send-form'),button:$('send')});
  $('prompt').addEventListener('input',()=>{const input=$('prompt');input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';});
 }
