@@ -2,10 +2,33 @@
 
 상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다.
 
+## 명령 지원 조사·미리보기 필터 — 2026-11-03 (main, 미배포)
+
+- 사용자 결정: 외부 터미널을 매번 켜는 대신 백그라운드 CLI + 채팅 명령 카드로 확장한다. 실행 중 MCP의 즉시 반영 보장보다 설정 후 같은 세션 재개가 가능하면 충분하다. 미지원 명령은 미리보기에서도 제외한다. 이번 범위는 지원 조사·필터이며 MCP 명령 카드 자체는 아직 구현하지 않았다.
+- **조사 기준:** 이 Mac에서 도움말을 조회한 CLI는 Codex0.164.0, Claude Code2.1.312다. 이전 시험 기록의 CLI 버전과 구분하며 모든 머신에 같은 버전이 설치됐다고 간주하지 않는다. `--version`/`--help`와31개 하위 도움말만 읽었고 실제 계정/MCP/플러그인 조회·변경·인증·모델 호출은 하지 않았다. 원문 도움말은 Git 제외 `.runtime/command-review/`에 있다.
+- 공식 CLI의 존재 확인과 앱 지원은 구분한다. 다음은 **명령 카드 구현 후보**이지 현재 앱의 실행 검증 결과가 아니다.
+
+| 범위 | Claude Code | Codex | 연결 시 유의점 |
+|---|---|---|---|
+| MCP 조회 | `mcp list/get` | `mcp list/get --json` | Claude는 텍스트 파싱 필요. CLI 조회를 현재 HAPI 세션의 연결 상태로 표현하지 않는다 |
+| MCP 추가/삭제 | `mcp add/add-json/remove` | `mcp add/remove` | 계정·폴더·scope 고정. 직접 edit 명령은 없으므로 수정은 별도 설계; 삭제→추가를 원자적 수정으로 취급하지 않는다 |
+| MCP 인증 | `mcp login/logout` | `mcp login/logout` | 두 login에 `--no-browser` 존재. 인증 URL·비밀은 일반 대화/로그와 분리해야 한다 |
+| AI 로그인 상태 | `auth status --json` | `login status` | 기존 계정 조회를 카드에 재사용 가능. 실제 로그인은 기존 공식 인증 경로 |
+| 플러그인 목록 | `plugin list --json` | `plugin list --json` | 조회 결과 필드/자격증명 제거 검증 후 연결 |
+| 플러그인 관리 | `install/uninstall/update/enable/disable`, marketplace | `add/remove`, marketplace | AI별 지원 차이. 설치/변경/인증 확인 필요; 아직 앱 카드 미지원 |
+| 진단 | `doctor` | `doctor --json` | 조회 범위·개인 설정 노출 점검 후 제공. Claude `/doctor` 대화형 복구와 구분 |
+| 추가 설정 | `auto-mode config/defaults` | `features list/enable/disable` | 각각 다른 기능. 일반 `/config`나 임의 설정 편집으로 포장하지 않는다 |
+
+- 고정 HAPI0.33.3 소스 `shared/src/slashCommands.ts`, `cli/src/modules/common/slashCommands.ts`, `cli/src/claude/claudeRemote.ts`, `cli/src/codex/utils/slashCommands.ts`, Codex remote/shared 실행기를 확인했다. HAPI의 목록 노출만으로 Claude의 모든 터미널 내장 명령이 처리되는 것은 아니다.
+- **수정:** 명령 미리보기·직접 입력 검사에 공통 `command-support.mjs`를 적용했다. Claude는 `/compact`, Codex는 `/compact /status /plan /default /execute /model /reasoning /effort /personality /permissions /permission`을 현재 엔진 보고 목록과 교차한다. 출처가 user/project/plugin이고 본문이 확인된 사용자 정의 명령은 별도 설명으로 남긴다. 이름만 있는 항목·미확인 엔진·내장 명령으로 오인할 이름은 제외한다.
+- `/mcp /config /plugin /doctor` 등 미연결 명령은 숨기고 직접 입력해도 전송하지 않는다. `/clear`의 새 대화 전환, `/goal`·`/agent`의 별도 실행 상태, `/help`의 HAPI 전체 목록, `/fast`의 모델별 지원/과금 경계도 추가 연결 확인 전 제외한다. 모델·액세스 등의 기존 UI 기능은 유지한다. 기존 `/mcp` 자동 외부 CLI 안내도 제거하고 외부 CLI 버튼만 고급 보조 기능으로 남겼다.
+- **된다 — 자동:** 실패 테스트→구현 후 필터/동일 정책 전송 판정/일반 경로·본문 구분 검사 통과. 전체335개 자동 검사 통과. **확인 안 함:** 이번 모든 명령의 실제 모델 실행과 네이티브 화면, MCP/플러그인 카드 동작. 공개1.0.11에는 아직 포함되지 않았다.
+- 근거: https://learn.chatgpt.com/docs/developer-commands?surface=cli , https://code.claude.com/docs/en/cli-reference , https://code.claude.com/docs/en/mcp . 공식 문서의 최신 명령과 설치본 도움말이 다르면 실행 머신의 버전/도움말을 우선 확인한다.
+
 ## 공식 CLI · MCP 설정 연결 — 2026-11-03 (main, 미배포)
 
 - 사용자 결정: HAPI 확장 대신 공식 CLI 설정창을 연결한다. 기존 대화 재개와 별도로 다른 공식 명령에도 사용할 공통 경로를 구현했다. HAPI0.33.3은 변경하지 않았다.
-- UI: AI 계정 카드 → ‘공식 CLI · MCP 설정’(Claude)/‘공식 CLI 열기’(Codex) → 작업 폴더 선택 → 공식 CLI 열기. 현재 계정·폴더를 표시한다. Claude 채팅의 `/mcp`·`/config`는 메시지로 전송하지 않고 안내 패널을 연다(초안·첨부 보존). `/mcp`를 명령 제안에도 넣고 공식 CLI에서 관리한다고 표시한다.
+- UI: AI 계정 카드 → ‘공식 CLI · MCP 설정’(Claude)/‘공식 CLI 열기’(Codex) → 작업 폴더 선택 → 공식 CLI 열기. 현재 계정·폴더를 표시한다. 초기 구현은 `/mcp`·`/config`를 외부 CLI 안내로 연결했으나, 위 후속 UX 결정에 따라 자동 안내/명령 제안은 제거했다. 계정 카드의 외부 CLI 열기 버튼만 보조 기능으로 유지한다.
 - 실행: 같은 Mac의 인증된 로컬 요청만 등록된 프로젝트/작업공간을 고른다. 계정 ID를 다시 검사하고 등록된 CLI·환경을 요청별 비공개 파일에 고정한다. 개인 셸 초기화 파일을 읽지 않는 bash에서 해당 공식 CLI를 열며, CLI 종료 뒤 같은 환경의 셸에서 `claude mcp --help`와 add/remove/login 같은 공식 명령을 사용할 수 있다. 비밀은 터미널/공식 화면에서만 입력하고 웹에 전달하지 않는다. 셸 종료 후 환경 스냅샷은 제거한다.
 - 보호: 요청별 1회 실행 표식, 실행 전 영속 상태 기록, 중복 열기/응답 유실 재전송 금지, 해당 CLI 창이 열리거나 미확인일 때 계정 전환 차단. 임의 cwd·명령 인자/권한 플래그·원격 전달 헤더는 거부한다. 앱 종료 시 외부 터미널을 임의 종료하지 않는다.
 - **된다 — 자동/합성:** 실패 재현 후 구현, 전체333개 자동 검사 통과. 실제 Node helper와 macOS bash에 가짜 CLI를 연결해 최초 실행과 이후 `claude mcp list`가 같은 선택 폴더·프로필·실행 파일을 쓰는 것을 확인했다. HTTP 로컬/인증/출처 경계, 계정 전환 보호, 오류·중복·응답 유실, UI 상태 갱신도 검사했다. 실제 Claude/MCP 접속 성공 시험과 구분한다.

@@ -1,4 +1,5 @@
-import {officialCliControls,needsOfficialCli} from './official-cli-ui.mjs';
+import {officialCliControls} from './official-cli-ui.mjs';
+import {supportedChatCommands,chatCommandName,chatCommandSupported} from './command-support.mjs';
 import {bindComposerEnter} from './composer-input.mjs';
 import {createClaudeImportPanel,createImportedHistory} from './claude-import-ui.mjs';
 import {createQuitFlow} from './quit-flow.mjs';
@@ -310,9 +311,13 @@ $('stream-toggle').onclick=()=>{
 $('send-form').addEventListener('submit',async e=>{
   e.preventDefault();if($('send').disabled)return;
   const text=$('prompt').value.trim();if(!text&&!attachmentComposer?.count)return;
-  if(workspaceLayout&&needsOfficialCli(session?.metadata?.flavor,text)){workspacePanel('info');$('accounts-panel').open=true;await refreshAccounts();const panel=$('account-list').querySelector('.official-cli[data-agent=claude]');if(panel){panel.open=true;panel.scrollIntoView({block:'nearest'});}notice('이 명령은 공식 CLI 설정 화면에서 사용하세요. 채팅에 전송하지 않았고 입력은 보존했습니다.');return;}
   const mine=epoch;let submitted=false;busy=true;render();
   try{
+    if(chatCommandName(text)){
+      let catalog;try{catalog=await api(base()+'/slash-commands');}catch{if(mine===epoch)notice('명령 지원 목록을 확인하지 못했습니다. 전송하지 않았습니다. 연결 상태를 확인하세요.');return;}
+      if(mine!==epoch)return;
+      if(!catalog?.success||!chatCommandSupported(session?.metadata?.flavor,text,catalog.commands)){notice('이 명령은 아직 Maricode 채팅에서 지원하지 않습니다. 전송하지 않았고 입력은 보존했습니다. 모델·액세스 변경은 입력창 옵션을 이용하세요.');return;}
+    }
     await refresh();if(mine!==epoch||!connected||!session.active||session.thinking||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
     const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;const result=actions.send(text,attachments);render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
   }catch(e){if(mine===epoch)notice(submitted&&!actions.pending?'서버 이력에서 전송을 확인했습니다.':e.message+' 전송은 자동 재시도하지 않습니다.');}finally{busy=false;render();}
@@ -1045,7 +1050,7 @@ if(workspaceLayout){
  $('close-settings').onclick=closeSettings;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();workspacePanel('chat');workspaceDrawer(false);}});
  document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
- commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>session?.active&&sessionId?`${epoch}:${sessionId}`:null,fetch:async()=>{const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);const commands=c?.success?c.commands:[];return {commands:session?.metadata?.flavor==='claude'?[{name:'mcp',description:'공식 CLI 설정 화면에서 관리'},...commands.filter(c=>c.name!=='mcp')]:commands,skills:s?.success?s.skills:[]};}}});
+ commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>session?.active&&sessionId?`${epoch}:${sessionId}`:null,fetch:async()=>{const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);return {commands:supportedChatCommands(session?.metadata?.flavor,c?.success?c.commands:[]),skills:s?.success?s.skills:[]};}}});
  bindComposerEnter({input:$('prompt'),form:$('send-form'),button:$('send')});
  finder=createFind({bar:$('find-bar'),input:$('find-input'),count:$('find-count'),scope:()=>$('messages')});$('find-close').onclick=()=>finder.close();
  const shortcuts=[['⌘K','명령 팔레트'],['⌘F','대화에서 찾기'],['Enter','메시지 보내기'],['Shift+Enter','줄바꿈'],['Esc','패널·팝업 닫기']];

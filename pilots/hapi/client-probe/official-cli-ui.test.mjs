@@ -1,10 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {needsOfficialCli,cliUiState} from './official-cli-ui.mjs';
-test('Claude interactive settings are diverted before sending, without intercepting conversation or compact',()=>{
- for(const text of ['/mcp',' /mcp login ','/config'])assert.equal(needsOfficialCli('claude',text),true);
- for(const text of ['/compact','explain /mcp','/mcpx',''])assert.equal(needsOfficialCli('claude',text),false);
- assert.equal(needsOfficialCli('codex','/mcp'),false);
-});
+import {cliUiState} from './official-cli-ui.mjs';
 test('CLI UI does not re-enable launch on uncertain state or claim settings applied after shell exit',()=>{
  for(const phase of ['opening','running','unknown'])assert.equal(cliUiState({phase,supported:true},true).canOpen,false);
  assert.equal(cliUiState(null,true).canOpen,false);assert.equal(cliUiState({phase:'idle',supported:true},false).canOpen,false);

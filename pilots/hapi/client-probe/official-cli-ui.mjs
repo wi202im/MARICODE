@@ -1,4 +1,3 @@
-export const needsOfficialCli=(agent,text)=>agent==='claude'&&/^\/(?:mcp|config)(?:\s|$)/.test(String(text).trim());
 export function cliUiState(state,local){
  if(!local)return {canOpen:false,text:'공식 CLI 창은 해당 서버 Mac의 로컬 화면에서 열어 주세요.'};
  if(!state)return {canOpen:false,text:'CLI 실행 상태를 확인하지 못했습니다. 상태를 다시 확인하세요.'};
