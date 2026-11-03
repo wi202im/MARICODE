@@ -40,6 +40,7 @@ export function renderConversation(container,messages,{engine,session,onFork}={}
  if(rendered.get(container)===signature)return;rendered.set(container,signature);
  const opened=new Set([...container.querySelectorAll('details[open]')].map(e=>e.dataset.key??e.dataset.callId));
  const nodes=chatTimeline(messages).map(row=>{
+  if(row.kind==='command'){const box=node('section','cli-output'+(row.error?' error':''));box.append(node('small','',row.error?'Claude Code 명령 오류':'Claude Code 명령 결과'),node('pre','',row.text),copyButton(row.text,'명령 결과 복사'));return box;}
   if(row.kind==='duration')return node('p','turn-duration',row.text);
   if(row.kind==='notice'){return node('p','session-notice'+(row.error?' error':''),row.text);}
   if(row.kind==='activity'){

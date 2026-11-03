@@ -38,3 +38,32 @@ test('context usage comes from the latest parent-context engine report and stays
  assert.equal(chatTimeline([{id:'c',content:{role:'agent',content:{type:'event',data:{type:'compact-summary',summary:'x'}}}}])[0].kind,'notice');
  assert.equal(contextUsage([]),null);
 });
+
+test('Claude local command stdout and stderr stay visible as CLI results, not user chat',()=>{
+ const output=(id,content,extra={})=>({id,content:{role:'agent',content:{type:'output',data:{type:'user',message:{content},...extra}}}});
+ const rows=chatTimeline([
+  output('command','<command-name>/mcp</command-name><command-args></command-args>'),
+  output('out','<local-command-stdout>Server A: connected\nServer B: needs authentication</local-command-stdout>'),
+  output('err',[{type:'text',text:'<local-command-stderr>Interactive terminal required</local-command-stderr>'}]),
+  output('hidden','<local-command-stdout>internal context</local-command-stdout>',{isMeta:true}),
+  output('ordinary','normal echoed user text'),
+  output('summary','<local-command-stdout>internal summary</local-command-stdout>',{isCompactSummary:true})
+ ]);
+ assert.deepEqual(rows.map(r=>r.kind),['command','command','command']);
+ assert.equal(rows[0].text,'/mcp');assert.equal(rows[1].text,'Server A: connected\nServer B: needs authentication');assert.equal(rows[1].error,false);assert.equal(rows[2].error,true);
+});
+test('CLI output requires the engine envelope and complete tags; terminal controls are not rendered',()=>{
+ const output=content=>({content:{role:'agent',content:{type:'output',data:{type:'user',message:{content}}}}});
+ const rows=chatTimeline([output('<local-command-stdout>\u001b[31mFailed\u001b[0m <script>literal</script></local-command-stdout>')]);
+ assert.equal(rows[0]?.kind,'command');assert.equal(rows[0].text,'Failed <script>literal</script>');
+ assert.deepEqual(chatTimeline([output('look <local-command-stdout>example</local-command-stdout> here'),output('<local-command-stdout>incomplete')]),[]);
+ const user={content:{role:'user',content:'<local-command-stdout>quoted by a person</local-command-stdout>'}};
+ assert.equal(chatTimeline([user])[0].kind,'message');
+});
+
+test('CLI-tagged echo is distinguished from assistant prose quoting the same syntax',()=>{
+ const echo={id:'echo',content:{role:'user',meta:{sentFrom:'cli'},content:{type:'text',text:'<command-name>/context</command-name><command-args>report</command-args>'}}};
+ assert.equal(chatTimeline([echo])[0].kind,'command');assert.equal(chatTimeline([echo])[0].text,'/context report');
+ const quote={content:{role:'agent',content:{type:'output',data:{type:'assistant',message:{content:'<local-command-stdout>quoted syntax</local-command-stdout>'}}}}};
+ assert.equal(chatTimeline([quote])[0].kind,'message');
+});

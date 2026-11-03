@@ -2,6 +2,16 @@
 
 상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다.
 
+## Claude 명령 결과 표시·MCP 전달 경계 — 2026-11-03 (main, 미배포)
+
+- 사용자 신고: Claude Code 명령의 결과/UI가 전달되지 않아 특히 MCP 설정을 사용할 수 없음. 사용자는 기존 MCP 상태·인증·재연결과 추가·삭제·수정 모두 필요하다고 확인했다.
+- 확인: HAPI0.33.3의 `docs/api/client-contract/messages.md`와 `cli/src/claude/utils/sdkToLogConverter.test.ts`는 Claude `user` 모양 엔진 출력의 `<local-command-stdout/stderr>`를 CLI 결과로 표시하도록 정의한다. Maricode는 assistant 텍스트만 렌더링해 이를 버렸다.
+- 수정: 명령 이름·stdout·stderr를 채팅의 별도 ‘Claude Code 명령 결과/오류’ 블록으로 보여준다. 텍스트 배열과 CLI 발신 메타데이터도 처리하며 내부 메타/요약·일반 사용자 입력·태그를 인용한 AI 답변과 구분한다. HTML로 삽입하지 않고 ANSI/제어 문자는 제거한다. 복사와 긴 결과 스크롤을 제공한다.
+- **된다:** 실패 재현 테스트2개 → 수정 후 통과, 추가 출처 구분 테스트 포함 전체323개 통과. 실제 서버/실제 MCP 연결·네이티브 화면은 이번에 확인 안 함이다. 공개1.0.11 DMG에는 아직 이 수정이 없다.
+- **MCP 관리 자체는 미구현:** 고정 HAPI0.33.3 소스에서 Claude SDK의 외부 제어는 interrupt/getContextUsage/setPermissionMode 중심이고, 실행 중 MCP status/reconnect/toggle/auth를 Hub 웹 API로 노출하지 않는다. `/mcp`를 일반 메시지로 보내도 대화형 관리 UI가 생기지 않는다. Anthropic 공식 SDK는 MCP 제어 메서드를 별도로 제공한다. 공식 CLI `mcp` 도움말에는 list/get/add-json/remove/login이 있으나 별도 CLI 프로세스의 상태를 현재 실행 세션의 상태로 간주할 수 없다.
+- 방향 결정 요청 중: 앱 안에서 관리하기 위한 최소 HAPI 제어 API 확장 또는 공식 CLI 설정창 연결. AGENTS.md의 ‘현재 목표 밖으로 범위가 늘면 멈추고 필요한 결정을 보고’에 따라 엔진 변경·MCP 설정/인증 변경은 아직 시작하지 않았다. 권한·프로필·프로젝트·원격 실행 머신 경계와 미확인 재전송 금지가 필요하다. 요구사항에는 두 관리 범위를 모두 우선 보완 대상으로 반영했다.
+- 근거: https://github.com/tiann/hapi/blob/d9acc0c31e0d9115e09429fd788a414a522bd5c7/docs/api/client-contract/messages.md , https://code.claude.com/docs/en/mcp , https://code.claude.com/docs/en/agent-sdk/typescript .
+
 ## 액세스 모드 레이아웃 수정 — 2026-11-03 (main, 미배포)
 
 - 사용자 신고: 액세스 모드 배치가 깨지고 Claude에서 선택 컴포넌트가 보이지 않음. 소스에서 설정 필드는 CSS grid인데 액세스 설명에 flex 속성만 적용돼, 긴 설명이 두 번째 auto 열을 차지하고 select 열을 밀어내는 구조를 확인했다.

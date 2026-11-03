@@ -26,6 +26,25 @@ function noticeText({type,message}){
  if(type==='error')return {error:true,text:`엔진 오류: ${m}`};
  return {error:false,text:m==='Aborted by user'?'사용자가 중단했습니다.':m};
 }
+// Claude emits local command results on the user-shaped engine channel. These
+// are CLI output, not another human prompt; never render the tags as HTML.
+function commandOutput(message){
+ const e=message?.content,p=e?.content,d=p?.data;
+ let content;
+ if(e?.role==='agent'&&p?.type==='output'&&(d?.type==='user'||d?.type==='assistant'&&e.meta?.sentFrom==='cli')){
+  if(d.isMeta||d.isSynthetic||d.isCompactSummary)return null;
+  content=d.message?.content;
+ }else if(e?.role==='user'&&e.meta?.sentFrom==='cli')content=typeof p==='string'?p:p?.type==='text'?p.text:null;
+ else return null;
+ const text=typeof content==='string'?content:Array.isArray(content)&&content.every(b=>b.type==='text'&&typeof b.text==='string')?content.map(b=>b.text).join('\n'):'';
+ const tag=/<(local-command-stdout|local-command-stderr|command-name|local-command-name|command-args|command-message)>([\s\S]*?)<\/\1>/g;
+ const parts=[...text.matchAll(tag)];if(!parts.length||text.replace(tag,'').trim())return null;
+ const clean=value=>value.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g,'').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').replace(/[\x00-\x08\x0b-\x1f\x7f]/g,'');
+ const output=parts.filter(p=>p[1]==='local-command-stdout'||p[1]==='local-command-stderr');
+ const chosen=output.length?output:parts.filter(p=>p[1]!=='command-message');
+ const rendered=chosen.map(p=>clean(p[2]).trim()).filter(Boolean).join(output.length?'\n':' ');
+ return rendered?{text:rendered,error:output.some(p=>p[1]==='local-command-stderr')}:null;
+}
 // Keep activity at the original call position, even when its result arrives
 // after other messages. Never infer child-agent completion from spawn success.
 export function chatTimeline(messages){
@@ -35,7 +54,8 @@ export function chatTimeline(messages){
   const ids=[];
   if(d?.type==='tool-call'||d?.type==='tool-call-result')ids.push({id:d.callId,result:d.type==='tool-call-result'});
   if(m.content?.content?.type==='output'&&Array.isArray(d?.message?.content))for(const b of d.message.content){if(b.type==='tool_use')ids.push({id:b.id});if(b.type==='tool_result')ids.push({id:b.tool_use_id,result:true});}
-  const view=messageView(m);if(view)rows.push({kind:'message',key:m.id??m.seq,localId:typeof m.localId==='string'?m.localId:null,view,parent,at:m.createdAt,attachments:m.content?.content?.attachments??m.content?.meta?.attachments??[]});
+  const command=commandOutput(m);if(command)rows.push({kind:'command',key:m.id??m.seq,parent,at:m.createdAt,...command});
+  const view=command?null:messageView(m);if(view)rows.push({kind:'message',key:m.id??m.seq,localId:typeof m.localId==='string'?m.localId:null,view,parent,at:m.createdAt,attachments:m.content?.content?.attachments??m.content?.meta?.attachments??[]});
   for(const ref of ids){
    const tool=tools.get(ref.id);if(!tool)continue;
    if(ref.result)tool.end=m.createdAt;else tool.start=m.createdAt;
