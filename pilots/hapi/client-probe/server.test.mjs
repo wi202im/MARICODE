@@ -434,3 +434,15 @@ test('pairing codes are issued only to the signed-in local app and redeem once f
  assert.equal((await post('/api/pair',{code})).status,401);
  assert.equal((await post('/api/pair',{code},{origin:'https://untrusted.example'})).status,403);
 });
+
+test('official CLI launches only from authenticated same-origin local requests, never forwarded or arbitrary routes',async t=>{
+ let starts=0;const authCheck=auth=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});};
+ const runnerService={officialCliStatus:async auth=>{authCheck(auth);return {claude:{phase:'idle'}};},openOfficialCli:async(auth,input)=>{authCheck(auth);starts++;return {phase:'opening'};}};
+ const server=createServer({upstream:'http://127.0.0.1:1',runnerService});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
+ const url=`http://127.0.0.1:${server.address().port}`,post=(headers={},body={})=>fetch(url+'/api/official-cli',{method:'POST',headers:{origin:url,'content-type':'application/json',authorization:'Bearer fixture',...headers},body:JSON.stringify(body)});
+ assert.equal((await fetch(url+'/api/official-cli')).status,401);
+ assert.equal((await fetch(url+'/api/official-cli',{headers:{authorization:'Bearer fixture'}})).status,200);
+ for(const headers of [{'x-forwarded-for':'10.0.0.1'},{forwarded:'for=10.0.0.1'},{origin:'https://untrusted.example'},{authorization:'Bearer wrong'}])assert.notEqual((await post(headers)).status,200);
+ assert.equal(starts,0);assert.equal((await post()).status,200);assert.equal(starts,1);
+ assert.equal((await fetch(url+'/api/official-cli?command=mcp',{headers:{authorization:'Bearer fixture'}})).status,403);
+});

@@ -10,6 +10,7 @@ import {launchRunner} from './runner-launch.mjs';
 import {claudeImports} from './claude-import.mjs';
 import {codexImports} from './codex-import.mjs';
 import {accountProfiles} from './account-profiles.mjs';
+import {createOfficialCli,cliPending} from './official-cli.mjs';
 import {discoverClaudeSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
 async function ownerAuthorization(config){
@@ -35,7 +36,7 @@ async function runnerHasActive(config){
  if(!r.ok)throw Error();const data=await r.json();if(!Array.isArray(data.sessions))throw Error();
  return data.sessions.some(s=>s.active&&s.metadata?.machineId===id);
 }
-export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRunner,connection=runnerConnected,hasActive=runnerHasActive,now=Date.now}={}){
+export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRunner,connection=runnerConnected,hasActive=runnerHasActive,officialCli=createOfficialCli(config.accountConfig),now=Date.now}={}){
  const url=new URL(config.hubUrl);
  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('Local Hub required');
  if(['directory','accountConfig','binary','tokenFile'].some(k=>typeof config[k]!=='string'||!isAbsolute(config[k])))throw Error('Absolute launcher paths required');
@@ -265,6 +266,12 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     return {state:'registered',id};
    });
   },
+  async officialCliStatus(authorization){await authorize(authorization);return Object.fromEntries(await Promise.all(['claude','codex'].map(async agent=>[agent,await officialCli.status(agent)])));},
+  async openOfficialCli(authorization,input){
+   await authorize(authorization);
+   if(!input||Object.keys(input).some(k=>!['agent','accountId','project'].includes(k))||!['claude','codex'].includes(input.agent)||typeof input.project!=='string'||typeof input.accountId!=='string')throw Object.assign(Error('공식 CLI 실행 대상을 확인하세요.'),{rejected:true});
+   return exclusive(async()=>{const project=await selectedProject(authorization,input.project);return officialCli.start({agent:input.agent,accountId:input.accountId,cwd:project.path});});
+  },
   async accountProfiles(authorization){await authorize(authorization);return accountProfiles(c.accountConfig).list();},
   async accountProfile(authorization,input){
    await authorize(authorization);
@@ -275,6 +282,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    if(input.action==='remove')return exclusive(()=>profiles.remove(input.agent,input.id));
    return exclusive(async()=>{
     if((await profiles.list())[input.agent]?.active===input.id)return profiles.list();
+    if(cliPending(await officialCli.status(input.agent)))throw Object.assign(Error('공식 CLI 창을 exit로 종료한 뒤 계정을 전환하세요. 실행 결과가 미확인이면 터미널을 먼저 확인하세요.'),{rejected:true});
     const before=await state();
     if(!['unprepared','prepared','exited','running'].includes(before)||before==='running'&&!child)throw Object.assign(Error('실행기 상태를 확인한 뒤 전환하세요. 계정을 바꾸지 않았습니다.'),{rejected:true});
     if(await unresolvedTasks()||(before==='running'?await hasActive(c):await activeAuthorizedSessions(authorization)))throw Object.assign(Error('실행 중인 대화나 확인되지 않은 생성 요청이 있어 계정을 바꾸지 않았습니다. 실행을 종료한 뒤 다시 시도하세요.'),{rejected:true});

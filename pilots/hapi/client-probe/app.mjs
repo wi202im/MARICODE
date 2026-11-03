@@ -1,3 +1,4 @@
+import {officialCliControls,needsOfficialCli} from './official-cli-ui.mjs';
 import {bindComposerEnter} from './composer-input.mjs';
 import {createClaudeImportPanel,createImportedHistory} from './claude-import-ui.mjs';
 import {createQuitFlow} from './quit-flow.mjs';
@@ -62,7 +63,7 @@ async function api(path,{method='GET',body,signal}={}){
   const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401&&path!=='/api/pair'){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/official-cli'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
@@ -308,7 +309,9 @@ $('stream-toggle').onclick=()=>{
 };
 $('send-form').addEventListener('submit',async e=>{
   e.preventDefault();if($('send').disabled)return;
-  const text=$('prompt').value.trim();if(!text&&!attachmentComposer?.count)return;const mine=epoch;let submitted=false;busy=true;render();
+  const text=$('prompt').value.trim();if(!text&&!attachmentComposer?.count)return;
+  if(workspaceLayout&&needsOfficialCli(session?.metadata?.flavor,text)){workspacePanel('info');$('accounts-panel').open=true;await refreshAccounts();const panel=$('account-list').querySelector('.official-cli[data-agent=claude]');if(panel){panel.open=true;panel.scrollIntoView({block:'nearest'});}notice('이 명령은 공식 CLI 설정 화면에서 사용하세요. 채팅에 전송하지 않았고 입력은 보존했습니다.');return;}
+  const mine=epoch;let submitted=false;busy=true;render();
   try{
     await refresh();if(mine!==epoch||!connected||!session.active||session.thinking||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
     const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;const result=actions.send(text,attachments);render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
@@ -990,13 +993,13 @@ async function refreshAccounts(){
  if(accountsBusy||!token)return;
  const auth=token;accountsBusy=true;$('refresh-accounts').disabled=true;$('account-notice').textContent='실행 머신의 로그인 상태를 확인 중입니다.';
  try{
-  const [data,profiles]=await Promise.all([api('/api/accounts'),api('/api/account-profiles').catch(()=>null)]);if(auth!==token)return;
+  const [data,profiles,cli,folders]=await Promise.all([api('/api/accounts'),api('/api/account-profiles').catch(()=>null),api('/api/official-cli').catch(()=>null),api('/api/projects').catch(()=>null)]);if(auth!==token)return;
   $('account-host').textContent=`확인 대상: ${data.host}`;
   const labels={connected:'구독 로그인 확인', 'signed-out':'로그인 필요', 'not-installed':'설치 경로에서 CLI를 찾지 못함','other-auth':'다른 인증 방식 사용 중 · 자동 변경 안 함','not-configured':'아직 연결하지 않은 AI',unknown:'상태 확인 실패 · 기존 인증을 변경하지 않음'};
   $('account-list').replaceChildren(...data.providers.map(p=>{
    const card=document.createElement('article'),h=document.createElement('h3'),status=document.createElement('p'),button=document.createElement('button');h.textContent=p.agent==='claude'?'Claude Code':'Codex';status.textContent=labels[p.state]??labels.unknown;
    const note=document.createElement('small');note.textContent=p.loginPending?'로그인 창 실행/진행 중입니다. Mac에서 완료한 뒤 상태를 다시 확인하세요.':data.localLogin?'계정 식별 정보는 공식 CLI에서 확인하세요.':'새 로그인은 해당 서버 Mac에서 진행해 주세요.';
-   button.textContent='Mac에서 공식 로그인 시작';button.disabled=!data.localLogin||p.state!=='signed-out'||p.loginPending;button.onclick=()=>startAccountLogin(p.agent);card.append(h,status,note,button);const prof=profiles?.[p.agent];if(prof)card.append(accountProfileControls(p.agent,prof,status,data.localLogin));return card;
+   button.textContent='Mac에서 공식 로그인 시작';button.disabled=!data.localLogin||p.state!=='signed-out'||p.loginPending;button.onclick=()=>startAccountLogin(p.agent);card.append(h,status,note,button);const prof=profiles?.[p.agent];if(prof)card.append(accountProfileControls(p.agent,prof,status,data.localLogin));card.append(officialCliControls({agent:p.agent,profile:prof,local:data.localLogin,state:cli?.[p.agent],projects:folders?.projects??[],selected:selectedProject,api,valid:()=>auth===token&&!!token}));return card;
   }));$('account-notice').textContent='상태 확인 완료. 기존 로그인은 그대로 사용합니다.';
  }catch{if(auth===token)$('account-notice').textContent='계정 상태를 확인하지 못했습니다. 연결과 서버 설정을 확인해 주세요.';}
  finally{accountsBusy=false;$('refresh-accounts').disabled=false;}
@@ -1042,7 +1045,7 @@ if(workspaceLayout){
  $('close-settings').onclick=closeSettings;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();workspacePanel('chat');workspaceDrawer(false);}});
  document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
- commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>session?.active&&sessionId?`${epoch}:${sessionId}`:null,fetch:async()=>{const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);return {commands:c?.success?c.commands:[],skills:s?.success?s.skills:[]};}}});
+ commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>session?.active&&sessionId?`${epoch}:${sessionId}`:null,fetch:async()=>{const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);const commands=c?.success?c.commands:[];return {commands:session?.metadata?.flavor==='claude'?[{name:'mcp',description:'공식 CLI 설정 화면에서 관리'},...commands.filter(c=>c.name!=='mcp')]:commands,skills:s?.success?s.skills:[]};}}});
  bindComposerEnter({input:$('prompt'),form:$('send-form'),button:$('send')});
  finder=createFind({bar:$('find-bar'),input:$('find-input'),count:$('find-count'),scope:()=>$('messages')});$('find-close').onclick=()=>finder.close();
  const shortcuts=[['⌘K','명령 팔레트'],['⌘F','대화에서 찾기'],['Enter','메시지 보내기'],['Shift+Enter','줄바꿈'],['Esc','패널·팝업 닫기']];
