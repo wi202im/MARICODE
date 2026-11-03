@@ -32,11 +32,13 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
   $('claude-import-detail').textContent=chosen?`${chosen.size==null?'':(chosen.size/1024/1024).toFixed(1)+' MiB · '}ID ${chosen.id.slice(0,8)}${chosen.warning?' · '+chosen.warning:''}`:'';
   $('claude-import-more').hidden=selection?.nextOffset==null;
   $('claude-import-more').disabled=blocked||!!pending;
-  $('claude-import-start').disabled=blocked||!!pending||!chosen||chosen.importable===false||selection.project!==c.project;
+  const needsConnection=['not-configured','not-installed','connection-required','configuration-error'].includes(c.connectionState)||c.connectionState==='checking';
+  $('claude-import-readiness').textContent=needsConnection?'대화 목록은 원본 파일 조회 결과입니다. 위 AI 연결 상태를 확인하고 기존 CLI를 연결한 뒤 가져오세요.':'목록 조회와 AI 연결은 별개입니다. 가져올 때 실행기를 준비하며, 실제 AI 응답은 대화 재개 후 확인합니다.';
+  $('claude-import-start').disabled=needsConnection||blocked||!!pending||!chosen||chosen.importable===false||selection.project!==c.project;
   $('claude-import-check').hidden=!pending;$('claude-import-check').disabled=blocked;$('claude-import-check').textContent=pending?.registeredId?'가져온 대화 다시 열기':'가져오기 결과 확인';
   if(owner!==c.project+':'+c.agent){owner=c.project+':'+c.agent;selection=null;searchedOwner=null;lastChecked=null;serial++;$('claude-import-status').textContent='';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();}
   if(element.open&&!element.hidden&&!blocked&&!pending&&c.projectAvailable&&searchedOwner!==owner)queueMicrotask(()=>{if(element.open&&!element.hidden&&!loading&&!pending&&searchedOwner!==owner)$('claude-import-find').click();});
-  if(pending)$('claude-import-status').textContent=pending.registeredId?'등록은 완료됐습니다. 가져온 대화를 여는 중이거나 화면 확인이 필요합니다. 새 세션은 만들지 않습니다.':loading?'선택한 기록을 복사하고 등록 결과를 확인하고 있습니다…':'이전 가져오기 결과 확인이 필요합니다. 선택을 바꾸거나 다시 등록하지 않습니다.';
+  if(pending)$('claude-import-status').textContent=pending.registeredId?'등록은 완료됐습니다. 가져온 대화를 여는 중이거나 화면 확인이 필요합니다. 새 세션은 만들지 않습니다.':loading?'선택한 기록과 등록 결과를 확인하고 있습니다…':'이전 가져오기 결과 확인이 필요합니다. 선택을 바꾸거나 다시 등록하지 않습니다.';
  }
  async function search(more=false){
   if(loading||pending||context().busy||!context().projectAvailable||more&&selection?.nextOffset==null)return;
@@ -95,7 +97,7 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
    }else message='가져오기 결과가 미확인입니다. 결과 확인은 조회만 하며 원본 복사나 등록을 반복하지 않습니다.';
   }catch(error){
    if(pending?.registeredId)message='등록은 완료됐지만 이전 대화 화면을 열지 못했습니다. 가져온 대화 다시 열기를 눌러 주세요. 새 세션을 만들거나 원본을 다시 복사하지 않습니다.';
-   else if(error.rejected){pending=null;sessionStorage.removeItem(key);selection=null;message=error.message;}
+   else if(error.rejected){pending=null;sessionStorage.removeItem(key);if(!['IMPORT_CLI_CONNECTION','IMPORT_CLI_BINARY','IMPORT_RUNNER_PREPARE','IMPORT_RUNNER_CONNECT','IMPORT_RUNNER_TARGET'].includes(error.reason))selection=null;message=error.message;}
    else message='가져오기 결과를 확인하지 못했습니다. 결과 확인을 눌러 주세요. 원본 기록은 변경하지 않습니다.';
   }
   finally{loading=false;changed(false);render();if(message)$('claude-import-status').textContent=message;}

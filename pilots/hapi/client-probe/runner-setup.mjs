@@ -213,28 +213,13 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     // later shell changes cannot silently retarget an already chosen record.
     // Older pending records used an empty source for ~/.claude; preserve that
     // meaning instead of applying new discovery to an uncertain registration.
-    const cfg=JSON.parse(await readFile(c.accountConfig,'utf8')),env=JSON.parse(await readFile(cfg.environment,'utf8'));
+    const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
     const link=(await accountProfiles(c.accountConfig).list()).claude,connected=link?.confirmed,destination=link?.accounts[0]?.path;
     const discovery=await discoverClaudeSource({source:input.source||(action==='list'&&connected?destination:action==='list'?'':join(homedir(),'.claude'))}),source=discovery.source;
     if(!source)return {sessions:[],skipped:0,status:'source-unresolved',sourceOrigin:discovery.origin};
-    if(typeof destination!=='string'||!isAbsolute(destination))throw Error('Claude CLI 설정 연결이 필요합니다.');
-    if(action==='import'){
-     await ensureReady(authorization,input.project,'claude');
-     let ready=false;for(let attempt=0;attempt<15;attempt++){try{ready=await connection(c);}catch{}if(ready)break;await new Promise(r=>setTimeout(r,300));}
-     if(!ready)throw Error('실행기 연결을 먼저 확인하세요. 가져오기를 실행하지 않았습니다.');
-    }
-    let target;
-    if(action==='list')target={machineId:'not-started'};
-    else if(action==='check'){
-     if(!await exists(join(c.directory,'runner-home/settings.json')))return {state:'none'};
-     target={machineId:await machineId(c)};
-    }else target=await createRunnerWorkspace(c).target(authorization);
-    const imports=claudeImports({directory:slot+'.claude-imports',project:p.path,destination,machineId:target.machineId});
-    if(action==='list')return {...await imports.list(source,input.offset??0),sourceOrigin:discovery.origin};
-    // Bind the caller to this machine's namespace before using owner CLI auth.
-    const sessions=await authorize(authorization);
-    if(sessions.sessions?.some(s=>s.metadata?.machineId===target.machineId&&s.metadata?.flavor==='claude'&&(s.metadata?.claudeSessionId??s.metadata?.agentSessionId)===input.id&&s.metadata?.path!==p.path))throw Error('이 세션 ID가 다른 작업 폴더에 연결돼 있습니다.');
-    return imports.import({...input,source},{
+    const makeImports=id=>claudeImports({directory:slot+'.claude-imports',project:p.path,destination,machineId:id});
+    if(action==='list')return {...await makeImports('not-started').list(source,input.offset??0),sourceOrigin:discovery.origin};
+    const callbacks={
      register:async record=>{
       const token=await readFile(c.tokenFile,'utf8');
       const r=await fetch(c.hubUrl+'/cli/sessions',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({id:record.hubId,tag:'maricode-import-'+record.hubId,metadata:record.metadata,agentState:{controlledByUser:false}}),redirect:'error',signal:AbortSignal.timeout(15000)});
@@ -244,7 +229,28 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
       const r=await fetch(c.hubUrl+'/api/sessions/'+encodeURIComponent(id),{headers:{authorization},redirect:'error',signal:AbortSignal.timeout(5000)});
       if(r.status===404)return null;if(!r.ok)throw Error('등록 결과 조회 실패');return (await r.json()).session;
      }
-    },action==='check');
+    };
+    // Recover an existing attempt before preparing/restarting anything. A check
+    // needs only the durable import journal and Hub, not a healthy CLI/Runner.
+    const priorMachine=await exists(join(c.directory,'runner-home/settings.json'))?await machineId(c):null;
+    const prior=await makeImports(priorMachine).import({...input,source},callbacks,true);
+    if(action==='check'||prior.state!=='none')return prior;
+    // No import was admitted. Errors below must not masquerade as a lost
+    // registration, but Runner's own lifecycle uncertainty remains protected.
+    const reject=(reason,message)=>Object.assign(Error(message),{rejected:true,reason,userMessage:'가져오기를 시작하지 않았습니다. '+message});
+    if(typeof destination!=='string'||!isAbsolute(destination)||cfg.cliConnectionRequired&&!connected)throw reject('IMPORT_CLI_CONNECTION','AI 연결에서 기존 Claude CLI 설정 위치를 먼저 연결하세요. 목록 조회만으로 AI가 연결되지는 않습니다.');
+    if(!cfg.binaries?.claude)throw reject('IMPORT_CLI_BINARY','Claude 실행 파일이 연결되지 않았습니다. AI 연결에서 기존 CLI를 연결하세요.');
+    try{await ensureReady(authorization,input.project,'claude');}
+    catch{throw reject('IMPORT_RUNNER_PREPARE','실행 환경을 준비하지 못했습니다. AI 연결과 컴퓨터 설정의 실행 상태를 확인하세요. 실행 상태가 미확인이면 먼저 그 상태를 확인해야 합니다.');}
+    let ready=false;for(let attempt=0;attempt<15;attempt++){try{ready=await connection(c);}catch{}if(ready)break;await new Promise(r=>setTimeout(r,300));}
+    if(!ready)throw reject('IMPORT_RUNNER_CONNECT','실행기의 서버 연결을 확인하지 못했습니다. 컴퓨터 설정의 실행 상태를 확인하세요.');
+    let target;
+    try{target=await createRunnerWorkspace(c).target(authorization);}
+    catch{throw reject('IMPORT_RUNNER_TARGET','연결된 실행 컴퓨터를 확인하지 못했습니다. 서버 연결과 실행 상태를 확인하세요.');}
+    if(!target.agents.includes('claude'))throw reject('IMPORT_CLI_BINARY','실행기에 Claude가 준비되지 않았습니다. AI 연결에서 기존 CLI 실행 파일을 확인하세요.');
+    const sessions=await authorize(authorization);
+    if(sessions.sessions?.some(s=>s.metadata?.machineId===target.machineId&&s.metadata?.flavor==='claude'&&(s.metadata?.claudeSessionId??s.metadata?.agentSessionId)===input.id&&s.metadata?.path!==p.path))throw reject('IMPORT_PROJECT_CONFLICT','이 세션 ID가 다른 작업 폴더에 연결돼 있습니다.');
+    return makeImports(target.machineId).import({...input,source},callbacks);
    });
   },
   // HAPI's session list summarizes the native engine ID as metadata.agentSessionId.

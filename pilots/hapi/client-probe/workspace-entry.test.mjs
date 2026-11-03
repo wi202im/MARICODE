@@ -42,7 +42,7 @@ test('new sessions inherit the newest supported AI only from the exact workspace
 
 test('connected AI hides setup actions; missing, signed-out and unknown remain actionable without assuming access',async()=>{
  const {draftAccountView}=await import('./workspace-entry.mjs');
- assert.deepEqual(draftAccountView({state:'connected'},{local:true}),{setup:false,login:false,check:false,label:'연결됨'});
+ assert.deepEqual(draftAccountView({state:'connected'},{local:true}),{setup:false,login:false,check:true,label:'CLI 구독 로그인 확인됨'});
  assert.equal(draftAccountView({state:'not-installed'},{local:true}).setup,true);
  assert.equal(draftAccountView({state:'not-installed'},{local:false}).setup,false);
  assert.equal(draftAccountView({state:'signed-out'},{local:true,localLogin:true}).login,true);
@@ -51,4 +51,13 @@ test('connected AI hides setup actions; missing, signed-out and unknown remain a
  assert.equal(draftAccountView({state:'unknown'},{local:true}).setup,true);
  assert.equal(draftAccountView({state:'unknown'},{local:false}).setup,false);
  assert.equal(draftAccountView({state:'other-auth'},{local:true}).login,false);
+});
+
+
+test('runner labels do not equate login with a running AI session',async()=>{
+ const {draftRunnerLabel}=await import('./workspace-entry.mjs');
+ assert.match(draftRunnerLabel({phase:'unprepared',hub:'not-checked'},'claude'),/실행 전/);
+ assert.match(draftRunnerLabel({phase:'running',hub:'connected',agents:['claude']},'claude'),/서버 연결 확인/);
+ assert.match(draftRunnerLabel({phase:'running',hub:'connected',agents:['codex']},'claude'),/Claude.*준비되지/);
+ assert.match(draftRunnerLabel({phase:'unknown',hub:'connected',agents:['claude']},'claude'),/미확인/);
 });

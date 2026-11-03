@@ -315,3 +315,47 @@ test('background CLI authentication blocks application shutdown until the comman
  let running=true;const api=createRunnerSetup({directory:'/fixture/runner',accountConfig:'/fixture/accounts',binary:'/bin/echo',tokenFile:'/fixture/token',hubUrl:'http://127.0.0.1:1'},{commandCards:{running:()=>running}});
  await assert.rejects(api.close(),/인증/);running=false;await api.close();
 });
+
+test('Claude import distinguishes CLI setup failure from an admitted import and check never launches a runner',async t=>{
+ const {createServer}=await import('node:http'),{randomUUID}=await import('node:crypto'),{accountProfiles}=await import('./account-profiles.mjs'),{projectRegistry}=await import('./project-registry.mjs');
+ const root=await mkdtemp(join(tmpdir(),'maricode-import-ready-')),source=join(root,'cli');await mkdir(source);
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),projectsPath:join(root,'projects'),binary:'/bin/echo',tokenFile:join(root,'token')};
+ await writeFile(join(root,'env'),JSON.stringify({HOME:root,PATH:'/usr/bin:/bin',CLAUDE_CONFIG_DIR:source}));await writeFile(c.accountConfig,JSON.stringify({cwd:root,environment:join(root,'env'),cliConnectionRequired:true,binaries:{claude:'/bin/echo'}}));
+ const hub=createServer((req,res)=>res.end('{"sessions":[]}'));await new Promise(r=>hub.listen(0,'127.0.0.1',r));c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
+ t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ const p=await projectRegistry(c.projectsPath).add(root),input={project:p.id,source,id:randomUUID(),fingerprint:'0'.repeat(64)};let starts=0;
+ const service=createRunnerSetup(c,{prepare:async()=>{starts++;throw Error('private path detail');}});
+ const rows=await service.claudeImport('Bearer fixture',{project:p.id,source},'list');assert.equal(rows.status,'store-missing');
+ await assert.rejects(service.claudeImport('Bearer fixture',input,'import'),e=>e.rejected===true&&e.reason==='IMPORT_CLI_CONNECTION'&&e.userMessage.includes('CLI'));
+ assert.equal(starts,0);assert.equal((await service.claudeImport('Bearer fixture',input,'check')).state,'none');assert.equal(starts,0);
+ await accountProfiles(c.accountConfig).connect('claude',source,true);
+ await assert.rejects(service.claudeImport('Bearer fixture',input,'import'),e=>e.rejected===true&&e.reason==='IMPORT_RUNNER_PREPARE'&&!e.userMessage.includes('private path detail'));
+ assert.equal(starts,1);assert.equal((await service.claudeImport('Bearer fixture',input,'check')).state,'none');assert.equal(starts,1);
+});
+
+test('Claude registration response loss recovers through Hub before CLI or Runner preparation',async t=>{
+ const {createServer}=await import('node:http'),{randomUUID}=await import('node:crypto'),{accountProfiles}=await import('./account-profiles.mjs'),{projectRegistry}=await import('./project-registry.mjs'),{readFile}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'maricode-import-recover-')),source=join(root,'cli');await mkdir(source);
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),projectsPath:join(root,'projects'),binary:'/bin/echo',tokenFile:join(root,'token')};
+ await writeFile(join(root,'env'),JSON.stringify({HOME:root,PATH:'/usr/bin:/bin'}));await writeFile(c.accountConfig,JSON.stringify({cwd:root,environment:join(root,'env'),cliConnectionRequired:true,binaries:{claude:'/bin/echo'}}));await writeFile(c.tokenFile,'fixture');
+ await accountProfiles(c.accountConfig).connect('claude',source,true);const p=await projectRegistry(c.projectsPath).add(root),nativeId=randomUUID(),machineId=randomUUID();
+ const base=join(source,'projects',p.path.replace(/[^a-zA-Z0-9]/g,'-'));await mkdir(base,{recursive:true});const raw=JSON.stringify({type:'user',uuid:randomUUID(),sessionId:nativeId,cwd:p.path,message:{content:'synthetic previous history'}})+'\n',file=join(base,nativeId+'.jsonl');await writeFile(file,raw);
+ let stored,posts=0,starts=0;
+ const hub=createServer(async(req,res)=>{
+  if(req.url==='/cli/sessions'){let raw='';for await(const chunk of req)raw+=chunk;stored=JSON.parse(raw);posts++;req.socket.destroy();return;}
+  if(req.url==='/api/machines')return res.end(JSON.stringify({machines:[{id:machineId}]}));
+  if(req.url==='/api/sessions')return res.end(JSON.stringify({sessions:stored?[stored]:[]}));
+  if(stored&&req.url==='/api/sessions/'+stored.id)return res.end(JSON.stringify({session:stored}));
+  res.writeHead(404).end('{}');
+ });await new Promise(r=>hub.listen(0,'127.0.0.1',r));c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
+ t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ const service=createRunnerSetup(c,{connection:async()=>true,launch:async({prepared})=>{starts++;await mkdir(join(prepared,'runner-home'));await writeFile(join(prepared,'runner-home/settings.json'),JSON.stringify({machineId}));return {running:true};}});
+ const row=(await service.claudeImport('Bearer fixture',{project:p.id,source},'list')).sessions[0],input={project:p.id,source,id:nativeId,fingerprint:row.fingerprint};
+ await assert.rejects(service.claudeImport('Bearer fixture',input,'import'),e=>e.rejected!==true);assert.equal(posts,1);assert.equal(starts,1);
+ // CLI connection is no longer confirmed, but an existing registration can
+ // still be verified. Do not invoke prepare, launch or registration again.
+ await rm(join(root,'cli-connections.json'));
+ const restarted=createRunnerSetup(c,{prepare:async()=>{throw Error('must not prepare');},launch:async()=>{throw Error('must not launch');}});
+ for(const action of ['check','import']){const r=await restarted.claudeImport('Bearer fixture',input,action);assert.equal(r.state,'registered');assert.equal(r.id,stored.id);}
+ assert.equal(posts,1);assert.equal(starts,1);assert.equal(await readFile(file,'utf8'),raw);assert.equal((await restarted.claudeImportHistory('Bearer fixture',stored.id)).total,1);
+});

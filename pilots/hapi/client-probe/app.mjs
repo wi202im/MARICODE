@@ -16,7 +16,7 @@ import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
-import {draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts} from './workspace-entry.mjs';
+import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts} from './workspace-entry.mjs';
 import {createReadRecovery,connectionFailure} from './reconnect.mjs';
 import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace} from './workspace.mjs';
 import {createHistory} from './history.mjs';
@@ -733,7 +733,7 @@ let draftAccount=null;
 let draftProject=null,draftOptions=null,draftLoading=false,draftSerial=0,draftMessage='',draftContinue=false,draftSupportsGit=false,draftAccountSerial=0,draftGeneralSupported=false,draftDefaultsSerial=0,draftDefaultsLoading=false;
 try{selectedProject=sessionStorage.getItem('maricode-project')||'';}catch{}
 const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('claude-import-panel'),api,
- context:()=>({mode:draftSessionMode,agent:$('task-agent').value,project:draftProject,path:projectCatalog.find(p=>p.key===draftProject)?.path,general:projectCatalog.find(p=>p.key===draftProject)?.general,projectAvailable:taskProjectsReady&&projectCatalog.some(p=>p.key===draftProject),busy:busy||taskCreating}),
+ context:()=>({connectionState:draftAccount?.agent===$('task-agent').value?(draftAccount.loading?'checking':draftAccount.provider?.state):'checking',mode:draftSessionMode,agent:$('task-agent').value,project:draftProject,path:projectCatalog.find(p=>p.key===draftProject)?.path,general:projectCatalog.find(p=>p.key===draftProject)?.general,projectAvailable:taskProjectsReady&&projectCatalog.some(p=>p.key===draftProject),busy:busy||taskCreating}),
  changed:value=>{taskCreating=value;busy=value;render();renderTaskCreation();},
  opened:async(id,agent)=>{
   // Codex imports land as ordinary HAPI messages; only Claude keeps a separate imported-history snapshot.
@@ -925,16 +925,19 @@ function renderDraftAccount(){
  const view=draftAccountView(state?.provider,{local:!!window.webkit?.messageHandlers?.maricode,localLogin:!!state?.localLogin});
  $('draft-account-state').textContent=loading?'연결 확인 중…':view.label;
  $('draft-account-state').dataset.state=state?.provider?.state??'unknown';
+ $('draft-account-detail').textContent=loading?'':draftRunnerLabel(state?.runner,$('task-agent').value);
+ $('prepare-task-agent').textContent=state?.provider?.state==='connection-required'?'기존 CLI 설정 연결':'AI 실행 파일 연결';
  $('prepare-task-agent').hidden=loading||!view.setup;
  $('draft-account-check').hidden=loading||!view.check;$('draft-account-check').disabled=taskCreating;
  $('draft-account-login').hidden=loading||!view.login;$('draft-account-login').disabled=taskCreating;
  $('prepare-task-agent').disabled=taskCreating;
+ claudeImportPanel?.render();
 }
 async function refreshDraftAccount(){
  const serial=++draftAccountSerial,agent=$('task-agent').value,auth=token;
  draftAccount={agent,loading:true};renderDraftAccount();
  try{const data=await api('/api/accounts');if(serial!==draftAccountSerial||auth!==token||agent!==$('task-agent').value)return;
-  draftAccount={agent,provider:data.providers.find(p=>p.agent===agent),localLogin:data.localLogin};
+  draftAccount={agent,provider:data.providers.find(p=>p.agent===agent),localLogin:data.localLogin,runner:data.runner};
  }catch{if(serial===draftAccountSerial&&auth===token)draftAccount={agent,provider:{state:'unknown'}};}
  finally{if(serial===draftAccountSerial)renderDraftAccount();}
 }
@@ -1053,7 +1056,7 @@ async function refreshAccounts(){
 }
 // One CLI connection per AI; no app-specific account creation or profile switching UI.
 function accountProfileControls(agent,prof,status,local){
- const auth=token;return cliProfileControls({agent,local,active:prof.accounts[0],api,valid:()=>auth===token&&!!token,linked:async()=>{await refreshAccounts();await refreshCatalog();$('account-notice').textContent='기존 CLI 설정을 연결했습니다. 다음 대화부터 이 연결을 사용합니다.';}});
+ const auth=token;return cliProfileControls({agent,local,active:prof.accounts[0],api,valid:()=>auth===token&&!!token,linked:async()=>{await refreshAccounts();await refreshCatalog();if(workspaceLayout)await refreshDraftAccount();$('account-notice').textContent='기존 CLI 설정을 연결했습니다. 다음 대화부터 이 연결을 사용합니다.';}});
 }
 async function startAccountLogin(agent){
  if(accountsBusy)return;accountsBusy=true;for(const b of $('account-list').querySelectorAll('button'))b.disabled=true;

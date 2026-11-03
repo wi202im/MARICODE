@@ -472,3 +472,19 @@ test('ended Claude exposes every access choice and real catalog labels, refusing
  assert.equal((await post()).status,409);assert.equal(updates,0);state.active=true;
  const applied=await post();assert.equal(applied.status,200);assert.equal((await applied.json()).current.permissionMode,'bypassPermissions');assert.equal(updates,1);
 });
+
+test('import preflight failure exposes a safe stage while uncertain registration keeps its lock',async t=>{
+ let uncertain=false;const service={workspace:async()=>[],claudeImport:async()=>{throw uncertain?Error('/private/path secret'):Object.assign(Error('internal'),{rejected:true,reason:'IMPORT_RUNNER_PREPARE',userMessage:'가져오기를 시작하지 않았습니다. 실행 환경을 확인하세요.'});}};
+ const server=createServer({upstream:'http://127.0.0.1:1',runnerService:service});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
+ const origin=`http://127.0.0.1:${server.address().port}`,request=()=>fetch(origin+'/api/claude-import',{method:'POST',headers:{origin,authorization:'Bearer fixture','content-type':'application/json'},body:'{}'});
+ let r=await request(),body=await r.json();assert.equal(r.status,409);assert.equal(body.rejected,true);assert.equal(body.reason,'IMPORT_RUNNER_PREPARE');assert.match(body.error,/시작하지 않았/);
+ uncertain=true;r=await request();body=await r.json();assert.equal(body.rejected,false);assert.ok(!body.error.includes('private'));assert.ok(!body.error.includes('secret'));
+});
+test('local account diagnosis authenticates independently of a broken runner and excludes private configuration',async t=>{
+ let reads=0;const service={projects:async auth=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});return [];},workspace:async()=>{throw Error('broken runner');},status:async()=>({phase:'unknown',hub:'disconnected',agents:['claude'],binaries:{claude:'/private/binary'},hubUrl:'private'})};
+ const server=createServer({upstream:'http://127.0.0.1:1',runnerService:service,accountsService:{status:async()=>{reads++;return {state:'connected'};}}});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
+ const origin=`http://127.0.0.1:${server.address().port}`,get=headers=>fetch(origin+'/api/accounts',{headers});
+ assert.notEqual((await get({authorization:'Bearer wrong'})).status,200);assert.equal(reads,0);
+ const r=await get({authorization:'Bearer fixture'});assert.equal(r.status,200);const body=await r.json();assert.deepEqual(body.runner,{phase:'unknown',hub:'disconnected',agents:['claude']});assert.ok(!JSON.stringify(body).includes('private'));assert.equal(body.providers[0].state,'connected');
+ const remote=await(await get({authorization:'Bearer fixture','x-forwarded-for':'100.64.0.1'})).json();assert.equal(remote.runner,undefined);
+});

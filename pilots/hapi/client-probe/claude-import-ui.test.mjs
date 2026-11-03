@@ -101,3 +101,17 @@ test('imported counts distinguish prior history, failed reads and ordinary sessi
  fail=true;await f.history.load('broken',true);assert.equal(f.history.status.error,true);assert.equal(f.history.status.shown,0);
  await f.history.load('ordinary',false);assert.deepEqual(f.history.status,{imported:false,shown:0,total:0,loading:false,error:false});
 });
+
+test('history remains searchable before CLI connection, but import waits for setup and result checks remain available',async()=>{
+ const f=fixture(null,(_,path)=>path.endsWith('/list')?{sessions:[{id:'source',title:'Prior',importable:true,fingerprint:'abc'}],searched:{source:'/fixture'}}:{state:'registering'});
+ f.c.connectionState='connection-required';await f.get('claude-import-find').onclick();f.get('claude-import-select').value='source';f.panel.render();
+ assert.equal(f.get('claude-import-find').disabled,false);assert.equal(f.get('claude-import-start').disabled,true);
+ assert.match(f.get('claude-import-readiness').textContent,/CLI/);await f.get('claude-import-start').onclick();assert.equal(f.requests.length,1);
+ f.c.connectionState='connected';f.panel.render();assert.equal(f.get('claude-import-start').disabled,false);await f.get('claude-import-start').onclick();
+ f.c.connectionState='connection-required';f.panel.render();assert.equal(f.get('claude-import-check').disabled,false);await f.get('claude-import-check').onclick();assert.equal(f.requests.at(-1).path,'/api/claude-import/check');
+});
+test('preflight rejection keeps the selected record for explicit retry after connection repair',async()=>{
+ const f=fixture(null,(_,path)=>{if(path.endsWith('/list'))return {sessions:[{id:'source',title:'Prior',importable:true,fingerprint:'abc'}],searched:{source:'/fixture'}};throw Object.assign(Error('CLI 연결이 필요합니다.'),{rejected:true,reason:'IMPORT_CLI_CONNECTION'});});
+ await f.get('claude-import-find').onclick();f.get('claude-import-select').value='source';f.panel.render();await f.get('claude-import-start').onclick();
+ assert.equal(f.panel.pending,false);assert.match(f.get('claude-import-status').textContent,/CLI 연결/);assert.equal(f.get('claude-import-start').disabled,false);assert.equal(f.requests.length,2);
+});

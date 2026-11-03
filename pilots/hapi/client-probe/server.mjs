@@ -271,7 +271,7 @@ export function createServer({cleanStart=false,pairing,desktopAccess,upstream,se
           let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>8192){res.writeHead(413).end();return;}}
           const result=await importer.call(runnerService,req.headers.authorization,JSON.parse(raw),u.pathname.endsWith('/list')?'list':u.pathname.endsWith('/check')?'check':'import');
           res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(result));
-        }catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,error:error.userMessage??'가져오기 결과를 확인하지 못했습니다. 원본은 변경하지 않았습니다. 결과 확인 후 폴더·기록 변경 여부와 실행기 상태를 확인하세요.'}));}return;
+        }catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,reason:error.reason,error:error.userMessage??'가져오기 결과를 확인하지 못했습니다. 원본은 변경하지 않았습니다. 결과 확인 후 폴더·기록 변경 여부와 실행기 상태를 확인하세요.'}));}return;
       }
       if(runnerWorkspace){
         if(!runnerService.target&&/^\/api\/sessions\/[^/]+\/(file|directory)$/.test(u.pathname)){res.writeHead(403).end();return;}
@@ -396,7 +396,7 @@ export function createServer({cleanStart=false,pairing,desktopAccess,upstream,se
         if(req.method==='POST'&&!localLogin){res.writeHead(403).end();return;}
         if(req.method==='POST'&&body.toString()!=='{}'){res.writeHead(400).end();return;}
         let m;
-        if(runnerWorkspace){await runnerService.workspace(req.headers.authorization);m={host:'이 실행 컴퓨터'};}
+        if(runnerWorkspace){await (runnerService.projects??runnerService.workspace).call(runnerService,req.headers.authorization);m={host:'이 실행 컴퓨터'};}
         else {
         const access=await fetch(new URL(`/api/sessions/${sessions[0].id}`,target),{headers,signal:controller.signal,redirect:'error'});
         if(!access.ok){res.writeHead(access.status).end();return;}
@@ -404,6 +404,7 @@ export function createServer({cleanStart=false,pairing,desktopAccess,upstream,se
         if(m?.machineId!==handoffTarget.machineId||m?.path!==handoffTarget.project){res.writeHead(403).end();return;}
         }
         const result=req.method==='POST'?await accountsService.start(u.pathname.split('/')[3]):{host:m.host??'실행 머신',localLogin,providers:await Promise.all(['claude','codex'].map(async agent=>({agent,...await accountsService.status(agent)})))};
+        if(req.method==='GET'&&localLogin&&runnerService?.status){try{const r=await runnerService.status();result.runner={phase:r.phase,hub:r.hub,agents:r.agents};}catch{result.runner={phase:'unknown'};}}
         res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));return;
       }
       if(taskRoute||projectsRoute){
