@@ -67,3 +67,32 @@ test('Codex Fast and plan mode are explicit, model-gated choices',()=>{
  assert.throws(()=>settingChange(s,fast,{field:'serviceTier',value:'standard',expected}));
  assert.throws(()=>settingChange({...s,metadata:{flavor:'claude'}},null,{field:'collaborationMode',value:'plan',expected:{...expected,flavor:'claude'}}));
 });
+
+test('ended Claude sessions keep all access choices browsable, but require resume before applying',async()=>{
+ const {settingsControls}=await import('./settings.mjs');const stopped={...session,active:false,metadata:{flavor:'claude'},permissionMode:'default'};
+ const view=settingsView(stopped);assert.equal(view.permissionModes.length,5);assert.equal(view.editable,false);
+ const ui=settingsControls(stopped,{loaded:true,connected:true});assert.equal(ui.browse,true);assert.equal(ui.apply,false);assert.equal(ui.resume,true);assert.match(ui.reason,/종료/);
+ assert.throws(()=>settingChange(stopped,null,{field:'permissionMode',value:'bypassPermissions',expected:{...view.current,flavor:'claude'}}));
+ for(const state of [{pending:true},{actionPending:true},{permissionPending:true},{busy:true}]){const locked=settingsControls(stopped,{loaded:true,connected:true,...state});assert.equal(locked.apply,false);assert.equal(locked.resume,false);}
+ assert.equal(settingsControls(stopped,{loaded:true,connected:false}).resume,false);
+ assert.equal(settingsControls({...session,agentState:{controlledByUser:true}},{loaded:true,connected:true}).apply,false);
+ assert.equal(settingsControls(session,{loaded:true,connected:true}).apply,true);
+});
+test('exact model IDs come only from parent engine reports; aliases, choices and last responses remain distinct',async()=>{
+ const {modelReadout}=await import('./settings.mjs');const c={...session,metadata:{flavor:'claude'},model:'opus'};
+ const msg=(model,extras={},role='agent')=>({content:{role,content:{type:'output',data:{type:'assistant',message:{model},...extras}}}});
+ const one=msg('claude-opus-4-7'),nested=msg('claude-haiku-4-5',{parent_tool_use_id:'task'});
+ const v=modelReadout(c,null,[one,nested,msg('claude-fake-9',{},'user')]);assert.match(v.chip,/claude-opus-4-7/);assert.match(v.chip,/최근 응답/);assert.match(v.detail,/선택: opus/);assert.doesNotMatch(v.detail,/haiku|fake/);
+ assert.match(modelReadout(c,null,[]).chip,/버전 미확인/);
+ assert.match(modelReadout(c,{models:[{value:'opus',label:'Opus fixture version'}]},[]).chip,/Opus fixture version/);
+ const changed=modelReadout({...c,model:'sonnet'},null,[one]);assert.doesNotMatch(changed.chip,/opus/);assert.match(changed.detail,/최근 응답: claude-opus-4-7/);
+ const init={content:{role:'agent',content:{type:'output',data:{type:'system',subtype:'init',model:'claude-opus-4-8'}}}};
+ assert.match(modelReadout(c,null,[one,init]).chip,/claude-opus-4-8.*실행 보고/);
+ assert.match(modelReadout({...session,model:'gpt-fixture-v1'},null,[]).chip,/gpt-fixture-v1/);
+});
+test('resume preserves only still-supported draft choices and never changes the applied state',async()=>{
+ const {settingsDraft}=await import('./settings.mjs');const c={...session,metadata:{flavor:'claude'},permissionMode:'default'};const view=settingsView(c);
+ assert.deepEqual(settingsDraft({permissionMode:'bypassPermissions',model:'unsupported',effort:'high'},view),{permissionMode:'bypassPermissions',effort:'high'});
+ assert.equal(view.current.permissionMode,'default');
+ assert.deepEqual(settingsDraft({permissionMode:'yolo'},view),{});
+});

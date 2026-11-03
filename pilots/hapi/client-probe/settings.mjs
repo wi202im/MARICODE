@@ -47,3 +47,45 @@ export function settingChange(session,catalog,input){
  const field=input.field==='model'?'model':v.flavor==='codex'?'modelReasoningEffort':'effort';
  return {route:field==='modelReasoningEffort'?'model-reasoning-effort':field,body:{[field]:input.value}};
 }
+
+// The choices are not applied settings. Keep their menu readable when an engine has stopped.
+export function settingsControls(session,{loaded=false,connected=false,busy=false,loading=false,pending=false,actionPending=false,permissionPending=false,editable=true}={}){
+ const supported=['claude','codex'].includes(session?.metadata?.flavor);
+ const locked=busy||loading||pending||actionPending||permissionPending||session?.resumeUnconfirmed;
+ const browse=!!session&&supported&&loaded&&!locked;
+ let reason='';
+ if(!session)reason='설정을 볼 세션을 선택하세요.';
+ else if(!supported)reason='이 AI의 설정 변경은 아직 지원하지 않습니다.';
+ else if(pending||actionPending||permissionPending||session.resumeUnconfirmed)reason='앞선 요청 결과를 확인한 뒤 설정을 변경할 수 있습니다. 자동 재전송하지 않습니다.';
+ else if(loading)reason='설정 목록을 확인하고 있습니다.';
+ else if(busy)reason='현재 요청을 마친 뒤 설정을 적용할 수 있습니다.';
+ else if(!connected)reason='연결 상태를 확인하세요. 표시된 목록은 마지막 조회 결과입니다.';
+ else if(!loaded)reason='설정 새로 확인을 눌러 지원 목록을 불러오세요.';
+ else if(!session.active)reason='세션 실행이 종료됐습니다. 목록은 미리 볼 수 있으며, 세션 재개 후 적용할 수 있습니다.';
+ else if(session.thinking)reason='답변 작성 중입니다. 입력 대기 상태가 되면 적용할 수 있습니다.';
+ else if(Object.keys(session.agentState?.requests??{}).length)reason='승인 요청을 먼저 처리하세요. 액세스 모드를 바꿔 대기 중 승인을 건너뛰지 않습니다.';
+ else if(session.agentState?.controlledByUser!==false)reason='공식 CLI에서 제어 중이거나 제어 상태가 미확인입니다. 앱에서 제어 가능한 상태에서 적용하세요.';
+ else if(!editable)reason='서버 설정을 다시 확인한 뒤 적용하세요.';
+ return {browse,apply:!reason,resume:!!session&&supported&&!session.active&&connected&&!locked,reason};
+}
+export function settingsDraft(draft,view){
+ return Object.fromEntries(Object.entries(draft).filter(([field,value])=>({model:view.models,effort:view.efforts,permissionMode:view.permissionModes})[field]?.some(o=>o.value===(value===''?null:value))));
+}
+// A requested alias is not a model version. Keep selected value and observed execution separate.
+export function modelReadout(session,view,messages=[]){
+ const selected=session?.model??null,flavor=session?.metadata?.flavor;
+ const alias=flavor==='claude'&&/^(opus|fable|sonnet|haiku)(?:\[1m\])?$/.test(selected??'');
+ const choice=view?.models?.find(o=>o.value===selected)?.label??selected??'자동 · 엔진 기본값';
+ let report=null;
+ if(flavor==='claude')for(let i=messages.length-1;i>=0;i--){
+  const c=messages[i]?.content?.content,d=c?.data;
+  if(messages[i]?.content?.role!=='agent'||c?.type!=='output'||d?.parent_tool_use_id||d?.parentToolUseId||d?.isSidechain)continue;
+  const response=d?.type==='assistant',init=d?.type==='system'&&d.subtype==='init';
+  const id=response?d.message?.model:init?d.model:null;
+  if(typeof id==='string'&&/^claude-[a-zA-Z0-9][\w.-]*(?:\[1m\])?$/.test(id)&&id.length<=150){report={id,source:response?'최근 응답':'실행 보고'};break;}
+ }
+ const sameFamily=report&&(!selected||alias&&report.id.startsWith('claude-'+selected.replace(/\[1m\]$/,'' )+'-')||report.id===selected);
+ const chip=sameFamily?`${report.id} · ${report.source}`:alias&&choice===selected?`${selected} · 버전 미확인`:choice;
+ const detail=`선택: ${choice}${selected&&choice!==selected?' ('+selected+')':''}${alias?' · 별칭':''}\n${report?report.source+': '+report.id:'실제 실행 모델 ID: 아직 확인되지 않음'}\n실행 기록은 해당 시점의 보고값입니다. 다음 응답의 모델을 보장하지 않습니다.`;
+ return {chip,detail,selected,report};
+}

@@ -458,3 +458,17 @@ test('command cards use authenticated local routes, bounded JSON and request-spe
  assert.equal((await get('?cwd=/other')).status,403);assert.equal((await post({},{data:'x'.repeat(5000)})).status,413);assert.equal(starts,0);assert.equal((await post()).status,200);assert.equal(starts,1);
  assert.equal((await fetch(url+'/command-cards-ui.mjs')).status,200);
 });
+
+test('ended Claude exposes every access choice and real catalog labels, refusing apply until resumed',async t=>{
+ let updates=0;const state={active:false,thinking:false,metadata:{flavor:'claude',machineId:'fixture'},agentState:{controlledByUser:false,requests:{}},model:'opus',effort:'high',permissionMode:'default'};
+ const upstream=http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer synthetic')return res.writeHead(401).end('{}');
+  if(req.url==='/api/machines/fixture/claude-models')return res.end(JSON.stringify({success:true,availableModels:[{value:'opus',displayName:'Opus fixture version',effortLevels:['high']}]}));
+  if(req.method==='POST'){let raw='';for await(const c of req)raw+=c;assert.equal(req.url,`/api/sessions/${id}/permission-mode`);state.permissionMode=JSON.parse(raw).mode;updates++;return res.end('{"ok":true}');}
+  res.end(JSON.stringify({session:state}));});await new Promise(r=>upstream.listen(0,'127.0.0.1',r));
+ const server=createServer({upstream:`http://127.0.0.1:${upstream.address().port}`,sessionId:id});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();upstream.closeAllConnections();upstream.close();});
+ const origin=`http://127.0.0.1:${server.address().port}`,path=origin+`/api/sessions/${id}/settings`,headers={authorization:'Bearer synthetic'};
+ const view=await (await fetch(path,{headers})).json();assert.equal(view.permissionModes.length,5);assert.equal(view.editable,false);assert.equal(view.models.find(o=>o.value==='opus').label,'Opus fixture version');
+ const body={field:'permissionMode',value:'bypassPermissions',expected:{...view.current,flavor:'claude'}},post=()=>fetch(path,{method:'POST',headers:{...headers,origin,'content-type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await post()).status,409);assert.equal(updates,0);state.active=true;
+ const applied=await post();assert.equal(applied.status,200);assert.equal((await applied.json()).current.permissionMode,'bypassPermissions');assert.equal(updates,1);
+});

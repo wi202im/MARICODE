@@ -12,7 +12,7 @@ import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs'
 import {createCommandSuggest} from './composer-commands.mjs';
 import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {createPalette,createFind} from './palette.mjs';
-import {permissionLabel} from './settings.mjs';
+import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts} from './workspace-entry.mjs';
@@ -964,13 +964,15 @@ function renderSettings(){
  const current=settingsCurrent(),pending=settingsPending(),label=v=>v??'자동 (실제 값 미확정)';
  $('model-name').textContent=({claude:'Claude',codex:'Codex'})[session?.metadata?.flavor]??'에이전트';
  const extraOn=settingsOwner===sessionId?(settingsData?.extras??[]).filter(e=>e.current==='fast'||e.current==='plan').map(e=>e.current==='fast'?'Fast':'계획'):[];
- $('model-chip').textContent=`모델: ${current.model??'자동'}${extraOn.length?' · '+extraOn.join(' · '):''} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
+ const view=settingsOwner===sessionId?settingsData:null,modelInfo=modelReadout(session,view,messages);
+ $('model-chip').textContent=`모델: ${modelInfo.chip}${extraOn.length?' · '+extraOn.join(' · '):''} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
  $('permissionMode-chip').textContent=`액세스: ${settingsData?.permissionModes?.find(o=>o.value===current.permissionMode)?.label??permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'} ▾`;
- $('model-chip').title=$('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
- $('settings-current').textContent=`서버 보고값: 모델 ${label(current.model)} / 추론 ${label(current.effort)} / 액세스 ${current.permissionMode??'미확인'}`;
- const allowed=settingsOwner===sessionId&&settingsData?.editable&&session?.active&&!session?.thinking&&session?.agentState?.controlledByUser===false&&!Object.keys(session?.agentState?.requests??{}).length&&!busy&&!settingsLoading&&connected&&!pending&&!actions?.pending;
- for(const field of ['model','effort','permissionMode']){$(`setting-${field}`).disabled=!allowed;$(`apply-${field}`).disabled=!allowed||!settingsData?.[field==='model'?'models':field==='effort'?'efforts':'permissionModes']?.length;}
- for(const e of settingsOwner===sessionId?settingsData?.extras??[]:[])if($(`setting-${e.field}`)){$(`setting-${e.field}`).disabled=!allowed;$(`apply-${e.field}`).disabled=!allowed;}
+ $('model-chip').title=modelInfo.detail;$('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
+ $('settings-current').textContent=modelInfo.detail+`\n서버 설정: 추론 ${label(current.effort)} / 액세스 ${permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'}`;
+ const controls=settingsControls(session,{loaded:!!view,editable:!!view?.editable,connected,busy,loading:settingsLoading,pending:!!pending,actionPending:!!actions?.pending,permissionPending:!!permissionActions?.pending}),allowed=controls.apply;
+ $('settings-reason').textContent=controls.reason;$('settings-resume').hidden=!!session?.active||!session;$('settings-resume').disabled=!controls.resume;
+ for(const field of ['model','effort','permissionMode']){$(`setting-${field}`).disabled=!controls.browse;$(`apply-${field}`).disabled=!allowed||!settingsData?.[field==='model'?'models':field==='effort'?'efforts':'permissionModes']?.length;}
+ for(const e of settingsOwner===sessionId?settingsData?.extras??[]:[])if($(`setting-${e.field}`)){$(`setting-${e.field}`).disabled=!controls.browse;$(`apply-${e.field}`).disabled=!allowed;}
  $('load-settings').disabled=busy||settingsLoading||!connected;
  if(pending)$('settings-status').textContent=`${({model:'모델',effort:'추론',permissionMode:'액세스',serviceTier:'속도',collaborationMode:'협업 방식'})[pending.field]??'설정'} 변경 결과 확인 필요 · 요청값 ${label(pending.value)}. 자동 재전송하지 않습니다. 결과 확인 전 대화 전송을 잠급니다.`;
 }
@@ -993,9 +995,9 @@ async function loadSettings(){
   $('settings-source').textContent=result.source;renderPermissionDescription();
   const pending=settingsPending();
   if(pending&&(result.extras?.find(e=>e.field===pending.field)?.current??result.current[pending.field])===pending.value)sessionStorage.removeItem(`hapi-settings-pending:${id}`);
-  $('settings-status').textContent= result.editable?'서버 설정을 조회했습니다. 한 항목씩 적용하세요.':'입력 대기 중인 원격 세션에서만 변경할 수 있습니다.';
-  await refresh();
- }catch(e){if(id===sessionId)$('settings-status').textContent=e.message;}
+  $('settings-status').textContent='설정 목록을 조회했습니다. 선택만으로 변경되지 않으며 적용 버튼을 눌러야 합니다.';
+  await refresh();return id===sessionId&&mine===settingsSerial;
+ }catch(e){if(id===sessionId)$('settings-status').textContent=e.message;return false;}
  finally{if(mine===settingsSerial){settingsLoading=false;render();}}
 }
 async function applySetting(field,fromCreation=false){
@@ -1014,6 +1016,15 @@ function renderPermissionDescription(){
  const option=settingsOwner===sessionId?settingsData?.permissionModes?.find(o=>o.value===$('setting-permissionMode').value):null;
  $('permission-description').textContent=option?option.description+' 이 실행 머신의 현재 세션에만 적용하며 다른 세션·macOS 권한은 변경하지 않습니다.':'';
 }
+if(workspaceLayout){$('settings-resume').onclick=async()=>{
+ if($('settings-resume').disabled)return;
+ const id=sessionId,mine=epoch,draft=Object.fromEntries(['model','effort','permissionMode'].map(f=>[f,$(`setting-${f}`).value]));
+ await $('resume').onclick();
+ if(id!==sessionId||mine!==epoch||!session?.active||actions?.pending)return;
+ const loaded=await loadSettings();if(!loaded||id!==sessionId||mine!==epoch)return;
+ for(const [field,value] of Object.entries(settingsDraft(draft,settingsData??{})))$(`setting-${field}`).value=value;
+ renderPermissionDescription();$('settings-status').textContent='세션을 재개했습니다. 선택한 값은 아직 적용하지 않았습니다. 내용을 확인한 뒤 적용하세요.';renderSettings();
+};}
 if(workspaceLayout){$('setting-permissionMode').onchange=renderPermissionDescription;$('apply-permissionMode').onclick=()=>applySetting('permissionMode');$('load-settings').onclick=loadSettings;$('apply-model').onclick=()=>applySetting('model');$('apply-effort').onclick=()=>applySetting('effort');}
 
 let accountsBusy=false;
