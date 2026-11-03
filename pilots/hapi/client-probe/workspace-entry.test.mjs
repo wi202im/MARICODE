@@ -42,7 +42,7 @@ test('new sessions inherit the newest supported AI only from the exact workspace
 
 test('connected AI hides setup actions; missing, signed-out and unknown remain actionable without assuming access',async()=>{
  const {draftAccountView}=await import('./workspace-entry.mjs');
- assert.deepEqual(draftAccountView({state:'connected'},{local:true}),{setup:false,login:false,check:true,label:'CLI 구독 로그인 확인됨'});
+ assert.deepEqual(draftAccountView({state:'connected'},{local:true}),{setup:false,connect:false,login:false,check:true,label:'CLI 구독 로그인 확인됨'});
  assert.equal(draftAccountView({state:'not-installed'},{local:true}).setup,true);
  assert.equal(draftAccountView({state:'not-installed'},{local:false}).setup,false);
  assert.equal(draftAccountView({state:'signed-out'},{local:true,localLogin:true}).login,true);
@@ -51,6 +51,10 @@ test('connected AI hides setup actions; missing, signed-out and unknown remain a
  assert.equal(draftAccountView({state:'unknown'},{local:true}).setup,true);
  assert.equal(draftAccountView({state:'unknown'},{local:false}).setup,false);
  assert.equal(draftAccountView({state:'other-auth'},{local:true}).login,false);
+ // A discovered CLI folder turns setup into one in-place connect click.
+ const found=draftAccountView({state:'connection-required'},{local:true,found:'/u/.claude-global'});
+ assert.equal(found.connect,true);assert.equal(found.label,"터미널 설정 찾음: .claude-global");
+ assert.equal(draftAccountView({state:'connection-required'},{local:false,found:'/u/x'}).connect,false);
 });
 
 

@@ -922,11 +922,11 @@ async function createTask(checkOnly){
 function renderDraftAccount(){
  const state=draftAccount?.agent===$('task-agent').value?draftAccount:null;
  const loading=!state||state.loading;
- const view=draftAccountView(state?.provider,{local:!!window.webkit?.messageHandlers?.maricode,localLogin:!!state?.localLogin});
+ const view=draftAccountView(state?.provider,{local:!!window.webkit?.messageHandlers?.maricode,localLogin:!!state?.localLogin,found:state?.found?.source});
  $('draft-account-state').textContent=loading?'연결 확인 중…':view.label;
  $('draft-account-state').dataset.state=state?.provider?.state??'unknown';
- $('draft-account-detail').textContent=loading?'':draftRunnerLabel(state?.runner,$('task-agent').value);
- $('prepare-task-agent').textContent=state?.provider?.state==='connection-required'?'기존 CLI 설정 연결':'AI 실행 파일 연결';
+ $('draft-account-detail').textContent=loading?'':state?.error??(view.connect?'연결하면 앱과 터미널이 이 폴더의 로그인·설정·MCP를 함께 씁니다.':draftRunnerLabel(state?.runner,$('task-agent').value));
+ $('prepare-task-agent').textContent=view.connect?'이 설정으로 연결':state?.provider?.state==='connection-required'?'기존 CLI 설정 연결':'AI 실행 파일 연결';
  $('prepare-task-agent').hidden=loading||!view.setup;
  $('draft-account-check').hidden=loading||!view.check;$('draft-account-check').disabled=taskCreating;
  $('draft-account-login').hidden=loading||!view.login;$('draft-account-login').disabled=taskCreating;
@@ -938,6 +938,8 @@ async function refreshDraftAccount(){
  draftAccount={agent,loading:true};renderDraftAccount();
  try{const data=await api('/api/accounts');if(serial!==draftAccountSerial||auth!==token||agent!==$('task-agent').value)return;
   draftAccount={agent,provider:data.providers.find(p=>p.agent===agent),localLogin:data.localLogin,runner:data.runner};
+  // Read-only lookup so the first session can connect the terminal CLI folder in place.
+  if(draftAccount.provider?.state==='connection-required'&&window.webkit?.messageHandlers?.maricode){const found=await api('/api/account-profiles',{method:'POST',body:{action:'discover',agent}}).catch(()=>null);if(serial===draftAccountSerial&&found?.source&&found.binary)draftAccount.found=found;}
  }catch{if(serial===draftAccountSerial&&auth===token)draftAccount={agent,provider:{state:'unknown'}};}
  finally{if(serial===draftAccountSerial)renderDraftAccount();}
 }
@@ -1121,7 +1123,8 @@ if(workspaceLayout){
  const bridge=window.webkit?.messageHandlers?.maricode;
  try{const agent=sessionStorage.getItem('maricode-new-session-agent');if(['codex','claude'].includes(agent))$('task-agent').value=agent;}catch{}
  if(bridge){$('add-project').hidden=false;$('add-project').onclick=()=>bridge.postMessage('add-project');
-  $('prepare-task-agent').onclick=()=>{if(draftAccount?.provider?.state==='connection-required'){workspacePanel('info');$('accounts-panel').open=true;refreshAccounts();return;}try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
+  $('prepare-task-agent').onclick=async()=>{const found=draftAccount?.found;if(found&&draftAccount?.provider?.state==='connection-required'){$('prepare-task-agent').disabled=true;try{await api('/api/account-profiles',{method:'POST',body:{action:'connect',agent:draftAccount.agent,source:found.source,confirm:true,create:!found.exists,mode:found.mode}});await refreshDraftAccount();}catch(e){draftAccount={...draftAccount,error:e.message||'연결 결과를 확인하지 못했습니다. 상태를 다시 확인하세요.'};renderDraftAccount();}return;}
+   if(draftAccount?.provider?.state==='connection-required'){workspacePanel('info');$('accounts-panel').open=true;refreshAccounts();return;}try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
  }
  window.addEventListener('maricode-projects-changed',async event=>{await loadTaskProjects();const added=projectCatalog.find(p=>p.path===event.detail?.path);if(added)await openNewWorkspace(added.key);else renderWorkspace();});
  $('empty-action').onclick=()=>openNewWorkspace();

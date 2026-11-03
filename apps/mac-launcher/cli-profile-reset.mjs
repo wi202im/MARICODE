@@ -1,5 +1,5 @@
 import {readFile,writeFile,rename,lstat,rm} from 'node:fs/promises';
-import {join,isAbsolute} from 'node:path';import {homedir} from 'node:os';import {randomUUID} from 'node:crypto';
+import {join,isAbsolute} from 'node:path';import {homedir,userInfo} from 'node:os';import {randomUUID} from 'node:crypto';
 const key='cli-shared-profile-v1';
 const json=async path=>JSON.parse(await readFile(path,'utf8'));
 async function plain(path,directory=false){try{const s=await lstat(path);if(s.isSymbolicLink()||!(directory?s.isDirectory():s.isFile()))throw Error('CLI reset boundary invalid');return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}}
@@ -27,4 +27,9 @@ export async function resetLegacyCliProfiles(directory){
   await rm(profiles,{recursive:true});
  }
  await save(marker,{version:1,reset:legacy});return {reset:legacy};
+}
+// Claude reads its macOS keychain login by USER; environments saved before 1.1.1 lack it.
+export async function addCliUser(directory){
+ const environment=join(directory,'local-setup','environment.private.json');if(!await plain(environment))return;
+ const env=await json(environment);if(!env.USER)await save(environment,{USER:userInfo().username,...env});
 }

@@ -32,10 +32,11 @@ export function recentWorkspaceSession(sessions,path){
 }
 
 
-export function draftAccountView(provider,{local=false,localLogin=false}={}){
+export function draftAccountView(provider,{local=false,localLogin=false,found=null}={}){
  const state=provider?.state??'unknown',pending=!!provider?.loginPending;
+ if(local&&found&&state==='connection-required')return {setup:true,connect:true,login:false,check:true,label:`터미널 설정 찾음: ${found.split("/").pop()}`};
  const missing=['not-configured','not-installed'].includes(state);
- return {setup:local&&(missing||state==='unknown'||state==='connection-required'),login:localLogin&&state==='signed-out'&&!pending,check:true,
+ return {setup:local&&(missing||state==='unknown'||state==='connection-required'),connect:false,login:localLogin&&state==='signed-out'&&!pending,check:true,
   label:pending?'로그인 완료 대기':({'connection-required':'AI 연결에서 기존 CLI 설정 위치를 연결하세요.',connected:'CLI 구독 로그인 확인됨','signed-out':localLogin?'로그인이 필요합니다.':'실행 컴퓨터에서 로그인해 주세요.','not-configured':local?'AI 연결이 필요합니다.':'실행 컴퓨터에서 AI를 연결해 주세요.','not-installed':local?'실행 파일을 찾지 못했습니다.':'실행 컴퓨터의 AI 설치를 확인해 주세요.','other-auth':'구독 외 인증이 설정돼 있습니다. 계정 설정을 확인해 주세요.'})[state]??'연결 상태를 확인하지 못했습니다.'};
 }
 

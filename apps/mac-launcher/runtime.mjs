@@ -1,5 +1,5 @@
 import {cleanStart110} from './clean-start.mjs';
-import {resetLegacyCliProfiles} from './cli-profile-reset.mjs';
+import {resetLegacyCliProfiles,addCliUser} from './cli-profile-reset.mjs';
 import {acquireRuntimeLock} from './runtime-lock.mjs';
 import {resolveHapiBinary} from './bundled-hapi.mjs';
 import {createHttpsForward} from './https-forward.mjs';
@@ -29,6 +29,7 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
   const cleanStart=cleanInstall?await cleanStart110(directory):{reset:false};
   stage='configuration';
   if(!cleanInstall)await resetLegacyCliProfiles(directory);
+  await addCliUser(directory);
   const remote=await readRemoteOrigin(directory);
   let config;
   try{config=JSON.parse(await readFile(join(directory,'backend.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
