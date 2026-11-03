@@ -2,7 +2,7 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Maricode 1.0.11 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.11/MARICODE-1.0.11-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.11). HAPI 0.33.3 and Node are included.
+**Maricode 1.0.12 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.12/MARICODE-1.0.12-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.12). HAPI 0.33.3 and Node are included.
 
 App, menu and Dock names use **Maricode**; the native title bar displays the installed version. HAPI corresponding source is provided as a separate release attachment, with licenses and notices retained inside the app.
 
@@ -50,10 +50,11 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 
 ## Verification and limitations
 
-- Version 1.0.11 passes 320 automated checks. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
+- Version 1.0.12 passes 346 automated checks. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
+- Local CLI chat cards support Claude/Codex MCP listing and HTTP add/remove, plugin listing, account status, and Codex diagnostics. Isolated real CLI checks passed; current card rendering and live HAPI reconnect with MCP tools remain unverified.
 - No Intel Mac build or App Store release. The app downloads a verified DMG; replacing the installed app is manual and preserves the external data directory.
 - Accounts are registered by name, but each AI has only one active account at a time. Switching is blocked during active or unconfirmed work. Different subscription accounts and Claude account switching have not been fully tested.
-- No QR image, cross-machine automatic session synchronization, integrated MCP management, built-in terminal or subscription quota display. Connection codes still require an accessible LAN/Tailscale server.
+- No QR image, cross-machine automatic session synchronization, MCP OAuth/stdio editing, built-in terminal or subscription quota display. Connection codes still require an accessible LAN/Tailscale server.
 - Import does not copy credentials, MCP/settings, memory or attachment files. Originals and copies diverge after import. Codex subfolder discovery has automated coverage; resuming those specific subfolder conversations remains unverified.
 - AI settings and approval choices depend on provider/HAPI support. Fast/plan option values were verified at the server; their actual response differences were not. Claude does not support the exposed per-message branching flow.
 - A failed resume can recover after the Runner and Hub confirm it did not start; ambiguous requests are never automatically resent. Forced backend termination with unresolved state, or a settings change before engine readiness, may still require manual recovery.
