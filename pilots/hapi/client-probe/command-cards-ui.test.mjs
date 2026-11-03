@@ -57,3 +57,11 @@ test('MCP apply resumes once and never labels real tools verified',async()=>{
  const button=text=>nodes.find(n=>n.tag==='button'&&n.textContent===text);
  await card.load();button('인증 시작').onclick();await button('변경 확인').onclick();await button('적용하고 이어가기').onclick();await button('적용하고 이어가기').onclick();assert.equal(resumes,1);assert.equal(button('적용하고 이어가기').disabled,true);assert.ok(nodes.some(n=>n.textContent?.includes('실제 도구 연결은 아직 확인하지 않았습니다')));
 });
+test('Claude MCP rows offer authentication only where the CLI reports it is needed',async()=>{
+ const {createCommandCard}=await import('./command-cards-ui.mjs');const nodes=[];
+ const document={createElement(tag){const n={tag,children:[],append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(){},remove(){}};nodes.push(n);return n;}};
+ const card=createCommandCard({id:'fixture',name:'mcp',document,cap:{agent:'claude',actions:['mcp-list','mcp-login']},api:async()=>({state:'succeeded',summary:'CLI 조회 결과',rows:[{name:'ok',status:'CLI 연결 확인'},{name:'auth',status:'인증 필요'}]})});
+ await card.load();assert.equal(nodes.filter(n=>n.tag==='button'&&n.textContent==='인증 시작').length,1);
+ // The count tells the user the card has more rows below the fold.
+ assert.ok(nodes.some(n=>n.textContent?.startsWith('2개 · ')));
+});
