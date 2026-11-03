@@ -400,12 +400,13 @@ function confirmArchive(label,id){
     dialog.showModal();
   });
 }
-$('archive').onclick=async()=>{
-  if($('archive').disabled)return;
+// Returns true once the session is confirmed ended. `ask` is false when the caller already confirmed.
+async function endCurrentSession(ask=true){
+  if($('archive').disabled){if(!ask)notice('지금은 세션 실행을 종료할 수 없습니다. 답변·승인 대기가 끝난 뒤 다시 시도하세요.');return false;}
   const mine=epoch,id=sessionId,label=$('title').textContent;
-  let approval;try{approval=archiveSnapshot(id,session);}catch(error){notice(error.message);return;}
-  if(!await confirmArchive(label,id))return;
-  if(mine!==epoch||id!==sessionId)return;
+  let approval;try{approval=archiveSnapshot(id,session);}catch(error){notice(error.message);return false;}
+  if(ask&&!await confirmArchive(label,id))return false;
+  if(mine!==epoch||id!==sessionId)return false;
   busy=true;render();
   try{
     await refresh();
@@ -413,8 +414,10 @@ $('archive').onclick=async()=>{
     if(!archiveMatches(approval,sessionId,session))throw Error('확인하는 동안 세션 상태가 바뀌었습니다. 내용을 확인한 뒤 다시 종료해 주세요.');
     const request=actions.archive(approval.expected);render();await request;await refresh();
     notice(session?.active?'종료 요청을 보냈습니다. 상태 다시 확인으로 종료 여부를 확인해 주세요.':'세션 실행을 종료했습니다. 대화 기록은 보존됩니다. 다른 활성 세션도 종료한 뒤 앱을 닫을 수 있습니다.');
-  }catch(error){notice(error.message);}finally{busy=false;render();}
-};
+    return !session?.active;
+  }catch(error){notice(error.message);return false;}finally{busy=false;render();}
+}
+$('archive').onclick=()=>endCurrentSession();
 $('resume').onclick=async()=>{
   if($('resume').disabled)return;const mine=epoch;busy=true;render();
   try{await refresh();if(mine!==epoch||!connected||session.active||actions.pending)return;const request=actions.resume();render();await request;await refresh();}catch(e){if(mine===epoch){notice(e.message);await refresh().catch(()=>{});}}finally{busy=false;render();}
@@ -1149,13 +1152,14 @@ function openNavigation(target){
  $('navigation-remove-help').textContent=target.default?'기본 작업공간은 프로젝트와 함께 등록 해제합니다.':target.kind==='session'?'실행이 끝난 세션을 목록에서 숨깁니다. 대화 기록은 삭제하지 않습니다.':target.kind==='project'?'하위 작업공간과 세션도 목록에서 제외합니다. 소스·Git·대화 기록은 그대로 남습니다.':'이 작업공간과 세션을 목록에서 제외합니다. 실제 폴더와 Git 워크트리는 삭제하지 않습니다.';
  // The server refuses to hide a running session; say so up front instead of failing after confirmation.
  const running=target.kind==='session'&&(target.id===sessionId?session?.active:sessionCards.get(target.id)?.snapshot?.active)===true;
- $('navigation-remove').disabled=running;if(running)$('navigation-remove-help').textContent='실행 중인 세션은 숨길 수 없습니다. 먼저 제목줄 ⋯ 메뉴의 ‘세션 실행 종료’를 누르세요. 대화 기록은 삭제하지 않습니다.';
+ // Hiding a running session ends it first, after one confirmation, instead of disabling the button.
+ navigationTarget.running=running;if(running){$('navigation-remove').textContent='실행 종료 후 숨기기';$('navigation-remove-help').textContent='실행 중인 세션입니다. 실행을 종료한 뒤 목록에서 숨깁니다. 대화 기록은 삭제하지 않습니다.';}
  $('navigation-name').focus();
 }
 async function changeNavigation(input){
  if(navigationPending)return;navigationPending=true;for(const b of $('navigation-dialog').querySelectorAll('button,input'))b.disabled=true;$('navigation-status').textContent='변경 중…';
  try{await api('/api/navigation',{method:'POST',body:input});await openWorkspace();closeNavigation();notice(input.action==='rename'?'표시 이름을 변경했습니다.':input.action==='restore'?'목록에 복원했습니다.':'목록에서 정리했습니다. 보기 설정에서 복원할 수 있습니다.');}
- catch(error){$('navigation-status').textContent=error.message+' 응답이 끊긴 경우 목록을 새로고침해 결과부터 확인하세요.';}
+ catch(error){const text=error.message+' 응답이 끊긴 경우 목록을 새로고침해 결과부터 확인하세요.';$('navigation-status').textContent=text;if($('navigation-dialog').hidden)notice(text);}
  finally{navigationPending=false;for(const b of $('navigation-dialog').querySelectorAll('button,input'))b.disabled=false;}
 }
 async function restoreNavigation(){
@@ -1170,9 +1174,13 @@ if(workspaceLayout){
  $('navigation-dialog').addEventListener('cancel',e=>{e.preventDefault();if(!navigationPending)closeNavigation();});
  $('navigation-close').onclick=()=>{if(!navigationPending)closeNavigation();};
  $('navigation-rename').onclick=()=>{if(navigationTarget)changeNavigation({kind:navigationTarget.kind,id:navigationTarget.id,action:'rename',name:$('navigation-name').value});};
- $('navigation-remove').onclick=()=>{$('navigation-confirm').hidden=false;$('navigation-confirm-remove').textContent=navigationTarget.kind==='session'?'숨기기 확인':'등록 해제 확인';};
+ $('navigation-remove').onclick=()=>{$('navigation-confirm').hidden=false;$('navigation-confirm-remove').textContent=navigationTarget.kind==='session'?(navigationTarget.running?'종료하고 숨기기':'숨기기 확인'):'등록 해제 확인';};
  $('navigation-cancel-remove').onclick=()=>{$('navigation-confirm').hidden=true;};
- $('navigation-confirm-remove').onclick=()=>{if(navigationTarget)changeNavigation({kind:navigationTarget.kind,id:navigationTarget.id,action:'remove'});};
+ $('navigation-confirm-remove').onclick=async()=>{const t=navigationTarget;if(!t)return;
+  if(t.kind==='session'&&t.running){closeNavigation();navigationTarget=null;
+   if(t.id!==sessionId){selectSession(t.id);await refresh();}
+   if(await endCurrentSession(false))await changeNavigation({kind:'session',id:t.id,action:'remove'});return;}
+  changeNavigation({kind:t.kind,id:t.id,action:'remove'});};
  $('restore-navigation').onclick=restoreNavigation;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!navigationPending)closeNavigation();});
 }
