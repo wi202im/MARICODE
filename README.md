@@ -2,7 +2,7 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Maricode 1.0.13 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.13/MARICODE-1.0.13-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.13). HAPI 0.33.3 and Node are included.
+**Maricode 1.0.14 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.0.14/MARICODE-1.0.14-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.0.14). HAPI 0.33.3 and Node are included.
 
 App, menu and Dock names use **Maricode**; the native title bar displays the installed version. HAPI corresponding source is provided as a separate release attachment, with licenses and notices retained inside the app.
 
@@ -50,7 +50,7 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 
 ## Verification and limitations
 
-- Version 1.0.13 passes 350 automated checks. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
+- Version 1.0.14 passes 372 automated checks. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
 - Local CLI chat cards support Claude/Codex MCP listing and HTTP add/remove, plugin listing, account status, and Codex diagnostics. Isolated real CLI checks passed; current card rendering and live HAPI reconnect with MCP tools remain unverified.
 - No Intel Mac build or App Store release. The app downloads a verified DMG; replacing the installed app is manual and preserves the external data directory.
 - Accounts are registered by name, but each AI has only one active account at a time. Switching is blocked during active or unconfirmed work. Different subscription accounts and Claude account switching have not been fully tested.
