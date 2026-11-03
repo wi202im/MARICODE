@@ -5,7 +5,7 @@ import {saveRemoteOrigin} from './remote-config.mjs';
 import {randomUUID} from 'node:crypto';
 import {constants} from 'node:fs';
 import {join,dirname,isAbsolute} from 'node:path';
-import {homedir} from 'node:os';
+import {homedir,userInfo} from 'node:os';
 import {pathToFileURL} from 'node:url';
 import {checkDataFormat} from './data-format.mjs';
 import {createAccountRegistration} from '../../pilots/hapi/client-probe/account-registration.mjs';
@@ -31,7 +31,7 @@ export async function configureDesktop(input){
   const save=(path,value)=>writeFile(path,JSON.stringify(value)+'\n',{flag:'wx',mode:0o600});
   // CLI defaults are candidates only; local connection confirmation is required before execution.
   const environment=join(setup,'environment.private.json'),accountConfig=join(setup,'accounts.json');
-  await save(environment,{HOME:homedir(),LANG:'en_US.UTF-8',PATH:[...new Set([dirname(process.execPath),...(agentBinary?[dirname(agentBinary)]:[]),'/usr/bin','/bin','/usr/sbin','/sbin'])].join(':'),CODEX_HOME:join(homedir(),'.codex'),CLAUDE_CONFIG_DIR:join(homedir(),'.claude')});
+  await save(environment,{HOME:homedir(),USER:userInfo().username,LANG:'en_US.UTF-8',PATH:[...new Set([dirname(process.execPath),...(agentBinary?[dirname(agentBinary)]:[]),'/usr/bin','/bin','/usr/sbin','/sbin'])].join(':'),CODEX_HOME:join(homedir(),'.codex'),CLAUDE_CONFIG_DIR:join(homedir(),'.claude')});
   await save(accountConfig,{environment,cliConnectionRequired:true,cwd:project,directory:join(setup,'login'),binaries:input.empty?{}:{[agent]:agentBinary}});
   // Publish last. A second request cannot overwrite any existing installation.
   await save(join(directory,'backend.json'),{version:1,binary:selection,accountConfig,port:61193});

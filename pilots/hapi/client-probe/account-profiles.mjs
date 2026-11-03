@@ -1,5 +1,5 @@
 import {readFile,writeFile,rename,mkdir,rm,readdir,stat,realpath} from 'node:fs/promises';
-import {join,dirname,isAbsolute,resolve} from 'node:path';import {randomUUID} from 'node:crypto';
+import {join,dirname,isAbsolute,resolve} from 'node:path';import {randomUUID} from 'node:crypto';import {userInfo} from 'node:os';
 const keys={claude:'CLAUDE_CONFIG_DIR',codex:'CODEX_HOME'};
 const rejected=message=>Object.assign(Error(message),{rejected:true,userMessage:message});
 async function writeJson(path,value){const temp=path+'.'+randomUUID()+'.tmp';await writeFile(temp,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx',flush:true});await rename(temp,path);}
@@ -29,7 +29,8 @@ export function accountProfiles(configPath){
     const s=await load();
     if(mode==='default'){const home=s.env.HOME;if(typeof home!=='string'||!isAbsolute(home)||canonical!==await realpath(join(home,agent==='claude'?'.claude':'.codex')).catch(()=>null))throw rejected('CLI 기본 위치와 선택한 폴더가 다릅니다. 위치를 다시 확인하세요.');}
     // Incomplete writes cannot certify a different path. The stored confirmation must match the environment.
-    const env={...s.env};if(mode==='default')delete env[keys[agent]];else env[keys[agent]]=canonical;
+    // Claude reads its macOS keychain login by USER; older environments lack it.
+    const env={USER:userInfo().username,...s.env};if(mode==='default')delete env[keys[agent]];else env[keys[agent]]=canonical;
     const connection={path:canonical,mode};await writeJson(s.environment,env);
     await writeJson(s.registry,{...s.saved,[agent]:connection});s.env=env;s.saved[agent]=connection;return view(s);
    });

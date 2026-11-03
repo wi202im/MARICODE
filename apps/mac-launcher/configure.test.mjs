@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,stat} from 'node:fs/promises';
-import {tmpdir,homedir} from 'node:os';
+import {tmpdir,homedir,userInfo} from 'node:os';
 import {join} from 'node:path';
 import {configureDesktop} from './configure.mjs';
 async function fixture(t){const root=await mkdtemp(join(tmpdir(),'merry-config-'));t.after(()=>rm(root,{recursive:true,force:true}));const project=join(root,'project'),binary=join(root,'tool');await mkdir(project);await writeFile(binary,'#!/bin/sh\nexit 99\n',{mode:0o700});return {directory:join(root,'data'),project,binary,agent:'codex',agentBinary:binary};}
@@ -13,6 +13,8 @@ test('first setup uses CLI defaults without private profiles or copying credenti
  assert.deepEqual(Object.keys(account.binaries),['codex']);assert.equal(account.cwd,input.project);
  assert.equal(env.CODEX_HOME,join(homedir(),'.codex'));
  assert.equal(env.CLAUDE_CONFIG_DIR,join(homedir(),'.claude'));
+ // Claude finds its macOS keychain login by USER; without it a signed-in CLI reports signed out.
+ assert.equal(env.USER,userInfo().username);
  assert.equal(account.cliConnectionRequired,true);await assert.rejects(stat(join(input.directory,'local-setup/profiles')));
  assert.equal(env.OPENAI_API_KEY,undefined);assert.equal(env.ANTHROPIC_API_KEY,undefined);
  assert.equal((await stat(account.environment)).mode&0o777,0o600);

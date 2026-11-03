@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,realpath,symlink,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
+import {mkdtemp,mkdir,writeFile,readFile,realpath,symlink,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir,userInfo} from 'node:os';
 import {accountProfiles} from './account-profiles.mjs';
 async function fixture(t){const root=await mkdtemp(join(tmpdir(),'cli-profile-'));t.after(()=>rm(root,{recursive:true,force:true}));const initial=join(root,'initial');await mkdir(initial);const environment=join(root,'environment.private.json'),config=join(root,'accounts.json');await writeFile(environment,JSON.stringify({HOME:root,PATH:'/bin',CLAUDE_CONFIG_DIR:initial,CODEX_HOME:initial}));await writeFile(config,JSON.stringify({environment}));return {root,initial,environment,p:accountProfiles(config)};}
 test('connecting shares the selected canonical CLI folder without copying credentials and preserves the other AI environment',async t=>{
@@ -34,4 +34,8 @@ test('CLI default mode omits profile overrides so Claude keeps the home-level gl
  await f.p.connect('claude',path,true,{mode:'default'});const env=JSON.parse(await readFile(f.environment,'utf8'));
  assert.equal(env.CLAUDE_CONFIG_DIR,undefined);assert.equal((await f.p.list()).claude.confirmed,true);assert.equal((await f.p.list()).claude.accounts[0].mode,'default');
  await assert.rejects(f.p.connect('claude',f.initial,true,{mode:'default'}));assert.equal(await readFile(join(f.root,'.claude.json'),'utf8'),'home-global');
+});
+test('connecting adds the login user an older environment lacks so the CLI can read its keychain login',async t=>{
+ const f=await fixture(t);await f.p.connect('claude',f.initial,true);
+ assert.equal(JSON.parse(await readFile(f.environment,'utf8')).USER,userInfo().username);
 });
