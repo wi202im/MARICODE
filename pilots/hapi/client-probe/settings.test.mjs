@@ -71,10 +71,11 @@ test('Codex Fast and plan mode are explicit, model-gated choices',()=>{
 test('ended Claude sessions keep all access choices browsable, but require resume before applying',async()=>{
  const {settingsControls}=await import('./settings.mjs');const stopped={...session,active:false,metadata:{flavor:'claude'},permissionMode:'default'};
  const view=settingsView(stopped);assert.equal(view.permissionModes.length,5);assert.equal(view.editable,false);
- const ui=settingsControls(stopped,{loaded:true,connected:true});assert.equal(ui.browse,true);assert.equal(ui.apply,false);assert.equal(ui.resume,true);assert.match(ui.reason,/종료/);
+ // An ended session applies by resuming first (app.mjs), so it is not blocked here.
+ const ui=settingsControls(stopped,{loaded:true,connected:true});assert.equal(ui.browse,true);assert.equal(ui.apply,true);assert.equal(ui.reason,'');
  assert.throws(()=>settingChange(stopped,null,{field:'permissionMode',value:'bypassPermissions',expected:{...view.current,flavor:'claude'}}));
- for(const state of [{pending:true},{actionPending:true},{permissionPending:true},{busy:true}]){const locked=settingsControls(stopped,{loaded:true,connected:true,...state});assert.equal(locked.apply,false);assert.equal(locked.resume,false);}
- assert.equal(settingsControls(stopped,{loaded:true,connected:false}).resume,false);
+ for(const state of [{pending:true},{actionPending:true},{permissionPending:true},{busy:true}]){const locked=settingsControls(stopped,{loaded:true,connected:true,...state});assert.equal(locked.apply,false);}
+ assert.equal(settingsControls(stopped,{loaded:true,connected:false}).apply,false);
  assert.equal(settingsControls({...session,agentState:{controlledByUser:true}},{loaded:true,connected:true}).apply,false);
  assert.equal(settingsControls(session,{loaded:true,connected:true}).apply,true);
 });

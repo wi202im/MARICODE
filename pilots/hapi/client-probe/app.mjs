@@ -116,7 +116,7 @@ function render(){
   $('handoff').disabled=!!session?.resumeUnconfirmed||busy||!connected||!session||session.thinking||!!actions?.pending;
   $('title').textContent=session?.metadata?.name??'시험 세션';
   const waiting=Object.keys(session?.agentState?.requests??{}).length;
-  $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 대화 기록은 남아 있습니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
+  $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 메시지를 보내면 같은 세션으로 이어집니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
   $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||session?.thinking||waiting>0||!!actions?.pending;
   $('retry-message').hidden=actions?.pending?.kind!=='send';
   $('retry-message').disabled=!!session?.resumeUnconfirmed||busy||!connected||!session?.active||session.thinking||waiting>0;
@@ -125,8 +125,6 @@ function render(){
   $('archive').disabled=!!session?.resumeUnconfirmed||busy||!connected||session?.thinking||session?.agentState?.controlledByUser!==false||waiting>0||!!actions?.pending||!!permissionActions?.pending||!!settingsPending();
   if(actions?.pending?.kind==='archive')$('session-state').textContent='종료 결과 확인 필요 · 상태 다시 확인을 눌러 주세요. 자동 재전송하지 않습니다.';
   if(session?.resumeUnconfirmed||actions?.pending?.kind==='resume')$('session-state').textContent=busy?'실행 환경을 준비하고 같은 세션을 다시 열고 있습니다…':'재개 결과 확인 필요 · 상태 다시 확인을 눌러 주세요. 자동 재전송하지 않습니다.';
-  $('resume').hidden=!session||session.active;
-  $('resume').disabled=!!session?.resumeUnconfirmed||busy||!connected||!!actions?.pending;
   if(workspaceLayout){
     const chrome=workspaceChrome({session,connected,history,loadingHistory,messageCount:messages.length,pendingKind:session?.resumeUnconfirmed?'resume':actions?.pending?.kind});
     $('composer-activity').hidden=!chrome.activity||connected&&session?.active&&(waiting>0||session.thinking&&!session.resumeUnconfirmed&&!actions?.pending);
@@ -215,7 +213,7 @@ async function refresh(){
   if(workspaceLayout&&session?.id===sessionId&&alertSnapshots.size)alertSnapshots.set(sessionId,session);
   const previousPending=actions.pending,released=actions.reconcile(messages,session.active,session.resumeUnconfirmed);
   permissionActions?.reconcile(session?.agentState?.requests??{});
-  if(released==='resume-not-started')notice('재개가 시작되지 않았습니다. AI 연결·로그인 상태와 원래 기록을 확인한 뒤 같은 세션 재개를 다시 눌러 주세요. 자동으로 다시 시도하지 않습니다.');
+  if(released==='resume-not-started')notice('재개가 시작되지 않았습니다. AI 연결·로그인 상태와 원래 기록을 확인한 뒤 메시지를 다시 보내 주세요. 자동으로 다시 시도하지 않습니다.');
   else if(actions.pending)notice('이전 요청의 접수 여부를 확인 중입니다. 자동으로 다시 보내지 않습니다.');
   else if(previousPending)briefNotice(previousPending.kind==='resume'?'같은 세션을 다시 열었습니다. 대화를 이어가세요.':previousPending.kind==='archive'?'실행을 종료했습니다. 대화 기록과 파일은 보존됩니다.':'메시지 접수를 확인했습니다.');
   else if(historyReset)notice('이력이 변경되거나 연결 공백이 있어 최근 이력부터 다시 불러왔습니다.');
@@ -353,11 +351,9 @@ $('send-form').addEventListener('submit',async e=>{
     await refresh();if(mine!==epoch||!connected)return;
     // An ended session resumes first; the message goes out only after the resume is confirmed (never resent blind).
     if(!session.active&&!actions.pending&&!session.resumeUnconfirmed){
-     $('session-state').textContent='같은 세션을 다시 열고 있습니다. 열리면 메시지를 보냅니다…';
-     await actions.resume();
-     for(let i=0;i<40&&mine===epoch;i++){await refresh();if(session.active&&!actions.pending)break;await new Promise(r=>setTimeout(r,750));}
+     const resumed=await resumeForAction('같은 세션을 다시 열고 있습니다. 열리면 메시지를 보냅니다…');
      if(mine!==epoch)return;
-     if(!session.active||actions.pending){notice('세션 재개를 아직 확인하지 못해 메시지는 보내지 않았습니다. 입력은 그대로 있습니다. 상태를 확인한 뒤 다시 보내 주세요.');return;}
+     if(!resumed){notice('세션 재개를 아직 확인하지 못해 메시지는 보내지 않았습니다. 입력은 그대로 있습니다. 상태를 확인한 뒤 다시 보내 주세요.');return;}
     }
     if(!session.active||session.thinking||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
     const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;const result=actions.send(text,attachments);render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
@@ -427,10 +423,14 @@ async function endCurrentSession(ask=true){
   }catch(error){notice(error.message);return false;}finally{busy=false;render();}
 }
 $('archive').onclick=()=>endCurrentSession();
-$('resume').onclick=async()=>{
-  if($('resume').disabled)return;const mine=epoch;busy=true;render();
-  try{await refresh();if(mine!==epoch||!connected||session.active||actions.pending)return;const request=actions.resume();render();await request;await refresh();}catch(e){if(mine===epoch){notice(e.message);await refresh().catch(()=>{});}}finally{busy=false;render();}
-};
+// Resume runs only for an action (send, settings apply), never on opening. Callers hold busy.
+// true only once the session is confirmed active; otherwise nothing that depends on it is sent.
+async function resumeForAction(status){
+  const mine=epoch;$('session-state').textContent=status;
+  await actions.resume();
+  for(let i=0;i<40&&mine===epoch;i++){await refresh();if(session.active&&!actions.pending)break;await new Promise(r=>setTimeout(r,750));}
+  return mine===epoch&&!!session?.active&&!actions.pending;
+}
 function tab(files){if(workspaceLayout){workspacePanel(files?'files':'chat');if(files&&!fileLoaded)openPath(directory,'directory');return;}$('files').hidden=!files;$('chat').hidden=files;$('files-tab').setAttribute('aria-pressed',String(files));$('chat-tab').setAttribute('aria-pressed',String(!files));if(files&&!fileLoaded)openPath(directory,'directory');}
 if($('chat-tab'))$('chat-tab').onclick=()=>tab(false);$('files-tab').onclick=()=>tab(true);
 async function openPath(path,kind){
@@ -756,7 +756,7 @@ const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('clau
   await openWorkspace();
   if(!trialSessions.some(s=>s.id===id))throw Error('등록된 대화를 목록에서 찾지 못했습니다.');
   await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);
-  const mine=epoch,manual=`기존 ${name} 기록을 가져왔습니다. 실행 재개를 누르면 복사한 기록으로 이어갑니다. 이전 대화는 ${where}에서 볼 수 있습니다.`;
+  const mine=epoch,manual=`기존 ${name} 기록을 가져왔습니다. 메시지를 보내면 복사한 기록으로 이어갑니다. 이전 대화는 ${where}에서 볼 수 있습니다.`;
   // selectSession() starts the SSE stream without awaiting it; `connected`
   // only flips true once that handshake resolves, slightly after this point.
   const start=Date.now();while(mine===epoch&&!connected&&Date.now()-start<4000)await new Promise(r=>setTimeout(r,50));
@@ -765,7 +765,7 @@ const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('clau
    try{
     const request=actions.resume();render();await request;await refresh();
     if(mine===epoch)notice(session?.active?`기존 ${name} 기록을 가져와 이어갑니다. 이전 대화는 ${where}에서 볼 수 있습니다.`:manual);
-   }catch(e){if(mine===epoch){notice(`기존 ${name} 기록을 가져왔습니다. 자동 재개에 실패했습니다(${e.message}). 실행 재개를 눌러 다시 시도하세요. 이전 대화는 ${where}에서 볼 수 있습니다.`);await refresh().catch(()=>{});}}
+   }catch(e){if(mine===epoch){notice(`기존 ${name} 기록을 가져왔습니다. 자동 재개에 실패했습니다(${e.message}). 메시지를 보내면 다시 시도합니다. 이전 대화는 ${where}에서 볼 수 있습니다.`);await refresh().catch(()=>{});}}
    finally{if(mine===epoch){busy=false;render();}}
   }else notice(manual);
  }
@@ -996,7 +996,7 @@ function renderSettings(){
  $('model-chip').title=modelInfo.detail;$('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
  $('settings-current').textContent=modelInfo.detail+`\n서버 설정: 추론 ${label(current.effort)} / 액세스 ${permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'}`;
  const controls=settingsControls(session,{loaded:!!view,editable:!!view?.editable,connected,busy,loading:settingsLoading,pending:!!pending,actionPending:!!actions?.pending,permissionPending:!!permissionActions?.pending}),allowed=controls.apply;
- $('settings-reason').textContent=controls.reason;$('settings-resume').hidden=!!session?.active||!session;$('settings-resume').disabled=!controls.resume;
+ $('settings-reason').textContent=controls.reason;
  for(const field of ['model','effort','permissionMode']){$(`setting-${field}`).disabled=!controls.browse;$(`apply-${field}`).disabled=!allowed||!settingsData?.[field==='model'?'models':field==='effort'?'efforts':'permissionModes']?.length;}
  for(const e of settingsOwner===sessionId?settingsData?.extras??[]:[])if($(`setting-${e.field}`)){$(`setting-${e.field}`).disabled=!controls.browse;$(`apply-${e.field}`).disabled=!allowed;}
  $('load-settings').disabled=busy||settingsLoading||!connected;
@@ -1028,6 +1028,17 @@ async function loadSettings(){
 }
 async function applySetting(field,fromCreation=false){
  if($(`apply-${field}`).disabled&&!(fromCreation&&taskCreating&&settingsOwner===sessionId&&settingsData?.editable))return;
+ if(!fromCreation&&session&&!session.active){
+  // Ended session: resume first, reload the server values, keep the user's choice, then apply as usual.
+  const id=sessionId,mine=epoch,draft=Object.fromEntries(['model','effort','permissionMode'].map(f=>[f,$(`setting-${f}`).value]));let resumed=false;
+  busy=true;render();try{resumed=await resumeForAction('같은 세션을 다시 열고 있습니다. 열리면 설정을 적용합니다…');}catch(e){if(mine===epoch)notice(e.message);}finally{busy=false;render();}
+  if(id!==sessionId||mine!==epoch)return;
+  if(!resumed){$('settings-status').textContent='세션 재개를 확인하지 못해 설정을 적용하지 않았습니다. 상태를 확인한 뒤 다시 적용하세요.';return;}
+  if(!await loadSettings()||id!==sessionId||mine!==epoch)return;
+  for(const [f,v] of Object.entries(settingsDraft(draft,settingsData??{})))$(`setting-${f}`).value=v;
+  renderPermissionDescription();renderSettings();
+  if($(`apply-${field}`).disabled){$('settings-status').textContent='세션을 다시 열었습니다. '+($('settings-reason').textContent||'지금은 설정을 적용할 수 없습니다.');return;}
+ }
  const id=sessionId,value=$(`setting-${field}`).value||null,expected={...settingsData.current,...(!['model','effort'].includes(field)?{flavor:settingsData.flavor}:{})};
  if(value===(settingsData.extras?.find(e=>e.field===field)?.current??expected[field])){$('settings-status').textContent='이미 같은 값입니다.';return;}
  const key=`hapi-settings-pending:${id}`;
@@ -1042,15 +1053,6 @@ function renderPermissionDescription(){
  const option=settingsOwner===sessionId?settingsData?.permissionModes?.find(o=>o.value===$('setting-permissionMode').value):null;
  $('permission-description').textContent=option?option.description+' 이 실행 머신의 현재 세션에만 적용하며 다른 세션·macOS 권한은 변경하지 않습니다.':'';
 }
-if(workspaceLayout){$('settings-resume').onclick=async()=>{
- if($('settings-resume').disabled)return;
- const id=sessionId,mine=epoch,draft=Object.fromEntries(['model','effort','permissionMode'].map(f=>[f,$(`setting-${f}`).value]));
- await $('resume').onclick();
- if(id!==sessionId||mine!==epoch||!session?.active||actions?.pending)return;
- const loaded=await loadSettings();if(!loaded||id!==sessionId||mine!==epoch)return;
- for(const [field,value] of Object.entries(settingsDraft(draft,settingsData??{})))$(`setting-${field}`).value=value;
- renderPermissionDescription();$('settings-status').textContent='세션을 재개했습니다. 선택한 값은 아직 적용하지 않았습니다. 내용을 확인한 뒤 적용하세요.';renderSettings();
-};}
 if(workspaceLayout){$('setting-permissionMode').onchange=renderPermissionDescription;$('apply-permissionMode').onclick=()=>applySetting('permissionMode');$('load-settings').onclick=loadSettings;$('apply-model').onclick=()=>applySetting('model');$('apply-effort').onclick=()=>applySetting('effort');}
 
 let accountsBusy=false;

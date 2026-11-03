@@ -61,12 +61,12 @@ export function settingsControls(session,{loaded=false,connected=false,busy=fals
  else if(busy)reason='현재 요청을 마친 뒤 설정을 적용할 수 있습니다.';
  else if(!connected)reason='연결 상태를 확인하세요. 표시된 목록은 마지막 조회 결과입니다.';
  else if(!loaded)reason='설정 새로 확인을 눌러 지원 목록을 불러오세요.';
- else if(!session.active)reason='세션 실행이 종료됐습니다. 목록은 미리 볼 수 있으며, 세션 재개 후 적용할 수 있습니다.';
+ else if(!session.active){} // applying resumes the same session first, then re-checks
  else if(session.thinking)reason='답변 작성 중입니다. 입력 대기 상태가 되면 적용할 수 있습니다.';
  else if(Object.keys(session.agentState?.requests??{}).length)reason='승인 요청을 먼저 처리하세요. 액세스 모드를 바꿔 대기 중 승인을 건너뛰지 않습니다.';
  else if(session.agentState?.controlledByUser!==false)reason='공식 CLI에서 제어 중이거나 제어 상태가 미확인입니다. 앱에서 제어 가능한 상태에서 적용하세요.';
  else if(!editable)reason='서버 설정을 다시 확인한 뒤 적용하세요.';
- return {browse,apply:!reason,resume:!!session&&supported&&!session.active&&connected&&!locked,reason};
+ return {browse,apply:!reason,reason};
 }
 export function settingsDraft(draft,view){
  return Object.fromEntries(Object.entries(draft).filter(([field,value])=>({model:view.models,effort:view.efforts,permissionMode:view.permissionModes})[field]?.some(o=>o.value===(value===''?null:value))));
