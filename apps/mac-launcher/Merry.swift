@@ -256,6 +256,21 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         else if roles["local"] == true { requestConfiguration("initialize") }
         else { loadDesktop("/setup") }
     }
+    func restoreAfterReleaseTransition() {
+        let key = "MaricodeCleanStart110WebData"
+        if Bundle.main.object(forInfoDictionaryKey: "MARICODERelease") as? Bool == true,
+           Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "1.1.0",
+           !UserDefaults.standard.bool(forKey: key) {
+            // This app's WebKit store only. Other browsers and external CLI authentication are untouched.
+            webView.configuration.websiteDataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { [weak self] in
+                DispatchQueue.main.async {
+                    guard let self, self.process != nil, !self.stopping else { return }
+                    UserDefaults.standard.set(true, forKey: key)
+                    self.restoreDesktop(); self.restoreMachineTabs()
+                }
+            }
+        } else { restoreDesktop(); restoreMachineTabs() }
+    }
     @objc func showWorkspace() { if webView.url?.path == "/workspace" { selectMachine("local") } else { restoreDesktop() } }
     @objc func showConnections() { showUtility("connections", title: "컴퓨터 연결", path: "/connections") }
     func showUtility(_ key: String, title: String, path: String) {
@@ -717,6 +732,10 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let p = Process(); let stdin = Pipe(); let stdout = Pipe()
         p.executableURL = resources.appendingPathComponent("node")
         p.arguments = [resources.appendingPathComponent("source/apps/mac-launcher/runtime.mjs").path, directory, "61192"]
+        if Bundle.main.object(forInfoDictionaryKey: "MARICODERelease") as? Bool == true,
+           Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "1.1.0" {
+            p.arguments?.append("--clean-start-1.1.0")
+        }
         // Do not inherit credentials or Node startup hooks from the launching shell.
         p.environment = ["PATH":"/usr/bin:/bin:/usr/sbin:/sbin", "HOME":NSHomeDirectory(), "LANG":"en_US.UTF-8"]
         // External CLI discovery only; AI execution keeps its isolated profile.
@@ -739,7 +758,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     self.url = URL(string: "http://127.0.0.1:61192/setup")
                     self.status.stringValue = "실행 중 · 이 Mac의 127.0.0.1:61192"
                     self.open.isEnabled = true; self.stop.isEnabled = true; self.connect.isEnabled = true; self.remoteStart.isEnabled = true
-                    self.restoreDesktop(); self.restoreMachineTabs()
+                    self.restoreAfterReleaseTransition()
                 }
                 if line == "REMOTE_ON" { self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 실행 중 · 등록 주소로 접속하세요. 원격 로그인은 별도로 필요합니다." }
                 if line == "REMOTE_OFF" { self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "이 앱의 HTTPS 전달을 종료했습니다. 로컬 작업은 유지됩니다." }
@@ -789,6 +808,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             case 25: self.status.stringValue = "시작 실패 후 전용 실행 환경의 종료를 확인하지 못했습니다. 진행 중 작업과 프로세스를 확인해야 합니다. 재시도하거나 잠금을 지우지 마세요."
             case 26: self.status.stringValue = "전용 HAPI를 시작하지 못했습니다. 등록한 HAPI 실행 파일과 전용 데이터의 접근 권한을 확인하세요. 기존 설정과 인증은 유지했습니다."
             case 27: self.status.stringValue = "실행 자료 폴더에 접근할 수 없습니다. 폴더와 접근 권한을 확인하세요."; self.showFileAccessHelp()
+            case 28: self.status.stringValue = "1.1.0 초기 정리를 완료하지 못했습니다. 이전 Maricode와 공식 CLI·로그인 창을 정상 종료하고 폴더 접근 권한을 확인한 뒤 다시 실행하세요. 이미 시작한 정리는 기록을 이어 처리합니다. 외부 CLI와 작업 폴더는 삭제하지 않습니다."
             default: self.status.stringValue = "실행하지 못했습니다. 기존 데이터를 보존하고 실행 파일·폴더와 포트 상태를 확인하세요."
             }
             if self.quitting {

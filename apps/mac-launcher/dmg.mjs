@@ -29,6 +29,7 @@ export async function createDmg(app,output,upstreamSources,signing){
  await writeFile(join(stage,'READ-ME.txt'),`Maricode ${PRODUCT_VERSION} — installation
 
 Copy Maricode.app to Applications, then eject this disk image.
+${PRODUCT_VERSION==='1.1.0'?'IMPORTANT 1.1.0: Quit the previous app before replacement. First launch clears previous Maricode app data ONCE (app conversations, registrations, roles and connections). External project files and Claude/Codex CLI settings/original sessions are preserved. Set up roles and reconnect your CLI afterwards. Later launches preserve new data.':''}
 ${signed?'This app has a Developer ID signature and an Apple notarization ticket. The unchanged HAPI source archive is provided alongside this release.':'This build has an ad-hoc signature, not a Developer ID signature or notarization.'}
 Keep the matching product/runtime sources, BUILDING.txt, NOTICES.txt and checksums with this release.
 HAPI 0.33.3 and Node are included. Claude/Codex installation and official login are separate.

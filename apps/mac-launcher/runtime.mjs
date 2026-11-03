@@ -1,3 +1,4 @@
+import {cleanStart110} from './clean-start.mjs';
 import {resetLegacyCliProfiles} from './cli-profile-reset.mjs';
 import {acquireRuntimeLock} from './runtime-lock.mjs';
 import {resolveHapiBinary} from './bundled-hapi.mjs';
@@ -15,7 +16,7 @@ import {createDesktopAccess} from './desktop-access.mjs';
 import {checkDataFormat} from './data-format.mjs';
 const listen=server=>new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
 const close=server=>new Promise(resolve=>{server.closeAllConnections();server.close(()=>resolve());});
-export async function startDesktopWeb({directory,port=61192,beforeClose=async()=>{},onForwardExit=()=>{}}){
+export async function startDesktopWeb({directory,port=61192,beforeClose=async()=>{},onForwardExit=()=>{},cleanInstall=false}){
  if(!isAbsolute(directory)||!Number.isInteger(port)||port<0||port>65535)throw Error('Invalid launcher configuration');
  await mkdir(directory,{recursive:true,mode:0o700});
  const ownership=await acquireRuntimeLock(directory);
@@ -24,8 +25,10 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
  let web,unconfiguredHub,backend,desktopAccess,connecting=false,closed=false,closing=null;
  try{
   await checkDataFormat(directory);
+  stage=cleanInstall?'transition':'configuration';
+  const cleanStart=cleanInstall?await cleanStart110(directory):{reset:false};
   stage='configuration';
-  await resetLegacyCliProfiles(directory);
+  if(!cleanInstall)await resetLegacyCliProfiles(directory);
   const remote=await readRemoteOrigin(directory);
   let config;
   try{config=JSON.parse(await readFile(join(directory,'backend.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -41,7 +44,7 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
   }
   if(backend)desktopAccess=createDesktopAccess({directory,authenticate:()=>backend.authenticate()});
   stage='web';
-  web=createServer({origins:remote?[remote]:[],desktopAccess,pairing:backend?createPairing({authenticate:()=>backend.authenticate()}):undefined,...(backend?{upstream:backend.upstream,accountConfig:backend.accountConfig,runnerService:backend.runnerService}:{upstream:`http://127.0.0.1:${unconfiguredHub.address().port}`}),sessions:[],environmentPath:join(directory,'environment.json')});
+  web=createServer({cleanStart:cleanStart.reset,origins:remote?[remote]:[],desktopAccess,pairing:backend?createPairing({authenticate:()=>backend.authenticate()}):undefined,...(backend?{upstream:backend.upstream,accountConfig:backend.accountConfig,runnerService:backend.runnerService}:{upstream:`http://127.0.0.1:${unconfiguredHub.address().port}`}),sessions:[],environmentPath:join(directory,'environment.json')});
   await new Promise((resolve,reject)=>{web.once('error',reject);web.listen(port,'127.0.0.1',resolve);});
   return {url:`http://127.0.0.1:${web.address().port}`,get remotePhase(){return forward.phase;},
   async startRemote(expected){
@@ -79,10 +82,10 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  let runtime;
  try{
-  runtime=await startDesktopWeb({directory:process.argv[2],port:Number(process.argv[3]??61192),onForwardExit:()=>process.stdout.write('REMOTE_UNKNOWN\n')});
+  runtime=await startDesktopWeb({directory:process.argv[2],port:Number(process.argv[3]??61192),cleanInstall:process.argv[4]==='--clean-start-1.1.0',onForwardExit:()=>process.stdout.write('REMOTE_UNKNOWN\n')});
   process.stdout.write('READY '+runtime.url+'\n');
   let stopping=false;const stop=async()=>{if(stopping)return;stopping=true;try{await runtime.close();process.exit(0);}catch{stopping=false;process.stdout.write('STOP_BLOCKED\n');}};
   process.stdin.setEncoding('utf8');let input='';process.stdin.on('data',chunk=>{input+=chunk;let i;while((i=input.indexOf('\n'))!==-1){const command=input.slice(0,i);input=input.slice(i+1);if(command==='quit')void stop();else if(command.startsWith('remote-start ')&&!stopping)void runtime.startRemote(command.slice(13)).then(()=>process.stdout.write('REMOTE_ON\n'),()=>process.stdout.write(runtime.remotePhase==='unknown'?'REMOTE_UNKNOWN\n':'REMOTE_FAILED\n'));else if(command==='remote-stop'&&!stopping)void runtime.stopRemote().then(()=>process.stdout.write('REMOTE_OFF\n'),()=>process.stdout.write('REMOTE_UNKNOWN\n'));else if(command==='connect'&&!stopping)void runtime.connect().then(()=>process.stdout.write('CONNECT_READY\n'),()=>process.stdout.write('CONNECT_FAILED\n'));}if(input.length>1024)input='';});process.stdin.on('end',()=>void stop());process.stdin.resume();
   process.on('SIGTERM',()=>void stop());process.on('SIGINT',()=>void stop());
- }catch(error){process.stderr.write('Launcher could not start. Existing data was preserved.\n');process.exitCode=({locked:21,port:22,format:23,configuration:24,cleanup:25,backend:26,storage:27})[error.startupKind]??1;}
+ }catch(error){process.stderr.write(error.startupKind==='transition'?'Clean start did not complete. Close previous work and resume the recorded transition.\n':'Launcher could not start. Existing data was preserved.\n');process.exitCode=({locked:21,port:22,format:23,configuration:24,cleanup:25,backend:26,storage:27,transition:28})[error.startupKind]??1;}
 }

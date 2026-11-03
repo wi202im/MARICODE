@@ -41,7 +41,7 @@ async function copySources(relative){
 await copySources('pilots/hapi/client-probe');
 await copyFile(join(root,'pilots/hapi/client-probe/LICENSE'),join(destination,'pilots/hapi/client-probe/LICENSE'));
 await mkdir(join(destination,'apps/mac-launcher'),{recursive:true});
-for(const name of ['cli-profile-reset.mjs','AppIcon.swift','AppUpdate.swift','version.mjs','INSTALL.html','INSTALL-SIGNED.html','signing.mjs','Merry.swift','DesktopNavigation.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift','build.mjs','package-hapi.mjs','dmg.mjs','LICENSE','README.md','USER-GUIDE.txt','NOTICES.txt','BUILDING.txt','source-package.mjs','Bun-LICENSE.md','HAPI-DEPENDENCY-NOTICES.txt','Paseo-LICENSE.txt'])await copyFile(join(root,'apps/mac-launcher',name),join(destination,'apps/mac-launcher',name));
+for(const name of ['clean-start.mjs','cli-profile-reset.mjs','AppIcon.swift','AppUpdate.swift','version.mjs','INSTALL.html','INSTALL-SIGNED.html','signing.mjs','Merry.swift','DesktopNavigation.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift','build.mjs','package-hapi.mjs','dmg.mjs','LICENSE','README.md','USER-GUIDE.txt','NOTICES.txt','BUILDING.txt','source-package.mjs','Bun-LICENSE.md','HAPI-DEPENDENCY-NOTICES.txt','Paseo-LICENSE.txt'])await copyFile(join(root,'apps/mac-launcher',name),join(destination,'apps/mac-launcher',name));
 await copyFile(join(root,'apps/mac-launcher/runtime-lock.mjs'),join(destination,'apps/mac-launcher/runtime-lock.mjs'));
 await copyFile(join(root,'apps/mac-launcher/runtime.mjs'),join(destination,'apps/mac-launcher/runtime.mjs'));
 await copyFile(join(root,'apps/mac-launcher/backend.mjs'),join(destination,'apps/mac-launcher/backend.mjs'));
