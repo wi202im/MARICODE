@@ -2,6 +2,29 @@
 
 상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다.
 
+## CLI 환경 유지·자체 채팅 연결 검토 — 2026-11-03
+
+- 사용자 방향: MCP만 따로 복제하지 않고 공식 CLI의 계정·설정·실행 환경을 기준으로 자체 채팅을 제공한다. 이번 요청은 연결 가능성 검토이며, HAPI 교체나 사용자 설정 전환을 수행하지 않았다. 공개본은1.0.13 그대로다.
+- **결론:** 같은 CLI 환경을 사용하는 자체 채팅은 가능하다. 터미널 UI의 모든 명령/화면을 자동으로 동일하게 표시하는 것은 별도 문제다. 자체 UI는 공식 프로토콜이 제공하는 상태·승인·인증 동작을 연결해야 하며 CLI 버전별 호환 검증은 남는다. CLI 프로세스/원래 세션 ID를 유지하는 것과 이미 별도로 실행한 터미널 프로세스에 붙는 것은 구분한다. 같은 세션을 두 실행기가 동시에 쓰지 않는다.
+- **현재 차이의 근거:** `apps/mac-launcher/configure.mjs`는 전용 CLAUDE_CONFIG_DIR/CODEX_HOME과 제한된 PATH를 생성한다. `command-cards.mjs`는 이 환경의 별도 CLI 목록을 조회하며 Claude 이름 파서가 공백/콜론 등이 있는 커넥터 이름을 누락할 수 있다. 사용자 회사 머신의 실제 설정·인증·전체 MCP 목록은 읽지 않았으므로 개별 서버 누락 원인을 모두 확정하지는 않았다.
+- **HAPI0.33.3 확인:** 고정 원본 소스의 Claude `sdk/query.ts`는 공식 CLI를 stream-json으로 spawn하고 환경을 상속하지만 HAPI 자체 어댑터다. `claudeRemote.ts`는 권한·추가 지시문·MCP·hook settings 등을 전달한다. Codex는 App Server를 사용하면서 HAPI MCP bridge/developer instructions·권한 변환을 추가한다. 따라서 HAPI가 공식 CLI를 실행한다는 사실만으로 터미널과 옵션까지 동일하다고 할 수 없다. 이번에 조사한 경로에는 공식 MCP 상태/OAuth/reload를 앱용 공개 API로 연결하는 구현이 없었다. 기존 채팅/세션 전달 기능까지 모두 제거해야 한다는 결론은 아니다.
+
+| 항목 | 공식 연결 경로에서 가능한 범위 | 남은 조건 |
+|---|---|---|
+| Claude 채팅·승인·세션 | Agent SDK/streaming CLI, 원래 ID resume, 도구 승인 이벤트 | 같은 설치 CLI 경로·설정 계층 사용. SDK 기본 minimal prompt와 claude_code preset 구분 |
+| Claude MCP | 실행 중 Query의 mcpServerStatus, reconnect/toggle, 지원 모델/명령 조회 | SDK/CLI 버전별 기능 차이. OAuth는 공식 CLI/브라우저 경로, claude.ai 커넥터는 구독 인증·조직 설정에 따름 |
+| Codex 채팅·승인·세션 | App Server thread/turn/approval/history | 같은 CODEX_HOME·프로젝트/관리 설정, 임의 권한 덮어쓰기 제거, 단일 실행 소유 |
+| Codex MCP | mcpServerStatus/list, mcpServer/oauth/login, config/mcpServer/reload | OAuth URL/완료 알림을 전용 UI로 연결. 설정 재로딩과 실제 연결 결과를 구분 |
+| 터미널 화면 완전 동일 | 공식 TUI를 내장 터미널에 표시하는 경로는 별도 선택 | 자체 채팅으로 모든 새 명령을 자동 변환하는 보장은 불가. 본문 ANSI 파싱을 주 연결 방식으로 쓰지 않음 |
+
+- **된다 — 격리 실제 CLI 프로토콜 시험:** 설치 Claude2.1.312·Codex0.164.0을 사용자 프로필과 분리한 시험 HOME/프로필로 실행했다. 로컬 합성 stdio MCP 하나를 설정하고, Claude initialize→mcp_status와 Codex initialize→mcpServerStatus/list에서 해당 서버를 확인했다. 같은 환경의 일반 `mcp list`에도 보였고, cwd를 고정한 채 프로필만 빈 폴더로 바꾸면 두 CLI 목록에서 모두 사라졌다. 시험 CLI 프로세스 그룹만 종료했다. 사용자 인증/회사 MCP/AI 모델 요청은 사용하지 않았다.
+- **된다 — 버전 근거:** Codex0.164.0이 생성한 stable JSON schema에도 thread/start·resume, model/list, account/read, config/read와 위 MCP 세 메서드가 있었다. 문서만 보고 현재 설치 버전 지원을 가정하지 않았다. 자료는 Git 제외 `.runtime/cli-environment-review/`에 있다.
+- **확인 안 함:** 기존 실제 구독/키체인 공유, 회사 네트워크·stdio 환경변수·커넥터20개 동등성, OAuth 왕복·세션 재연결 후 도구 호출, HAPI를 경유한 새 제어 API, 모든 CLI 명령/조직 정책 동등성. 실제 MCP 연결 승인·인증 시험으로 다음에 확인해야 한다.
+- **권고 후속:** (1) 동일 바이너리/cwd/프로필/설정 출처를 비교하는 진단을 만들고 (2) 설치 CLI를 사용하는 최소 연결 시제품으로 MCP 상태·인증·승인·기존 세션 이어가기를 비교한 뒤 (3) HAPI에서 전달 가능한 것과 연결부 교체가 필요한 것을 결정한다. 원격 웹/서버 역할·프로젝트·채팅 레이아웃까지 다시 만들 필요는 없다. Claude SDK 설치는 아직 하지 않았다.
+- **진행 중 코드 보존:** 이전 턴의 MCP 로그인 버튼/백그라운드 인증 수정5개 파일은 작업 트리에 미커밋 상태로 남아 있다. 당시 대상12개 합성 검사는 통과했지만 실제 OAuth/동일 CLI 환경은 미검증이다. 이번 검토에서는 더 수정하거나 배포하지 않았다. 새 방향의 실행 환경을 정하기 전 이를 완성된 해결책으로 합치지 않는다.
+
+공식 근거(2026-11-03 조회): [Codex App Server](https://learn.chatgpt.com/docs/app-server), [Claude 프로그램 실행](https://code.claude.com/docs/en/headless), [SDK 설정 출처](https://code.claude.com/docs/en/agent-sdk/claude-code-features), [SDK 제어 API](https://code.claude.com/docs/en/agent-sdk/typescript), [Claude MCP·인증·커넥터](https://code.claude.com/docs/en/mcp), [기존 세션 재개](https://code.claude.com/docs/en/agent-sdk/sessions), [구독 로그인 사용](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan). 문서의 최신 SDK 기능과 설치 CLI의 실제 확인 범위를 구분한다.
+
 ## 1.0.13 공증 공개 완료 — 2026-11-03
 
 - 사용자 요청으로 모델 표시·종료 세션 설정 수정 `77c85b8`을 포함한 빌드/태그 `c7701db`를 https://github.com/wi202im/MARICODE/releases/tag/v1.0.13 에 공개하고 latest로 지정했다. 기존 릴리스·사용자 설치 앱·계정·실행 데이터는 보존했다.
