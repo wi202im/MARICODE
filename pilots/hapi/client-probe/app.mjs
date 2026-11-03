@@ -1,3 +1,4 @@
+import {cardCommands,cardCommand,createCommandCard,reconnectCommandSession} from './command-cards-ui.mjs';
 import {officialCliControls} from './official-cli-ui.mjs';
 import {supportedChatCommands,chatCommandName,chatCommandSupported} from './command-support.mjs';
 import {bindComposerEnter} from './composer-input.mjs';
@@ -37,6 +38,7 @@ let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JS
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
 let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null,pairingEnabled=false;
+let commandCardsEnabled=false;const localCommandCards=new Map();
 let commandSuggest=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
@@ -61,14 +63,31 @@ function renderHistorySummary(){
 function storedPending(){try{return JSON.parse(sessionStorage.getItem(pendingKey()));}catch{return null;}}
 async function api(path,{method='GET',body,signal}={}){
   const usedToken=token;
-  const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')?120000:15000)});
+  const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')||path.includes('/command-cards')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401&&path!=='/api/pair'){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/official-cli'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.includes('/command-cards')||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/official-cli'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
 const base=()=>`/api/sessions/${sessionId}`;
+const commandCardHost=document.createElement('div');commandCardHost.className='cli-command-cards';$('messages').after(commandCardHost);
+async function commandCapabilities(id=sessionId){if(!commandCardsEnabled||!id)return null;return api(`/api/sessions/${id}/command-cards`);}
+async function openCommandCard(name){
+ const id=sessionId,mine=epoch,auth=token,cap=await commandCapabilities(id);
+ if(mine!==epoch||!token||token!==auth)return false;
+ if(!cardCommands(cap).some(c=>c.name===name))throw Error('이 세션·설치된 CLI에서는 해당 명령 카드를 사용할 수 없습니다.');
+ const key=id+':'+name;let card=localCommandCards.get(key);
+ if(!card||!card.element.isConnected){
+  card=createCommandCard({id,name,cap,api,storage:sessionStorage,valid:()=>token===auth&&sessionId===id,reconnect:async()=>{
+   if(busy||id!==sessionId||token!==auth)throw Error('현재 작업을 마친 뒤 같은 세션에서 진행하세요.');
+   busy=true;render();const held=actions;
+   try{return await reconnectCommandSession({id,read:()=>({...session,id:sessionId,connected,pending:held!==actions||!!actions?.pending||!!permissionActions?.pending||!!settingsPending()}),refresh,confirm:()=>confirmArchive($('title').textContent,id),archive:expected=>held.archive(expected),resume:()=>held.resume()});}finally{busy=false;render();}
+  }});card.sessionId=id;localCommandCards.set(key,card);commandCardHost.append(card.element);
+ }
+ card.show();card.element.scrollIntoView({block:'nearest'});await card.load();return true;
+}
+
 // Programmatic value changes (clear after send, handoff prefill, draft restore) fire no input event.
 let fittedPrompt=null;
 function fitPrompt(){const input=$('prompt');if(!input)return;fittedPrompt=input.value;input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';}
@@ -90,7 +109,7 @@ function render(){
   $('title').textContent=session?.metadata?.name??'시험 세션';
   const waiting=Object.keys(session?.agentState?.requests??{}).length;
   $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 대화 기록은 남아 있습니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
-  $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session?.active||session.thinking||waiting>0||!!actions?.pending;
+  $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||!session.active&&!(commandCardsEnabled&&cardCommand($('prompt').value))||session?.thinking||waiting>0||!!actions?.pending;
   $('retry-message').hidden=actions?.pending?.kind!=='send';
   $('retry-message').disabled=!!session?.resumeUnconfirmed||busy||!connected||!session?.active||session.thinking||waiting>0;
   $('retry-help').hidden=$('retry-message').hidden;
@@ -223,7 +242,7 @@ async function stream(authEpoch){
   }
 }
 async function openWorkspace(){
- const auth=token;const config=await api('/config');if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;pairingEnabled=config.pairing===true;if(workspaceLayout)$('pairing-open').hidden=!pairingEnabled;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
+ const auth=token;const config=await api('/config');commandCardsEnabled=config.commandCards===true;if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;pairingEnabled=config.pairing===true;if(workspaceLayout)$('pairing-open').hidden=!pairingEnabled;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
  $('session-select').replaceChildren(...trialSessions.map(s=>{const option=document.createElement('option');option.value=s.id;option.textContent=s.label;return option;}));
  if(!trialSessions.length){
   rememberChat();$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();
@@ -264,7 +283,7 @@ async function selectSession(id){
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
-  sessionId=id;if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
+  sessionId=id;for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
   const permissionKey=`hapi-permission-pending:${id}`;
@@ -280,7 +299,7 @@ async function selectSession(id){
 }
 $('session-select').onchange=()=>selectSession($('session-select').value).catch(e=>notice(e.message));
 function clearLogin(message,state='login-needed'){
-  attachmentComposer?.clearAll();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
+  commandCardsEnabled=false;localCommandCards.clear();commandCardHost.replaceChildren();attachmentComposer?.clearAll();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
   recovery?.stop();
   saveTabToken(sessionStorage,'',false);clearDeviceLogin(deviceStorage);deviceServerId='';
   catalogSerial++;sessionCards.clear();firstPrompts.clear();catalogChecked=null;cardSignature='';
@@ -313,6 +332,10 @@ $('send-form').addEventListener('submit',async e=>{
   const text=$('prompt').value.trim();if(!text&&!attachmentComposer?.count)return;
   const mine=epoch;let submitted=false;busy=true;render();
   try{
+    if(cardCommand(text)){
+      if(attachmentComposer?.count){notice('명령 카드는 첨부 없이 실행하세요. 작성 중인 입력은 보존했습니다.');return;}
+      if(await openCommandCard(cardCommand(text))&&mine===epoch&&$('prompt').value.trim()===text){$('prompt').value='';rememberChat();commandSuggest?.reset();}return;
+    }
     if(chatCommandName(text)){
       let catalog;try{catalog=await api(base()+'/slash-commands');}catch{if(mine===epoch)notice('명령 지원 목록을 확인하지 못했습니다. 전송하지 않았습니다. 연결 상태를 확인하세요.');return;}
       if(mine!==epoch)return;
@@ -436,7 +459,7 @@ async function prepareNewHandoff(checkOnly=false){
   handoffState=result.state;
   if(result.state!=='created'){notice('생성 결과 ID를 아직 확인할 수 없습니다. 새 세션을 만들지 않았습니다.');return;}
   if(mine!==epoch)return;
-  const config=await api('/config');if(mine!==epoch)return;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
+  const config=await api('/config');commandCardsEnabled=config.commandCards===true;if(mine!==epoch)return;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
   $('session-select').replaceChildren(...trialSessions.map(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.label;return o;}));
   const target=result.session,text=buildHandoff(source,target,original,{hasOlder,limited});
   await selectSession(target.id);if(sessionId!==target.id||!token)return;
@@ -610,7 +633,7 @@ async function refreshCatalog(){
  if(!workspaceLayout||!token||catalogBusy)return;
  const mine=++catalogSerial,usedToken=token;catalogBusy=true;renderWorkspace();
  try{
-  const config=await api('/config');
+  const config=await api('/config');commandCardsEnabled=config.commandCards===true;
   const results=await Promise.allSettled(config.sessions.map(c=>api(`/api/sessions/${c.id}`)));
   if(mine!==catalogSerial||usedToken!==token)return;
   allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
@@ -1050,7 +1073,7 @@ if(workspaceLayout){
  $('close-settings').onclick=closeSettings;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();workspacePanel('chat');workspaceDrawer(false);}});
  document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
- commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>session?.active&&sessionId?`${epoch}:${sessionId}`:null,fetch:async()=>{const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);return {commands:supportedChatCommands(session?.metadata?.flavor,c?.success?c.commands:[]),skills:s?.success?s.skills:[]};}}});
+ commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>sessionId&&(session?.active||commandCardsEnabled)?`${epoch}:${sessionId}`:null,fetch:async()=>{const agent=session?.metadata?.flavor;const [c,s,cap]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null),commandCapabilities().catch(()=>null)]);return {commands:[...cardCommands(cap),...supportedChatCommands(agent,c?.success?c.commands:[])],skills:s?.success?s.skills:[]};}}});
  bindComposerEnter({input:$('prompt'),form:$('send-form'),button:$('send')});
  finder=createFind({bar:$('find-bar'),input:$('find-input'),count:$('find-count'),scope:()=>$('messages')});$('find-close').onclick=()=>finder.close();
  const shortcuts=[['⌘K','명령 팔레트'],['⌘F','대화에서 찾기'],['Enter','메시지 보내기'],['Shift+Enter','줄바꿈'],['Esc','패널·팝업 닫기']];
@@ -1073,7 +1096,7 @@ if(workspaceLayout){
   if(key==='k'){e.preventDefault();palette.isOpen?palette.close():palette.open();}
   else if(key==='f'&&!e.shiftKey&&sessionId){e.preventDefault();finder.open();}
  });
- $('prompt').addEventListener('input',fitPrompt);
+ $('prompt').addEventListener('input',()=>{fitPrompt();render();});
 }
 
 async function chooseProject(project){

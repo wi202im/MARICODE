@@ -275,3 +275,22 @@ test('a resume that never started is released after a settle window without repl
  await assert.rejects(fail());running=false;clock+=16000;
  assert.equal(await api.reconcileResume(session.id,'Bearer synthetic'),true);assert.equal((await api.status()).phase,'exited');assert.equal(writes,2);
 });
+
+test('command cards bind authenticated local machine, registered cwd and original active profile, rejecting stale contexts',async t=>{
+ const {createServer}=await import('node:http'),{randomUUID}=await import('node:crypto');
+ const root=await mkdtemp(join(tmpdir(),'maricode-card-scope-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),binary:'/bin/echo',tokenFile:join(root,'token')};
+ const cwd=join(root,'project'),home=join(root,'claude');await mkdir(cwd);await mkdir(join(home,'projects',cwd.replace(/[^a-zA-Z0-9]/g,'-')),{recursive:true});
+ const native='fixture-native-id';await writeFile(join(home,'projects',cwd.replace(/[^a-zA-Z0-9]/g,'-'),native+'.jsonl'),'');
+ await writeFile(join(root,'env'),JSON.stringify({PATH:'/usr/bin:/bin',CLAUDE_CONFIG_DIR:home}));await writeFile(c.accountConfig,JSON.stringify({cwd,environment:join(root,'env'),binaries:{claude:'/bin/echo'}}));
+ await mkdir(join(c.directory,'runner-home'),{recursive:true});await writeFile(join(c.directory,'runner-home/settings.json'),'{"machineId":"own"}');await writeFile(join(c.directory,'prepared.json'),JSON.stringify({cwd,agents:['claude']}));
+ let s={id:randomUUID(),metadata:{machineId:'own',path:cwd,flavor:'claude',claudeSessionId:native}},calls=0;
+ const hub=createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer fixture')return res.writeHead(401).end('{}');res.end(JSON.stringify(req.url==='/api/machines'?{machines:[{id:'own'}]}:{sessions:[s]}));});await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
+ const {commandContextKey}=await import('./command-cards.mjs');const commandCards={capabilities:async scope=>({contextKey:commandContextKey(scope),scope}),execute:async(scope,input)=>{calls++;return {scope,input};},pending:async()=>false};
+ const api=createRunnerSetup(c,{commandCards});await assert.rejects(api.commandCardCapabilities('Bearer wrong',s.id));
+ const cap=await api.commandCardCapabilities('Bearer fixture',s.id);assert.equal(cap.scope.cwd,cwd);assert.equal(cap.scope.accountId,'default');
+ await assert.rejects(api.commandCardRun('Bearer fixture',s.id,{contextKey:'stale',action:'account'}));assert.equal(calls,0);
+ await api.commandCardRun('Bearer fixture',s.id,{contextKey:cap.contextKey,action:'account'});assert.equal(calls,1);
+ for(const patch of [{machineId:'other'},{path:root},{claudeSessionId:'missing-native-id'}]){const old=s.metadata;s.metadata={...old,...patch};await assert.rejects(api.commandCardCapabilities('Bearer fixture',s.id));s.metadata=old;}
+ await writeFile(join(root,'env'),JSON.stringify({PATH:'/bin',CLAUDE_CONFIG_DIR:home}));await assert.rejects(api.commandCardRun('Bearer fixture',s.id,{contextKey:cap.contextKey,action:'account'}));assert.equal(calls,1);
+});

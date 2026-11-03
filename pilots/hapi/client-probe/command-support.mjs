@@ -6,7 +6,7 @@ const supported={
  claude:new Set(['compact']),
  codex:new Set(['compact','status','plan','default','execute','model','reasoning','effort','personality','permissions','permission'])
 };
-const reserved=new Set([...Object.values(supported).flatMap(s=>[...s]),'clear','new','goal','agent','help','mcp','config','plugin','plugins','doctor','login','logout','fast','usage','stats','context','cost','resume','fork','quit','exit','review','diff','init','permissions','theme','hooks','memory','skills']);
+const reserved=new Set([...Object.values(supported).flatMap(s=>[...s]),'clear','new','goal','agent','help','mcp','account','config','plugin','plugins','doctor','login','logout','fast','usage','stats','context','cost','resume','fork','quit','exit','review','diff','init','permissions','theme','hooks','memory','skills']);
 const validName=name=>typeof name==='string'&&/^[a-zA-Z][\w.:-]{0,127}$/.test(name);
 export function supportedChatCommands(agent,reported){
  if(!supported[agent]||!Array.isArray(reported))return [];

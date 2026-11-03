@@ -55,7 +55,7 @@ export async function startBackend({directory,binary,accountConfig,port=61193,ow
  ownership?.hubStarting();
  const hub=await launch({binary,directory:home,port,token,recordPid:pid=>ownership?.hubStarted(pid)});let closing=false,closed=false,mutating=0;
  // Prevent new Runner lifecycle/session mutations while the shutdown snapshot is checked.
- const mutations=new Set(['prepare','start','stop','reprepare','ready','task','manage','generalChat','claudeImport','codexImport','accountProfile','openOfficialCli','runSessionMutation','reconcileResume']);
+ const mutations=new Set(['prepare','start','stop','reprepare','ready','task','manage','generalChat','claudeImport','codexImport','accountProfile','openOfficialCli','commandCardCapabilities','commandCardRun','runSessionMutation','reconcileResume']);
  const runnerService=new Proxy(service,{get(target,key){const value=target[key];if(!mutations.has(key)||typeof value!=='function')return value;return async(...args)=>{if(closing||closed)throw Error('Backend is closing');mutating++;try{return await value(...args);}finally{mutating--;}};}});
  return {upstream,accountConfig,runnerService,async authenticate(){
   if(closing||closed)throw Error('Backend unavailable');

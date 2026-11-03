@@ -10,6 +10,7 @@ import {launchRunner} from './runner-launch.mjs';
 import {claudeImports} from './claude-import.mjs';
 import {codexImports} from './codex-import.mjs';
 import {accountProfiles} from './account-profiles.mjs';
+import {createCommandCards,commandContextKey} from './command-cards.mjs';
 import {createOfficialCli,cliPending} from './official-cli.mjs';
 import {discoverClaudeSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
@@ -36,7 +37,7 @@ async function runnerHasActive(config){
  if(!r.ok)throw Error();const data=await r.json();if(!Array.isArray(data.sessions))throw Error();
  return data.sessions.some(s=>s.active&&s.metadata?.machineId===id);
 }
-export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRunner,connection=runnerConnected,hasActive=runnerHasActive,officialCli=createOfficialCli(config.accountConfig),now=Date.now}={}){
+export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRunner,connection=runnerConnected,hasActive=runnerHasActive,officialCli=createOfficialCli(config.accountConfig),commandCards=createCommandCards(config.accountConfig,config.directory+'.command-cards'),now=Date.now}={}){
  const url=new URL(config.hubUrl);
  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('Local Hub required');
  if(['directory','accountConfig','binary','tokenFile'].some(k=>typeof config[k]!=='string'||!isAbsolute(config[k])))throw Error('Absolute launcher paths required');
@@ -177,6 +178,15 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   if(row.available===false)throw Object.assign(Error('이 작업공간의 폴더가 없거나 접근할 수 없습니다. 폴더 위치·접근 권한을 확인하거나 목록에서 등록을 해제해 주세요.'),{rejected:true,status:400});
   return key?projectRegistry(c.projectsPath).get(key):{id:'',path:row.path};
  }
+ async function commandScope(authorization,id){
+  await current();const data=await authorize(authorization),s=data.sessions?.find(s=>s.id===id),m=s?.metadata;
+  if(!m||!['claude','codex'].includes(m.flavor)||m.machineId!==await machineId(c))throw Object.assign(Error('이 컴퓨터의 세션을 선택하세요.'),{rejected:true,status:403});
+  const rows=await projects(authorization),row=rows.find(p=>p.path===m.path&&p.available!==false);if(!row)throw Object.assign(Error('등록된 작업 폴더를 확인하세요.'),{rejected:true});
+  const project=await selectedProject(authorization,row.key),profiles=accountProfiles(c.accountConfig),p=(await profiles.list())[m.flavor];
+  const owner=await profiles.owner(m.flavor,m[m.flavor==='claude'?'claudeSessionId':'codexSessionId']??m.agentSessionId,m.path);
+  if(!p?.active||!owner?.active||owner.removed)throw Object.assign(Error('이 세션의 원래 계정으로 전환하고 세션 기록을 확인하세요. 다른 계정의 설정은 변경하지 않습니다.'),{rejected:true});
+  return {sessionId:id,agent:m.flavor,cwd:project.path,accountId:p.active,alias:owner.alias,revision:await accountRevision(c.accountConfig)};
+ }
  const plans=c.projectsPath?createWorkspacePlans({directory:slot+'.workspace-plans',worktreeDirectory:slot+'.worktrees',registry:projectRegistry(c.projectsPath)}):null;
  const api={status,projects,
   async generalChat(authorization){
@@ -266,6 +276,15 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     return {state:'registered',id};
    });
   },
+  async commandCardCapabilities(authorization,id){return exclusive(async()=>commandCards.capabilities(await commandScope(authorization,id)));},
+  async commandCardResult(authorization,id,requestId){return commandCards.result(await commandScope(authorization,id),requestId);},
+  async commandCardRun(authorization,id,input){
+   if(!input||typeof input.contextKey!=='string')throw Object.assign(Error('명령 카드를 다시 여세요.'),{rejected:true});
+   let admitted=false;try{return await exclusive(async()=>{const scope=await commandScope(authorization,id);if(input.contextKey!==commandContextKey(scope))throw Object.assign(Error('대상 계정·폴더가 바뀌었습니다. 명령 카드를 다시 여세요.'),{rejected:true});
+    if(['mcp-add','mcp-remove'].includes(input.action)&&cliPending(await officialCli.status(scope.agent)))throw Object.assign(Error('별도 공식 CLI 창을 종료한 뒤 설정을 변경하세요.'),{rejected:true});
+    const {contextKey,...request}=input;admitted=true;return commandCards.execute(scope,request);
+   });}catch(error){if(!admitted&&!error.rejected)throw Object.assign(Error('명령을 시작하지 않았습니다. 연결·계정·다른 설정 작업을 확인하세요.'),{rejected:true,status:error.status});throw error;}
+  },
   async officialCliStatus(authorization){await authorize(authorization);return Object.fromEntries(await Promise.all(['claude','codex'].map(async agent=>[agent,await officialCli.status(agent)])));},
   async openOfficialCli(authorization,input){
    await authorize(authorization);
@@ -282,6 +301,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    if(input.action==='remove')return exclusive(()=>profiles.remove(input.agent,input.id));
    return exclusive(async()=>{
     if((await profiles.list())[input.agent]?.active===input.id)return profiles.list();
+    if(await commandCards.pending(input.agent))throw Object.assign(Error('앞선 MCP 설정 변경 결과가 미확인입니다. 계정을 전환하지 않았습니다.'),{rejected:true});
     if(cliPending(await officialCli.status(input.agent)))throw Object.assign(Error('공식 CLI 창을 exit로 종료한 뒤 계정을 전환하세요. 실행 결과가 미확인이면 터미널을 먼저 확인하세요.'),{rejected:true});
     const before=await state();
     if(!['unprepared','prepared','exited','running'].includes(before)||before==='running'&&!child)throw Object.assign(Error('실행기 상태를 확인한 뒤 전환하세요. 계정을 바꾸지 않았습니다.'),{rejected:true});
