@@ -47,3 +47,6 @@ export function draftRunnerLabel(runner,agent){
  if(runner.hub==='connected'&&runner.phase==='running')return runner.agents?.includes(agent)?'실행기 → 서버 연결 확인 · 실제 AI 응답은 대화 시작 후 확인합니다.':`${agent==='claude'?'Claude':'Codex'}가 실행기에 준비되지 않았습니다. 대화 시작 시 설정을 확인합니다.`;
  return '실행기 → 서버 연결 미확인 · 컴퓨터 설정에서 상태를 확인하세요.';
 }
+
+// Within 90px of the end counts as reading the latest output.
+export const moreBelow=s=>s.scrollHeight-s.scrollTop-s.clientHeight>=90;

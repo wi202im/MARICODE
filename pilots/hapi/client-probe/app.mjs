@@ -16,7 +16,7 @@ import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
-import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts} from './workspace-entry.mjs';
+import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
 import {createReadRecovery,connectionFailure} from './reconnect.mjs';
 import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace} from './workspace.mjs';
 import {createHistory} from './history.mjs';
@@ -144,6 +144,7 @@ function render(){
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
    el.title=usage?`마지막 응답 기준 엔진 보고값 · ${usage.used.toLocaleString()} 토큰${usage.window?` / 한도 ${usage.window.toLocaleString()}`:' · 한도 미보고'}`:'';}
   if(nearBottom)scroller.scrollTop=scroller.scrollHeight;
+  updateJumpLatest();
   if(workspaceLayout){renderWorkspace();renderSettings();}
 }
 const workProgress=workspaceLayout?document.createElement('div'):null;
@@ -1216,3 +1217,8 @@ window.addEventListener('maricode-close-request',async event=>{
   finally{busy=false;render();cancel.disabled=false;dialog.removeEventListener('cancel',prevent);}
  };
 });
+function updateJumpLatest(){const s=$('conversation-history'),b=$('jump-latest');if(s&&b)b.hidden=!moreBelow(s);}
+if($('jump-latest')){const s=$('conversation-history');s.addEventListener('scroll',updateJumpLatest,{passive:true});
+ // Cards and streamed replies grow the content without a scroll event.
+ const grow=new ResizeObserver(updateJumpLatest);grow.observe($('messages'));grow.observe(commandCardHost);
+ $('jump-latest').onclick=()=>s.scrollTo({top:s.scrollHeight,behavior:'smooth'});}

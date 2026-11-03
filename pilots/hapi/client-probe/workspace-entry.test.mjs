@@ -65,3 +65,9 @@ test('runner labels do not equate login with a running AI session',async()=>{
  assert.match(draftRunnerLabel({phase:'running',hub:'connected',agents:['codex']},'claude'),/Claude.*준비되지/);
  assert.match(draftRunnerLabel({phase:'unknown',hub:'connected',agents:['claude']},'claude'),/미확인/);
 });
+test('the latest-content cue appears only when the conversation is scrolled away from the bottom',async()=>{
+ const {moreBelow}=await import('./workspace-entry.mjs');
+ assert.equal(moreBelow({scrollHeight:1000,scrollTop:500,clientHeight:500}),false);
+ assert.equal(moreBelow({scrollHeight:1000,scrollTop:420,clientHeight:500}),false);
+ assert.equal(moreBelow({scrollHeight:1000,scrollTop:300,clientHeight:500}),true);
+});
