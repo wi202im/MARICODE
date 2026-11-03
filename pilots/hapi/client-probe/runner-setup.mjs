@@ -328,7 +328,17 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     return result;
    });
   },
-  async navigation(authorization){await authorize(authorization);if(!c.projectsPath)throw Error('목록 관리 미지원');return projectRegistry(c.projectsPath).navigation();},
+  async navigation(authorization){
+   const data=await authorize(authorization);if(!c.projectsPath)throw Error('목록 관리 미지원');
+   const registry=projectRegistry(c.projectsPath),nav=await registry.navigation(),generalPath=await generalDirectory();
+   const removed=nav.removed.map(r=>r.path===generalPath?{...r,name:'일반 대화'}:r);
+   // Sessions inside a removed project/workspace are listed under it so they can be deleted without restoring it first.
+   const settings=await readFile(join(c.directory,'runner-home/settings.json'),'utf8').then(JSON.parse).catch(()=>null);
+   const parents=removed.filter(r=>r.kind!=='session');
+   for(const s of Array.isArray(data.sessions)?data.sessions:[]){const parent=parents.find(r=>r.path===s.metadata?.path);
+    if(parent&&settings?.machineId&&s.metadata?.machineId===settings.machineId)removed.splice(removed.indexOf(parent)+1,0,{kind:'session',id:s.id,name:nav.sessions[s.id]?.name??sessionTitle({id:s.id},s),parent:parent.name});}
+   return {...nav,removed};
+  },
   async manage(authorization,input){
    await authorize(authorization);
    return exclusive(async()=>{
@@ -339,8 +349,13 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     if(legacyPath&&!rows.some(r=>r.path===legacyPath))rows.push({projectId:legacyProjectId(legacyPath),path:legacyPath});
     const data=await authorize(authorization);if(!Array.isArray(data.sessions))throw Error('세션 상태를 확인하지 못했습니다.');
     let affected;
+    let insideRemoved=false;
     if(input?.kind==='session'){
-     const allowed=await api.workspace(authorization);if(!allowed.some(s=>s.id===input.id))throw Error('이 컴퓨터의 등록된 세션을 선택하세요.');
+     const allowed=await api.workspace(authorization);
+     if(!allowed.some(s=>s.id===input.id)){
+      // Deleting is also allowed for a session listed under a removed project on this machine.
+      insideRemoved=input.action==='delete'&&(await api.navigation(authorization)).removed.some(r=>r.kind==='session'&&r.id===input.id);
+      if(!insideRemoved)throw Error('이 컴퓨터의 등록된 세션을 선택하세요.');}
      affected=data.sessions.filter(s=>s.id===input.id);
     }else{
      const targets=rows.filter(r=>input?.kind==='project'?r.projectId===input.id:input?.kind==='workspace'&&r.workspaceId===input.id);
@@ -356,7 +371,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     if(input.action==='delete'){
      // App record only: the Hub session and its messages. The CLI's own transcript file is untouched.
      if(input.kind!=='session')throw Error('세션만 영구 삭제할 수 있습니다.');
-     if(!(await registry.navigation()).sessions[input.id]?.removed)throw Error('목록에서 제거한 세션만 기록을 삭제할 수 있습니다.');
+     if(!insideRemoved&&!(await registry.navigation()).sessions[input.id]?.removed)throw Error('목록에서 제거한 세션만 기록을 삭제할 수 있습니다.');
      if(affected.some(s=>s.active||s.thinking||Object.keys(s.agentState?.requests??{}).length))throw Error('실행 중인 세션은 삭제할 수 없습니다.');
      const r=await fetch(c.hubUrl+'/api/sessions/'+encodeURIComponent(input.id),{method:'DELETE',headers:{authorization},redirect:'error',signal:AbortSignal.timeout(15000)});
      if(!r.ok)throw Error('삭제 결과를 확인하지 못했습니다. 목록을 새로고침해 결과부터 확인하세요.');

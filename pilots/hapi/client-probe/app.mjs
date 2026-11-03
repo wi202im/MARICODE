@@ -1165,13 +1165,13 @@ async function changeNavigation(input){
 async function restoreNavigation(){
  if(navigationPending)return;$('display-preferences').open=false;navigationTarget=null;showNavigation();$('navigation-edit').hidden=true;$('navigation-restores').hidden=false;$('navigation-restores').replaceChildren();$('navigation-title').textContent='제거한 항목';$('navigation-context').textContent='같은 항목으로 복원합니다. 세션을 새로 만들거나 실행하지 않습니다.';$('navigation-status').textContent='조회 중…';
  try{const data=await api('/api/navigation');if($('navigation-dialog').hidden||navigationTarget)return;
-  const items=[...data.removed,...allSessionEntries.filter(s=>s.hidden).map(s=>({kind:'session',id:s.id,name:s.displayName??s.label}))];
-  for(const item of items){const row=document.createElement('div'),label=document.createElement('span'),button=document.createElement('button');label.textContent=({project:'프로젝트',workspace:'작업공간',session:'세션'})[item.kind]+' · '+item.name;button.textContent='복원';button.setAttribute('aria-label',item.name+' 복원');button.onclick=()=>changeNavigation({kind:item.kind,id:item.id,action:'restore'});row.append(label,button);
+  const items=[...data.removed.filter(r=>r.kind!=='session'||!allSessionEntries.some(s=>s.id===r.id)),...allSessionEntries.filter(s=>s.hidden).map(s=>({kind:'session',id:s.id,name:s.displayName??s.label}))];
+  for(const item of items){const row=document.createElement('div'),label=document.createElement('span'),button=document.createElement('button');label.textContent=({project:'프로젝트',workspace:'작업공간',session:'세션'})[item.kind]+' · '+item.name+(item.parent?` (${item.parent} 안)`:'');if(item.parent)row.className='navigation-child';button.textContent='복원';button.setAttribute('aria-label',item.name+' 복원');button.onclick=()=>changeNavigation({kind:item.kind,id:item.id,action:'restore'});row.append(label);if(!item.parent)row.append(button);
    // Permanent delete removes only the app record; a second click confirms because it cannot be undone.
    if(item.kind==='session'){const remove=document.createElement('button');remove.textContent='기록 삭제';remove.className='danger';remove.setAttribute('aria-label',item.name+' 기록 삭제');
     remove.onclick=()=>{if(remove.dataset.confirm){changeNavigation({kind:'session',id:item.id,action:'delete'});return;}remove.dataset.confirm='1';remove.textContent='삭제 확인';$('navigation-status').textContent='앱의 대화 기록을 영구 삭제합니다. 되돌릴 수 없습니다. 터미널 Claude CLI의 원본 기록은 남습니다. 한 번 더 누르면 삭제합니다.';};row.append(remove);}
    $('navigation-restores').append(row);}
-  $('navigation-status').textContent=items.length?'프로젝트를 복원하면 그 안의 제거한 세션도 관리할 수 있습니다.':'복원할 항목이 없습니다.';
+  $('navigation-status').textContent=items.length?'제거한 프로젝트 안의 세션은 프로젝트를 복원하면 함께 돌아옵니다. 기록 삭제는 바로 할 수 있습니다.':'복원할 항목이 없습니다.';
  }catch(e){$('navigation-status').textContent=e.message;}
 }
 if(workspaceLayout){
