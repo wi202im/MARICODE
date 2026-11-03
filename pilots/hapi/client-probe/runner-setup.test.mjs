@@ -359,3 +359,21 @@ test('Claude registration response loss recovers through Hub before CLI or Runne
  for(const action of ['check','import']){const r=await restarted.claudeImport('Bearer fixture',input,action);assert.equal(r.state,'registered');assert.equal(r.id,stored.id);}
  assert.equal(posts,1);assert.equal(starts,1);assert.equal(await readFile(file,'utf8'),raw);assert.equal((await restarted.claudeImportHistory('Bearer fixture',stored.id)).total,1);
 });
+test('permanent delete removes only hidden, ended sessions from the Hub and forgets their view',async t=>{
+ const {createServer}=await import('node:http'),{projectRegistry}=await import('./project-registry.mjs');
+ const root=await mkdtemp(join(tmpdir(),'maricode-delete-'));const source=join(root,'source');await mkdir(source);const directory=join(root,'runner');await mkdir(join(directory,'runner-home'),{recursive:true});
+ const accountConfig=join(root,'account');await writeFile(join(directory,'runner-home/settings.json'),JSON.stringify({machineId:'own'}));await writeFile(join(directory,'prepared.json'),JSON.stringify({cwd:source}));
+ const projectsPath=join(root,'projects'),project=await projectRegistry(projectsPath).add(source);await writeFile(accountConfig,JSON.stringify({cwd:project.path}));
+ const sid='11111111-1111-4111-8111-111111111111';let active=true,sessions=[sid];const deleted=[];
+ const hub=createServer((req,res)=>{if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end();return;}
+  if(req.method==='DELETE'){deleted.push(req.url);sessions=[];res.writeHead(200,{'Content-Type':'application/json'}).end('{"ok":true}');return;}
+  res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessions:sessions.map(id=>({id,active,metadata:{machineId:'own',path:project.path,flavor:'claude'}}))}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ const service=createRunnerSetup({directory,accountConfig,projectsPath,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:`http://127.0.0.1:${hub.address().port}`});
+ const del={kind:'session',id:sid,action:'delete'};
+ await assert.rejects(service.manage('Bearer synthetic',del));assert.equal(deleted.length,0);
+ active=false;await assert.rejects(service.manage('Bearer synthetic',del),/숨긴/);assert.equal(deleted.length,0);
+ await service.manage('Bearer synthetic',{kind:'session',id:sid,action:'remove'});
+ await service.manage('Bearer synthetic',del);assert.deepEqual(deleted,['/api/sessions/'+sid]);
+ assert.equal((await service.workspace('Bearer synthetic')).length,0);assert.equal((await projectRegistry(projectsPath).navigation()).sessions[sid],undefined);
+});

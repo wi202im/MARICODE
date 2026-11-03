@@ -1158,7 +1158,7 @@ function openNavigation(target){
 }
 async function changeNavigation(input){
  if(navigationPending)return;navigationPending=true;for(const b of $('navigation-dialog').querySelectorAll('button,input'))b.disabled=true;$('navigation-status').textContent='변경 중…';
- try{await api('/api/navigation',{method:'POST',body:input});await openWorkspace();closeNavigation();notice(input.action==='rename'?'표시 이름을 변경했습니다.':input.action==='restore'?'목록에 복원했습니다.':'목록에서 정리했습니다. 보기 설정에서 복원할 수 있습니다.');}
+ try{await api('/api/navigation',{method:'POST',body:input});await openWorkspace();closeNavigation();notice(input.action==='rename'?'표시 이름을 변경했습니다.':input.action==='restore'?'목록에 복원했습니다.':input.action==='delete'?'세션을 영구 삭제했습니다. CLI 원본 기록은 남아 있습니다.':'목록에서 정리했습니다. 보기 설정에서 복원할 수 있습니다.');}
  catch(error){const text=error.message+' 응답이 끊긴 경우 목록을 새로고침해 결과부터 확인하세요.';$('navigation-status').textContent=text;if($('navigation-dialog').hidden)notice(text);}
  finally{navigationPending=false;for(const b of $('navigation-dialog').querySelectorAll('button,input'))b.disabled=false;}
 }
@@ -1166,7 +1166,11 @@ async function restoreNavigation(){
  if(navigationPending)return;$('display-preferences').open=false;navigationTarget=null;showNavigation();$('navigation-edit').hidden=true;$('navigation-restores').hidden=false;$('navigation-restores').replaceChildren();$('navigation-title').textContent='등록 해제·숨긴 항목';$('navigation-context').textContent='같은 항목으로 복원합니다. 세션을 새로 만들거나 실행하지 않습니다.';$('navigation-status').textContent='조회 중…';
  try{const data=await api('/api/navigation');if($('navigation-dialog').hidden||navigationTarget)return;
   const items=[...data.removed,...allSessionEntries.filter(s=>s.hidden).map(s=>({kind:'session',id:s.id,name:s.displayName??s.label}))];
-  for(const item of items){const row=document.createElement('div'),label=document.createElement('span'),button=document.createElement('button');label.textContent=({project:'프로젝트',workspace:'작업공간',session:'세션'})[item.kind]+' · '+item.name;button.textContent='복원';button.setAttribute('aria-label',item.name+' 복원');button.onclick=()=>changeNavigation({kind:item.kind,id:item.id,action:'restore'});row.append(label,button);$('navigation-restores').append(row);}
+  for(const item of items){const row=document.createElement('div'),label=document.createElement('span'),button=document.createElement('button');label.textContent=({project:'프로젝트',workspace:'작업공간',session:'세션'})[item.kind]+' · '+item.name;button.textContent='복원';button.setAttribute('aria-label',item.name+' 복원');button.onclick=()=>changeNavigation({kind:item.kind,id:item.id,action:'restore'});row.append(label,button);
+   // Permanent delete removes only the app record; a second click confirms because it cannot be undone.
+   if(item.kind==='session'){const remove=document.createElement('button');remove.textContent='영구 삭제';remove.className='danger';remove.setAttribute('aria-label',item.name+' 영구 삭제');
+    remove.onclick=()=>{if(remove.dataset.confirm){changeNavigation({kind:'session',id:item.id,action:'delete'});return;}remove.dataset.confirm='1';remove.textContent='삭제 확인';$('navigation-status').textContent='앱의 대화 기록을 영구 삭제합니다. 되돌릴 수 없습니다. 터미널 Claude CLI의 원본 기록은 남습니다. 한 번 더 누르면 삭제합니다.';};row.append(remove);}
+   $('navigation-restores').append(row);}
   $('navigation-status').textContent=items.length?'프로젝트를 복원하면 그 안의 숨긴 세션도 관리할 수 있습니다.':'복원할 항목이 없습니다.';
  }catch(e){$('navigation-status').textContent=e.message;}
 }

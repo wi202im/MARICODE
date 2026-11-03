@@ -22,7 +22,7 @@ export function projectRegistry(file){
  async function list({includeRemoved=false}={}){return flatten(await read(),includeRemoved);}
  async function navigation(){const data=await read();return {sessions:data.sessionViews??{},removed:[...data.projects.filter(p=>p.removed).map(p=>({kind:'project',id:p.id,name:p.name,path:p.path})),...data.workspaces.filter(w=>w.removed&&!data.projects.find(p=>p.id===w.projectId).removed).map(w=>({kind:'workspace',id:w.id,name:w.name,path:w.path}))]};}
  async function edit(input,{legacyPath}={}){
-  if(!input||Object.keys(input).some(k=>!['kind','id','action','name'].includes(k))||!['project','workspace','session'].includes(input.kind)||!uuid(input.id)||!['rename','remove','restore'].includes(input.action))throw Error('목록 변경 대상을 확인하세요.');
+  if(!input||Object.keys(input).some(k=>!['kind','id','action','name'].includes(k))||!['project','workspace','session'].includes(input.kind)||!uuid(input.id)||!['rename','remove','restore','delete'].includes(input.action)||input.action==='delete'&&input.kind!=='session')throw Error('목록 변경 대상을 확인하세요.');
   if(input.action==='rename'&&(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>120||/[\u0000-\u001f\u007f]/.test(input.name)))throw Error('이름은 줄바꿈 없이 1~120자로 입력하세요.');
   await mkdir(dirname(file),{recursive:true,mode:0o700});const lock=file+'.lock';await mkdir(lock,{mode:0o700});let temp;
   try{const data=await read();let row;
@@ -41,7 +41,8 @@ export function projectRegistry(file){
     const paths=input.kind==='project'?data.workspaces.filter(w=>w.projectId===row.id&&!w.removed).map(w=>w.path):[row.path];
     for(const path of paths)if(await realpath(path)!==path||!(await stat(path)).isDirectory())throw Error('원래 폴더를 확인할 수 없습니다.');
    }
-   if(input.action==='rename')row.name=input.name.trim();else row.removed=input.action==='remove';
+   if(input.action==='delete')delete data.sessionViews[input.id];
+   else if(input.action==='rename')row.name=input.name.trim();else row.removed=input.action==='remove';
    temp=file+'.'+randomUUID()+'.tmp';await writeFile(temp,JSON.stringify(data)+'\n',{flag:'wx',mode:0o600});await rename(temp,file);temp=null;
   }finally{if(temp)await rm(temp,{force:true});await rm(lock,{recursive:true});}
  }

@@ -84,3 +84,4 @@
 
 .chat-account-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}.chat-account-controls>p,.chat-account-controls>small{flex-basis:100%}.chat-account-controls>small{margin-bottom:6px}
 .jump-latest{position:absolute;top:-40px;left:50%;transform:translateX(-50%);z-index:2;padding:6px 14px;border:1px solid var(--border-strong);border-radius:999px;background:var(--sidebar);color:var(--foreground);font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer}
+#navigation-restores button.danger{color:var(--danger)}

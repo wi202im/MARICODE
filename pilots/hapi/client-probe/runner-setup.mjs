@@ -353,6 +353,14 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      let records=[];try{records=await readdir(slot+'.workspace-plans');}catch(e){if(e.code!=='ENOENT')throw e;}
      for(const name of records.filter(f=>/^[a-f0-9-]{36}\.json$/.test(f)))if(JSON.parse(await readFile(join(slot+'.workspace-plans',name),'utf8')).state!=='ready')throw Error('미확인 작업공간 준비 결과를 먼저 확인하세요.');
     }
+    if(input.action==='delete'){
+     // App record only: the Hub session and its messages. The CLI's own transcript file is untouched.
+     if(input.kind!=='session')throw Error('세션만 영구 삭제할 수 있습니다.');
+     if(!(await registry.navigation()).sessions[input.id]?.removed)throw Error('먼저 목록에서 숨긴 세션만 영구 삭제할 수 있습니다.');
+     if(affected.some(s=>s.active||s.thinking||Object.keys(s.agentState?.requests??{}).length))throw Error('실행 중인 세션은 삭제할 수 없습니다.');
+     const r=await fetch(c.hubUrl+'/api/sessions/'+encodeURIComponent(input.id),{method:'DELETE',headers:{authorization},redirect:'error',signal:AbortSignal.timeout(15000)});
+     if(!r.ok)throw Error('삭제 결과를 확인하지 못했습니다. 목록을 새로고침해 결과부터 확인하세요.');
+    }
     await registry.edit(input,{legacyPath});return {ok:true};
    });
   },
