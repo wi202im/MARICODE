@@ -65,3 +65,11 @@ test('Claude MCP rows offer authentication only where the CLI reports it is need
  // The count tells the user the card has more rows below the fold.
  assert.ok(nodes.some(n=>n.textContent?.startsWith('2개 · ')));
 });
+test('the MCP card lists servers the current conversation actually loaded, separately from the CLI settings list',async()=>{
+ const {createCommandCard,liveMcpServers}=await import('./command-cards-ui.mjs');
+ assert.deepEqual(liveMcpServers(['Read','mcp__demo-db__query','mcp__demo-db__sample','mcp__claude_ai_Claude_Docs__read']),['claude.ai Claude Docs','demo-db']);
+ assert.equal(liveMcpServers(undefined),null);
+ const nodes=[];const document={createElement(tag){const n={tag,children:[],append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(){},remove(){}};nodes.push(n);return n;}};
+ const card=createCommandCard({id:'fixture',name:'mcp',document,liveTools:()=>['mcp__demo__run'],cap:{agent:'claude',actions:['mcp-list']},api:async()=>({state:'succeeded',summary:'CLI 조회 결과',rows:[]})});
+ await card.load();assert.ok(nodes.some(n=>n.textContent==='이 대화가 시작할 때 불러온 MCP 1개 · demo (필요할 때 불러오는 MCP는 빠질 수 있음)'));
+});

@@ -39,7 +39,7 @@ export function commandResult(agent,action,r){
  if(action==='mcp-list'&&agent==='claude'){
   const text=r.stdout.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'');if(/No MCP servers configured/i.test(text))return {summary:'등록된 MCP 서버가 없습니다.',rows:[]};
   const rows=text.split('\n').flatMap(line=>{const m=/^(.{1,128}?):\s/.exec(line);if(!m||!existingName(m[1]))return [];const status=/Needs authentication|needs auth/i.test(line)?'인증 필요':/Failed|Disconnected/i.test(line)?'연결 실패':/Pending approval/i.test(line)?'프로젝트 승인 필요':/Connected/.test(line)?'CLI 연결 확인':'설정 확인 · 연결 미확인';return [{name:m[1],status}];});
-  if(!rows.length)throw Error('Unsupported MCP report');return {summary:'CLI 조회 결과 · 현재 대화의 MCP 연결 상태와 별개입니다.',rows};
+  if(!rows.length)throw Error('Unsupported MCP report');return {summary:'CLI에 설정된 MCP 서버 · 이 대화가 불러온 MCP는 위 줄을 보세요.',rows};
  }
  const d=JSON.parse(r.stdout);const data=Array.isArray(d)?d:action==='plugins-list'?d.installed:null;if(!Array.isArray(data))throw Error('Unsupported CLI report');
  return {summary:action==='mcp-list'?'등록된 MCP 설정 · 현재 대화의 연결 상태는 확인하지 않습니다.':'설치된 플러그인 목록',rows:data.slice(0,200).flatMap(v=>{const name=clean(v?.name??v?.id);if(!name)throw Error('Unsupported CLI row');return [{name,status:action==='mcp-list'?(v.enabled===false?'비활성':'등록됨'):(v.enabled===false?'비활성':'설치됨')}];})};

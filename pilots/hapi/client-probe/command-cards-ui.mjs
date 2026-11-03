@@ -22,7 +22,13 @@ export async function reconnectCommandSession({id,read,refresh,confirm,archive,r
  if(s.active){if(s.agentState?.controlledByUser!==false)throw Error('앱에서 제어 중인 세션만 재개할 수 있습니다.');const approval=archiveSnapshot(id,s);if(!await confirm())return false;await refresh();s=check();if(!s.active||!archiveMatches(approval,id,s))throw Error('확인하는 동안 세션 상태가 바뀌었습니다. 자동 재개하지 않습니다.');await archive(approval.expected);await refresh();s=check();if(s.active)throw Error('종료가 확인되지 않아 재개하지 않았습니다. 상태를 다시 확인하세요.');}
  await resume();await refresh();if(!check().active)throw Error('재개 결과를 확인해야 합니다. 자동 재시도하지 않습니다.');return true;
 }
-export function createCommandCard({id,name,cap,api,storage,valid=()=>true,reconnect,accountSettings,backToChat,document:doc=globalThis.document}){
+// Claude reports the tools it loaded when this conversation started; mcp__<server>__<tool> names reveal the live MCP servers.
+export function liveMcpServers(tools){
+ if(!Array.isArray(tools))return null;
+ const names=new Set(tools.flatMap(t=>{const m=/^mcp__(.+?)__/.exec(t);return m?[m[1].replace(/^claude_ai_(.*)$/,(_,r)=>'claude.ai '+r.replaceAll('_',' '))]:[];}));
+ return [...names].sort();
+}
+export function createCommandCard({id,name,cap,api,storage,valid=()=>true,reconnect,accountSettings,backToChat,liveTools=()=>null,document:doc=globalThis.document}){
  const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=text;return n;};
  const card=el('section');card.className='cli-command-card';card.setAttribute('aria-label',`/${name} 명령 카드`);
  const head=el('header'),title=el('strong',`/${name} · ${cap.agent==='claude'?'Claude':'Codex'}`),close=el('button','닫기');close.type='button';head.append(title,close);
@@ -30,7 +36,7 @@ export function createCommandCard({id,name,cap,api,storage,valid=()=>true,reconn
  const note=el('small','공식 CLI를 이 컴퓨터에서 실행합니다. 결과는 AI에게 전송하지 않습니다.');
  const reflection=el('p');reflection.hidden=name!=='mcp';reflection.textContent='설정 조회와 현재 대화의 MCP 도구 연결은 별개입니다.';
  const status=el('p','조회 준비');status.setAttribute('role','status');const rows=el('div'),controls=el('div'),writeStatus=el('p');writeStatus.setAttribute('role','status');
- const check=el('button','조회 결과 확인'),reload=el('button','목록 새로고침'),writeCheck=el('button','변경 결과 확인'),apply=el('button','적용하고 이어가기');for(const b of [check,reload,writeCheck,apply])b.type='button';controls.append(reload,check);card.append(head,context,note,controls,status,rows,reflection);
+ const check=el('button','조회 결과 확인'),reload=el('button','목록 새로고침'),writeCheck=el('button','변경 결과 확인'),apply=el('button','적용하고 이어가기');for(const b of [check,reload,writeCheck,apply])b.type='button';controls.append(reload,check);const live=el('p');live.hidden=name!=='mcp';card.append(head,context,note,live,controls,status,rows,reflection);
  const buttons=[],key=kind=>`maricode-command-card:${id}:${name}:${kind}`;
  const stored=kind=>{try{return JSON.parse(storage?.getItem(key(kind)));}catch{return null;}};
  const save=kind=>v=>{try{if(v)storage?.setItem(key(kind),JSON.stringify(v));else storage?.removeItem(key(kind));}catch{}};
@@ -57,6 +63,7 @@ export function createCommandCard({id,name,cap,api,storage,valid=()=>true,reconn
  close.onclick=()=>{if(!read.busy&&!write.busy&&!read.pending&&!write.pending&&!reconnecting&&!accountFlow?.busy){disposed=true;card.remove();}};
  function render(){if(disposed)return;reload.disabled=read.busy||read.pending;check.hidden=!read.pending;check.disabled=read.busy;writeCheck.textContent=write.value?.action==='mcp-login'?'인증 결과 확인':'변경 결과 확인';writeCheck.hidden=!write.pending;writeCheck.disabled=write.busy;apply.hidden=!write.value?.needsReconnect;apply.disabled=reconnecting||write.busy||resumeDone;close.disabled=read.busy||write.busy||read.pending||write.pending||reconnecting||!!accountFlow?.busy;
   for(const b of buttons)b.disabled=write.pending||write.busy;scope.disabled=write.pending||write.busy;
+  const servers=liveMcpServers(liveTools());live.textContent=servers?`이 대화가 시작할 때 불러온 MCP ${servers.length}개${servers.length?' · '+servers.join(', '):''} (필요할 때 불러오는 MCP는 빠질 수 있음)`:'이 대화가 불러온 MCP 정보가 아직 없습니다. 대화를 시작하면 표시됩니다.';
   const count=read.value?.rows?.length;status.textContent=read.busy?'공식 CLI 조회 중…':read.value?.summary?(count>1?`${count}개 · `:'')+read.value.summary:(read.pending?'미확인 조회가 있습니다. 결과를 확인하세요.':'조회 준비');
   writeStatus.textContent=write.busy?'설정 변경 중…':write.value?.summary??(write.pending?'앞선 변경 결과가 미확인입니다. 다시 변경하지 않고 결과를 조회하세요.':'');
   if(rowsValue===read.value)return;rowsValue=read.value;rows.replaceChildren();for(const row of read.value?.rows??[]){const line=el('div');line.className='cli-card-row';line.append(el('strong',row.name),el('span',row.status));if(name==='mcp'&&cap.actions.includes('mcp-remove')){const remove=el('button','삭제 검토');remove.type='button';remove.onclick=()=>propose('mcp-remove',{name:row.name,...(cap.agent==='claude'?{scope:scope.value}:{})});line.append(remove);}if(name==='mcp'&&cap.actions.includes('mcp-login')&&row.status!=='비활성'&&(cap.agent!=='claude'||row.status==='인증 필요')){const login=el('button','인증 시작');login.type='button';login.onclick=()=>propose('mcp-login',{name:row.name});line.append(login);}rows.append(line);}
