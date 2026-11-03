@@ -117,7 +117,7 @@ function render(){
   $('title').textContent=session?.metadata?.name??'시험 세션';
   const waiting=Object.keys(session?.agentState?.requests??{}).length;
   $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 대화 기록은 남아 있습니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
-  $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||!session.active&&!(commandCardsEnabled&&cardCommand($('prompt').value))||session?.thinking||waiting>0||!!actions?.pending;
+  $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||session?.thinking||waiting>0||!!actions?.pending;
   $('retry-message').hidden=actions?.pending?.kind!=='send';
   $('retry-message').disabled=!!session?.resumeUnconfirmed||busy||!connected||!session?.active||session.thinking||waiting>0;
   $('retry-help').hidden=$('retry-message').hidden;
@@ -350,7 +350,16 @@ $('send-form').addEventListener('submit',async e=>{
       if(mine!==epoch)return;
       if(!catalog?.success||!chatCommandSupported(session?.metadata?.flavor,text,catalog.commands)){notice('이 명령은 아직 Maricode 채팅에서 지원하지 않습니다. 전송하지 않았고 입력은 보존했습니다. 모델·액세스 변경은 입력창 옵션을 이용하세요.');return;}
     }
-    await refresh();if(mine!==epoch||!connected||!session.active||session.thinking||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
+    await refresh();if(mine!==epoch||!connected)return;
+    // An ended session resumes first; the message goes out only after the resume is confirmed (never resent blind).
+    if(!session.active&&!actions.pending&&!session.resumeUnconfirmed){
+     $('session-state').textContent='같은 세션을 다시 열고 있습니다. 열리면 메시지를 보냅니다…';
+     await actions.resume();
+     for(let i=0;i<40&&mine===epoch;i++){await refresh();if(session.active&&!actions.pending)break;await new Promise(r=>setTimeout(r,750));}
+     if(mine!==epoch)return;
+     if(!session.active||actions.pending){notice('세션 재개를 아직 확인하지 못해 메시지는 보내지 않았습니다. 입력은 그대로 있습니다. 상태를 확인한 뒤 다시 보내 주세요.');return;}
+    }
+    if(!session.active||session.thinking||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
     const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;const result=actions.send(text,attachments);render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
   }catch(e){if(mine===epoch)notice(submitted&&!actions.pending?'서버 이력에서 전송을 확인했습니다.':e.message+' 전송은 자동 재시도하지 않습니다.');}finally{busy=false;render();}
 });
