@@ -30,6 +30,7 @@ export function createOfficialCli(configPath,{open=openTerminal,platform=process
   try{
    if(cliPending(await status(input.agent)))throw reject('이미 연 CLI 창이 있거나 실행 결과가 미확인입니다. 터미널을 확인하세요. 다시 실행하지 않았습니다.');
    const c=await json(configPath),env=await json(c.environment),profiles=await accountProfiles(configPath).list(),p=profiles[input.agent];
+   if(c.cliConnectionRequired&&!p?.confirmed)throw reject('기존 CLI 설정을 먼저 연결하세요.');
    if(!p?.active||p.active!==input.accountId)throw reject('사용 계정이 바뀌었습니다. AI 계정 상태를 새로 확인하세요.');
    const binary=c.binaries?.[input.agent];if(!absolute(binary)||!(await stat(binary)).isFile())throw reject('AI 실행 파일을 연결하세요.');await access(binary,constants.X_OK);
    if(!(await stat(input.cwd)).isDirectory())throw reject('작업 폴더에 접근할 수 없습니다.');

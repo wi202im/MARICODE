@@ -52,7 +52,7 @@ test('confirmed CLI exit permits an explicit new launch but CLI failure is not r
  assert.equal((await cli.status('claude')).phase,'failed');
  assert.equal(JSON.stringify(await cli.status('claude')).includes('secret'),false);
 });
-test('runner CLI launch validates auth, registered folder and account; account switch is blocked while CLI is pending',async t=>{
+test('runner CLI launch validates auth, registered folder and account; connection changes are blocked while CLI is pending',async t=>{
  const {createRunnerSetup}=await import('./runner-setup.mjs'),{projectRegistry}=await import('./project-registry.mjs'),{createServer}=await import('node:http');
  const f=await fixture(t);const hub=createServer((req,res)=>{res.writeHead(req.headers.authorization==='Bearer fixture'?200:401,{'Content-Type':'application/json'}).end('{"sessions":[]}');});
  await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});
@@ -64,8 +64,7 @@ test('runner CLI launch validates auth, registered folder and account; account s
  await assert.rejects(runner.openOfficialCli('Bearer fixture',{...input,project:'missing'}));
  await assert.rejects(runner.openOfficialCli('Bearer fixture',{...input,cwd:f.cwd}));assert.equal(opens,0);
  const result=await runner.openOfficialCli('Bearer fixture',input);assert.equal(result.cwd,await realpath(f.cwd));assert.equal(opens,1);
- const {id}=await runner.accountProfile('Bearer fixture',{action:'add',agent:'claude',alias:'Another'});
- await assert.rejects(runner.accountProfile('Bearer fixture',{action:'switch',agent:'claude',id}),/CLI/);
+ await assert.rejects(runner.accountProfile('Bearer fixture',{action:'connect',agent:'claude',source:f.cwd,confirm:true}),/CLI/);
 });
 test('real helper shell uses only the snapshot profile and exact registered executable for interactive and subsequent MCP commands',async t=>{
  const {execFile}=await import('node:child_process'),{fileURLToPath}=await import('node:url');const f=await fixture(t);

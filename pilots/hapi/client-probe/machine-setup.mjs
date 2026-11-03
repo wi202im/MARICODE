@@ -1,3 +1,4 @@
+import {accountProfiles} from './account-profiles.mjs';
 import {createHash} from 'node:crypto';
 // Mac launcher preparation only: never installs software, starts a Runner or changes a running one.
 import {readFile,writeFile,mkdir,rm,stat,access,symlink,realpath} from 'node:fs/promises';
@@ -44,7 +45,8 @@ export async function accountRevision(configPath){
  const raw=await readFile(configPath,'utf8'),c=JSON.parse(raw);
  const environment=await readFile(c.environment,'utf8'),paths={};
  for(const agent of agents)if(c.binaries?.[agent])paths[agent]=await realpath(c.binaries[agent]);
- return createHash('sha256').update(JSON.stringify([raw,environment,paths])).digest('hex');
+ const connections=c.cliConnectionRequired?await accountProfiles(configPath).list():null;
+ return createHash('sha256').update(JSON.stringify([raw,environment,paths,connections])).digest('hex');
 }
 export async function prepareRunner(configPath,directory){
  requirePath(configPath);requirePath(directory);if(directory.includes(':'))throw Error('Invalid PATH directory');
@@ -56,9 +58,9 @@ export async function prepareRunner(configPath,directory){
   const config=JSON.parse(await readFile(configPath,'utf8'));
   if(!config||!config.binaries||Array.isArray(config.binaries)||typeof config.binaries!=='object'||Object.keys(config.binaries).some(a=>!agents.includes(a)))throw Error('Invalid AI configuration');
   requirePath(config.cwd);if(!(await stat(config.cwd)).isDirectory())throw Error('Invalid working directory');
-  const env=await environmentAt(config.environment),binaries={};
+  const env=await environmentAt(config.environment),binaries={},connections=config.cliConnectionRequired?await accountProfiles(configPath).list():null;
   for(const agent of agents){
-   const path=config.binaries[agent];if(path===undefined)continue;
+   const path=config.binaries[agent];if(path===undefined||connections&&!connections[agent]?.confirmed)continue;
    requirePath(path);if(!(await stat(path)).isFile())throw Error('Executable unavailable');await access(path,constants.X_OK);
    binaries[agent]=await realpath(path);
   }

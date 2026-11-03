@@ -48,7 +48,6 @@ export function codexImports({project,destination}){
  const mine=head=>head&&!head.subagent&&inside(head.cwd)!==null;
  async function list(source,offset=0){
   source=sourcePath(source);
-  if(destination&&resolve(destination)===source)reject('Maricode 전용 Codex 프로필이 아닌 원래 Codex 기록 폴더를 선택하세요.');
   const searched={source,project,records:join(source,'sessions')};
   try{if(!(await lstat(source)).isDirectory())return {sessions:[],status:'profile-missing',searched};}catch(e){if(e.code==='ENOENT')return {sessions:[],status:'profile-missing',searched};throw e;}
   try{await lstat(searched.records);}catch(e){if(e.code==='ENOENT')return {sessions:[],status:'store-missing',searched};throw e;}
@@ -63,8 +62,7 @@ export function codexImports({project,destination}){
  }
  async function copy(source,id,expected){
   if(!uuid.test(id??''))reject('세션 ID 형식을 확인하세요.');
-  source=sourcePath(source);if(!destination||!isAbsolute(destination))reject('Maricode 전용 Codex 프로필을 확인하지 못했습니다.');
-  if(resolve(destination)===source)reject('Maricode 전용 Codex 프로필이 아닌 원래 Codex 기록 폴더를 선택하세요.');
+  source=sourcePath(source);if(!destination||!isAbsolute(destination))reject('연결한 Codex 설정 폴더를 확인하지 못했습니다.');
   const root=join(source,'sessions'),match=(await rollouts(root)).filter(r=>r.id===id);
   if(match.length!==1)reject('선택한 기록을 찾지 못했습니다. 목록을 새로고침하세요.');
   const {data,stat}=await read(match[0].path);

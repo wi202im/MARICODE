@@ -35,3 +35,33 @@ test('failures before command admission are rejected rather than creating phanto
  const f=await fixture(t,async()=>({code:0,stdout:'Usage: --json --scope'}));await rm(f.env);
  await assert.rejects(f.cards.execute(f.scope,{requestId:randomUUID(),action:'account',params:{}}),e=>e.rejected===true);assert.equal(await f.cards.pending('codex'),false);
 });
+
+test('MCP login uses only a confirmed configured server and keeps OAuth output private',async t=>{
+ for(const agent of ['claude','codex'])assert.deepEqual(commandArgs(agent,'mcp-login',{name:'demo'}),['mcp','login','demo']);
+ assert.throws(()=>commandArgs('claude','mcp-login',{name:'demo',url:'https://auth.test'}));
+ let finish,calls=0;const f=await fixture(t,async(b,args,opts)=>{
+  if(args.includes('--help'))return {code:0,stdout:'Usage: --json --scope'};
+  if(args[1]==='list')return {code:0,stdout:'[{"name":"demo","enabled":true}]'};
+  assert.deepEqual(args,['mcp','login','demo']);assert.equal(opts.timeout,300000);calls++;return new Promise(r=>finish=r);
+ });
+ const input={requestId:randomUUID(),action:'mcp-login',params:{name:'demo'},confirm:true};
+ await assert.rejects(f.cards.execute(f.scope,{...input,confirm:false}));
+ await assert.rejects(f.cards.execute(f.scope,{...input,params:{name:'missing'}}));assert.equal(calls,0);
+ const started=await f.cards.execute(f.scope,input);assert.equal(started.state,'running');assert.equal(await f.cards.pending('codex'),true);assert.equal(calls,1);
+ assert.equal((await f.cards.execute(f.scope,input)).state,'running');assert.equal(calls,1);
+ await assert.rejects(f.cards.execute(f.scope,{...input,requestId:randomUUID()}));
+ finish({code:0,stdout:'https://auth.test/?code=SECRET',stderr:'SECRET'});
+ let r;for(let i=0;i<50;i++){r=await f.cards.result(f.scope,input.requestId);if(r.state!=='running')break;await new Promise(r=>setTimeout(r,5));}
+ assert.equal(r.state,'succeeded');assert.equal(r.needsReconnect,true);assert.ok(!JSON.stringify(r).includes('SECRET'));assert.equal(await f.cards.pending('codex'),false);
+});
+
+test('MCP authentication failures and timeouts do not claim success or expose callback data',()=>{
+ const failure=commandResult('claude','mcp-login',{code:1,stdout:'secret URL',stderr:'secret code'});assert.equal(failure.failed,true);assert.ok(!JSON.stringify(failure).includes('secret'));
+ assert.match(commandResult('claude','mcp-login',{code:0,stdout:'secret'}).summary,/인증/);
+});
+
+test('MCP list preserves spaced and namespaced CLI names without exposing server URLs',()=>{
+ const r=commandResult('claude','mcp-list',{code:0,stdout:'claude.ai Slack: https://example.test/?secret=hidden - ✓ Connected\nplugin:demo: /fixture - Needs authentication\n'});
+ assert.deepEqual(r.rows.map(r=>r.name),['claude.ai Slack','plugin:demo']);assert.ok(!JSON.stringify(r).includes('hidden'));
+ assert.deepEqual(commandArgs('claude','mcp-login',{name:'plugin:demo'}),['mcp','login','plugin:demo']);
+});

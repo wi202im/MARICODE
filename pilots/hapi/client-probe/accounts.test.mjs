@@ -51,3 +51,9 @@ test('one configured AI works independently and missing or invalid configuration
  await writeFile(environment,'{}');await writeFile(configPath,JSON.stringify({...base,cwd:join(root,'missing')}));
  assert.equal((await accounts.status('codex')).state,'configuration-error');
 });
+
+test('new CLI connection must be confirmed before status or login executes any installed CLI',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'cli-consent-'));t.after(()=>rm(root,{recursive:true,force:true}));const configPath=join(root,'accounts.json');await writeFile(join(root,'env'),JSON.stringify({CODEX_HOME:root,PATH:'/bin'}));await writeFile(configPath,JSON.stringify({environment:join(root,'env'),directory:root,cwd:root,binaries:{codex:'/bin/echo'},cliConnectionRequired:true}));let calls=0;
+ const accounts=createAccounts(configPath,{run:async()=>{calls++;return {code:1,stderr:'Not logged in'};},open:async()=>{calls++;}});
+ assert.equal((await accounts.start('codex')).state,'connection-required');assert.equal(calls,0);
+});

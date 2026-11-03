@@ -1,18 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,stat} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
+import {tmpdir,homedir} from 'node:os';
 import {join} from 'node:path';
 import {configureDesktop} from './configure.mjs';
 async function fixture(t){const root=await mkdtemp(join(tmpdir(),'merry-config-'));t.after(()=>rm(root,{recursive:true,force:true}));const project=join(root,'project'),binary=join(root,'tool');await mkdir(project);await writeFile(binary,'#!/bin/sh\nexit 99\n',{mode:0o700});return {directory:join(root,'data'),project,binary,agent:'codex',agentBinary:binary};}
-test('first setup writes isolated account configuration without executing a tool or copying credentials',async t=>{
+test('first setup uses CLI defaults without private profiles or copying credentials and requires connection confirmation',async t=>{
  const input=await fixture(t);await configureDesktop(input);
  const backend=JSON.parse(await readFile(join(input.directory,'backend.json'),'utf8'));
  const account=JSON.parse(await readFile(backend.accountConfig,'utf8'));
  const env=JSON.parse(await readFile(account.environment,'utf8'));
  assert.deepEqual(Object.keys(account.binaries),['codex']);assert.equal(account.cwd,input.project);
- assert.equal(env.CODEX_HOME,join(input.directory,'local-setup','profiles','codex'));
- assert.equal(env.CLAUDE_CONFIG_DIR,join(input.directory,'local-setup','profiles','claude'));
+ assert.equal(env.CODEX_HOME,join(homedir(),'.codex'));
+ assert.equal(env.CLAUDE_CONFIG_DIR,join(homedir(),'.claude'));
+ assert.equal(account.cliConnectionRequired,true);await assert.rejects(stat(join(input.directory,'local-setup/profiles')));
  assert.equal(env.OPENAI_API_KEY,undefined);assert.equal(env.ANTHROPIC_API_KEY,undefined);
  assert.equal((await stat(account.environment)).mode&0o777,0o600);
  const before=await readFile(join(input.directory,'backend.json'),'utf8');

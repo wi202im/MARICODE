@@ -125,3 +125,10 @@ test('child cwd symlink cannot make an outside project eligible for import',asyn
  const row=(await f.api.list(f.source)).sessions[0];let posts=0;
  await assert.rejects(f.api.import({source:f.source,...row},{register:async()=>posts++,lookup:async()=>null}),e=>e.rejected&&e.reason==='IMPORT_CWD_OUTSIDE');assert.equal(posts,0);
 });
+
+test('shared CLI history registers the original session without copying or rewriting its transcript',async t=>{
+ const f=await fixture(t),api=claudeImports({directory:join(f.root,'shared-imports'),destination:f.source,project:f.project,machineId:'fixture'}),row=(await api.list(f.source)).sessions[0];let stored,posts=0;
+ const callbacks={register:async r=>{posts++;stored={id:r.hubId,metadata:r.metadata};},lookup:async()=>stored};
+ const r=await api.import({source:f.source,...row},callbacks);assert.equal(r.state,'registered');assert.equal(stored.metadata.claudeSessionId,f.id);assert.equal(await readFile(f.file,'utf8'),f.raw);assert.equal((await api.history(r.id)).messages.length,1);
+ await api.import({source:f.source,...row},callbacks);assert.equal(posts,1);
+});

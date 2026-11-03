@@ -22,7 +22,7 @@ test('lists only top-level Codex threads started in the project, titled from the
  await writeFile(join(f.source,'session_index.jsonl'),JSON.stringify({id,thread_name:'망고 대화'})+'\n');
  r=await imports.list(f.source);assert.equal(r.sessions[0].title,'망고 대화');
  assert.equal((await imports.list(join(f.root,'missing'))).status,'profile-missing');
- await assert.rejects(imports.list(f.destination),/원래 Codex 기록 폴더/);
+ assert.equal((await imports.list(f.destination)).status,'profile-missing');
 });
 test('copies the selected rollout once into the private profile and never overwrites a different record',async()=>{
  const f=await fixture(),imports=codexImports({project:f.project,destination:f.destination});
@@ -54,4 +54,10 @@ test('threads started in a project subfolder are listed and marked, outside fold
  assert.deepEqual(rows.map(r=>r.id).sort(),[id,sub].sort());
  assert.match(rows.find(r=>r.id===sub).warning,/pkg\/app/);assert.equal(rows.find(r=>r.id===id).warning,undefined);
  const row=rows.find(r=>r.id===sub);assert.equal((await imports.copy(f.source,sub,row.fingerprint)).copied,true);
+});
+
+test('shared CLI lists and attaches original rollouts without copying them',async()=>{
+ const f=await fixture(),api=codexImports({project:f.project,destination:f.source}),row=(await api.list(f.source)).sessions[0];
+ assert.equal((await api.copy(f.source,id,row.fingerprint)).copied,false);
+ assert.equal(await readFile(join(f.day,`rollout-2026-11-02T23-24-59-${id}.jsonl`),'utf8'),rollout(id,f.project));
 });

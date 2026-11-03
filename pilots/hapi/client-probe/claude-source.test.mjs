@@ -24,3 +24,13 @@ test('conditional assignments and aliases require manual selection rather than g
   await writeFile(join(h,'.zshrc'),text);assert.equal((await discoverClaudeSource({home:h,environment:{}})).origin,'unresolved');
  }
 });
+
+test('Codex discovery uses its own setting and never confuses Claude profile declarations',async t=>{
+ const {discoverCliSource}=await import('./claude-source.mjs');const h=await home(t);
+ await writeFile(join(h,'.zshrc'),'export CLAUDE_CONFIG_DIR="$HOME/claude"\nexport CODEX_HOME="$HOME/codex"\n');
+ assert.equal((await discoverCliSource('codex',{home:h,environment:{}})).source,join(h,'codex'));
+ assert.equal((await discoverCliSource('codex',{home:h,environment:{CODEX_HOME:join(h,'exported')}})).source,join(h,'exported'));
+ await writeFile(join(h,'.zshrc'),'export CODEX_HOME="$(touch SHOULD-NOT-EXIST)"\n');
+ assert.equal((await discoverCliSource('codex',{home:h,environment:{}})).origin,'unresolved');
+ await assert.rejects(discoverCliSource('other',{home:h,environment:{}}));
+});

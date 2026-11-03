@@ -12,7 +12,7 @@ import {codexImports} from './codex-import.mjs';
 import {accountProfiles} from './account-profiles.mjs';
 import {createCommandCards,commandContextKey} from './command-cards.mjs';
 import {createOfficialCli,cliPending} from './official-cli.mjs';
-import {discoverClaudeSource} from './claude-source.mjs';
+import {discoverClaudeSource,discoverCliSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
 async function ownerAuthorization(config){
  const token=await readFile(config.tokenFile,'utf8');
@@ -159,6 +159,8 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     if(project!==undefined&&typeof project!=='string')throw Error('Invalid project');
     if(project){if(!c.projectsPath)throw Error('Projects unavailable');await projectRegistry(c.projectsPath).get(project);}
     if(agent!==undefined&&!['codex','claude'].includes(agent))throw Error('Invalid agent');
+    const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
+    if(cfg.cliConnectionRequired){const links=await accountProfiles(c.accountConfig).list();if(agent?!links[agent]?.confirmed:!Object.values(links).some(p=>p.confirmed))throw Object.assign(Error('AI 연결에서 기존 CLI 설정 위치를 먼저 연결하세요.'),{rejected:true,status:409});}
     const before=await state();
     if(before==='running'){
      if(!await refreshRequired(project,agent))return;
@@ -211,10 +213,11 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     // later shell changes cannot silently retarget an already chosen record.
     // Older pending records used an empty source for ~/.claude; preserve that
     // meaning instead of applying new discovery to an uncertain registration.
-    const discovery=await discoverClaudeSource({source:action==='list'?(input.source??''):(input.source||join(homedir(),'.claude'))}),source=discovery.source;
-    if(!source)return {sessions:[],skipped:0,status:'source-unresolved',sourceOrigin:discovery.origin};
     const cfg=JSON.parse(await readFile(c.accountConfig,'utf8')),env=JSON.parse(await readFile(cfg.environment,'utf8'));
-    if(typeof env.CLAUDE_CONFIG_DIR!=='string'||!isAbsolute(env.CLAUDE_CONFIG_DIR))throw Error('분리된 Claude 프로필이 필요합니다.');
+    const link=(await accountProfiles(c.accountConfig).list()).claude,connected=link?.confirmed,destination=link?.accounts[0]?.path;
+    const discovery=await discoverClaudeSource({source:input.source||(action==='list'&&connected?destination:action==='list'?'':join(homedir(),'.claude'))}),source=discovery.source;
+    if(!source)return {sessions:[],skipped:0,status:'source-unresolved',sourceOrigin:discovery.origin};
+    if(typeof destination!=='string'||!isAbsolute(destination))throw Error('Claude CLI 설정 연결이 필요합니다.');
     if(action==='import'){
      await ensureReady(authorization,input.project,'claude');
      let ready=false;for(let attempt=0;attempt<15;attempt++){try{ready=await connection(c);}catch{}if(ready)break;await new Promise(r=>setTimeout(r,300));}
@@ -226,7 +229,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      if(!await exists(join(c.directory,'runner-home/settings.json')))return {state:'none'};
      target={machineId:await machineId(c)};
     }else target=await createRunnerWorkspace(c).target(authorization);
-    const imports=claudeImports({directory:slot+'.claude-imports',project:p.path,destination:env.CLAUDE_CONFIG_DIR,machineId:target.machineId});
+    const imports=claudeImports({directory:slot+'.claude-imports',project:p.path,destination,machineId:target.machineId});
     if(action==='list')return {...await imports.list(source,input.offset??0),sourceOrigin:discovery.origin};
     // Bind the caller to this machine's namespace before using owner CLI auth.
     const sessions=await authorize(authorization);
@@ -251,8 +254,9 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    return exclusive(async()=>{
     const p=await selectedProject(authorization,input.project);
     const cfg=JSON.parse(await readFile(c.accountConfig,'utf8')),env=JSON.parse(await readFile(cfg.environment,'utf8'));
-    if(typeof env.CODEX_HOME!=='string'||!isAbsolute(env.CODEX_HOME))throw Error('분리된 Codex 프로필이 필요합니다.');
-    const source=input.source||join(homedir(),'.codex'),imports=codexImports({project:p.path,destination:env.CODEX_HOME});
+    const link=(await accountProfiles(c.accountConfig).list()).codex,destination=link?.accounts[0]?.path;
+    if(typeof destination!=='string'||!isAbsolute(destination))throw Error('Codex CLI 설정 연결이 필요합니다.');
+    const source=input.source||(link?.confirmed?destination:join(homedir(),'.codex')),imports=codexImports({project:p.path,destination});
     if(action==='list')return {...await imports.list(source,input.offset??0),sourceOrigin:input.source?'selected':'default'};
     const registered=async machineId=>(await authorize(authorization)).sessions?.find(s=>s.metadata?.machineId===machineId&&s.metadata?.flavor==='codex'&&(s.metadata?.codexSessionId??s.metadata?.agentSessionId)===input.id&&s.metadata?.path===p.path)?.id;
     if(action==='check'){
@@ -281,7 +285,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   async commandCardRun(authorization,id,input){
    if(!input||typeof input.contextKey!=='string')throw Object.assign(Error('명령 카드를 다시 여세요.'),{rejected:true});
    let admitted=false;try{return await exclusive(async()=>{const scope=await commandScope(authorization,id);if(input.contextKey!==commandContextKey(scope))throw Object.assign(Error('대상 계정·폴더가 바뀌었습니다. 명령 카드를 다시 여세요.'),{rejected:true});
-    if(['mcp-add','mcp-remove'].includes(input.action)&&cliPending(await officialCli.status(scope.agent)))throw Object.assign(Error('별도 공식 CLI 창을 종료한 뒤 설정을 변경하세요.'),{rejected:true});
+    if(['mcp-add','mcp-remove','mcp-login'].includes(input.action)&&cliPending(await officialCli.status(scope.agent)))throw Object.assign(Error('별도 공식 CLI 창을 종료한 뒤 설정을 변경하세요.'),{rejected:true});
     const {contextKey,...request}=input;admitted=true;return commandCards.execute(scope,request);
    });}catch(error){if(!admitted&&!error.rejected)throw Object.assign(Error('명령을 시작하지 않았습니다. 연결·계정·다른 설정 작업을 확인하세요.'),{rejected:true,status:error.status});throw error;}
   },
@@ -294,22 +298,27 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   async accountProfiles(authorization){await authorize(authorization);return accountProfiles(c.accountConfig).list();},
   async accountProfile(authorization,input){
    await authorize(authorization);
-   if(!input||Object.keys(input).some(k=>!['action','agent','alias','id'].includes(k))||!['add','switch','rename','remove'].includes(input.action)||!['claude','codex'].includes(input.agent))throw Object.assign(Error('계정 요청을 확인하세요.'),{rejected:true,status:400});
+   const fields={discover:['source'],connect:['source','confirm','create','mode']};
+   if(!input||!fields[input.action]||Object.keys(input).some(k=>!['action','agent',...fields[input.action]].includes(k))||!['claude','codex'].includes(input.agent))throw Object.assign(Error('계정 요청을 확인하세요.'),{rejected:true,status:400});
    const profiles=accountProfiles(c.accountConfig);
-   if(input.action==='add')return exclusive(()=>profiles.add(input.agent,input.alias));
-   if(input.action==='rename')return exclusive(()=>profiles.rename(input.agent,input.id,input.alias));
-   if(input.action==='remove')return exclusive(()=>profiles.remove(input.agent,input.id));
+   if(input.action==='discover'){
+    const found=await discoverCliSource(input.agent,{source:input.source??''}),cfg=JSON.parse(await readFile(c.accountConfig,'utf8')),env=JSON.parse(await readFile(cfg.environment,'utf8'));
+    return {...found,mode:found.origin==='default'?'default':'explicit',exists:!!found.source&&await stat(found.source).then(s=>s.isDirectory()).catch(()=>false),binary:cfg.binaries?.[input.agent]??null,current:(await profiles.list())[input.agent]?.accounts[0]?.path??null};
+   }
+   if(typeof input.source!=='string'||!input.source.trim()||input.confirm!==true||input.create!==undefined&&typeof input.create!=='boolean'||input.mode!==undefined&&!['default','explicit'].includes(input.mode))throw Object.assign(Error('기존 CLI 설정 공유를 확인하세요.'),{rejected:true});
+   const found=await discoverCliSource(input.agent,{source:input.source});
    return exclusive(async()=>{
-    if((await profiles.list())[input.agent]?.active===input.id)return profiles.list();
-    if(await commandCards.pending(input.agent))throw Object.assign(Error('앞선 MCP 설정 변경 결과가 미확인입니다. 계정을 전환하지 않았습니다.'),{rejected:true});
-    if(cliPending(await officialCli.status(input.agent)))throw Object.assign(Error('공식 CLI 창을 exit로 종료한 뒤 계정을 전환하세요. 실행 결과가 미확인이면 터미널을 먼저 확인하세요.'),{rejected:true});
+    const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
+    try{const phase=JSON.parse(await readFile(join(cfg.directory,input.agent+'.login/state.json'),'utf8')).phase;if(phase!=='finished')throw Object.assign(Error('공식 로그인을 마친 뒤 CLI 연결을 변경하세요.'),{rejected:true});}catch(e){if(e.code!=='ENOENT')throw e;}
+    if(await commandCards.pending(input.agent))throw Object.assign(Error('앞선 MCP 설정 변경 결과가 미확인입니다. CLI 연결을 변경하지 않았습니다.'),{rejected:true});
+    if(cliPending(await officialCli.status(input.agent)))throw Object.assign(Error('공식 CLI 창을 exit로 종료한 뒤 CLI 연결을 변경하세요. 실행 결과가 미확인이면 터미널을 먼저 확인하세요.'),{rejected:true});
     const before=await state();
-    if(!['unprepared','prepared','exited','running'].includes(before)||before==='running'&&!child)throw Object.assign(Error('실행기 상태를 확인한 뒤 전환하세요. 계정을 바꾸지 않았습니다.'),{rejected:true});
-    if(await unresolvedTasks()||(before==='running'?await hasActive(c):await activeAuthorizedSessions(authorization)))throw Object.assign(Error('실행 중인 대화나 확인되지 않은 생성 요청이 있어 계정을 바꾸지 않았습니다. 실행을 종료한 뒤 다시 시도하세요.'),{rejected:true});
+    if(!['unprepared','prepared','exited','running'].includes(before)||before==='running'&&!child)throw Object.assign(Error('실행기 상태를 확인한 뒤 전환하세요. CLI 연결을 변경하지 않았습니다.'),{rejected:true});
+    if(await unresolvedTasks()||(before==='running'?await hasActive(c):await activeAuthorizedSessions(authorization)))throw Object.assign(Error('실행 중인 대화나 확인되지 않은 생성 요청이 있어 CLI 연결을 변경하지 않았습니다. 실행을 종료한 뒤 다시 시도하세요.'),{rejected:true});
     // Stop before rewriting the environment: if anything fails afterwards the Runner is not left on the old login.
     if(before==='running')await stopOwned();
-    const result=await profiles.activate(input.agent,input.id);
-    await ensureReady(authorization);
+    const result=await profiles.connect(input.agent,found.source,true,{create:input.create===true,mode:input.mode??'explicit'});
+    // Prepare on the next chat request; linking does not start AI or require a running Hub machine.
     return result;
    });
   },
@@ -374,9 +383,9 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      const m=resume.metadata;
      if(!/^[a-f0-9-]{36}$/.test(resume.id??'')||resume.active!==false||!['codex','claude'].includes(m?.flavor)||m.machineId!==await machineId(c))throw Error('Resume identity unavailable');
      const nativeKey=m.flavor==='codex'?'codexSessionId':'claudeSessionId';
-     // One account is active at a time; resuming under another account would continue it with the wrong login.
+     // Resume only a native record in the connected CLI. Removed legacy profiles cannot silently create a fresh conversation.
      const owner=await accountProfiles(c.accountConfig).owner(m.flavor,m[nativeKey]??m.agentSessionId,m.path).catch(()=>null);
-     if(owner&&!owner.active)throw Object.assign(Error(owner.removed?`이 대화는 목록에서 삭제한 계정(‘${owner.alias}’)에서 만들었습니다. 다른 계정으로는 재개하지 않습니다.`:`이 대화는 다른 계정(‘${owner.alias}’)에서 만들었습니다. AI 계정 패널에서 그 계정으로 전환한 뒤 재개하세요.`),{rejected:true,status:409,reason:'ACCOUNT_MISMATCH'});
+     if(!owner&&(JSON.parse(await readFile(c.accountConfig,'utf8'))).cliConnectionRequired)throw Object.assign(Error('현재 연결한 CLI에서 이 대화의 원본 기록을 찾지 못했습니다. 기존 대화 찾기로 다시 연결하세요.'),{rejected:true,status:409});
      pending={id:resume.id,machineId:m.machineId,path:m.path,flavor:m.flavor,nativeKey,nativeId:typeof m[nativeKey]==='string'?m[nativeKey]:null,child,directory:c.directory};
     }
     const marker=join(c.directory,'session-operation.json');let recorded=false;
@@ -445,7 +454,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   start:()=>action('prepared','starting',async()=>{if((await snapshot()).configuration!=='matched')throw Error('Prepared configuration changed');await launchCurrent();}),
   stop:()=>exclusive(stopOwned),
   reprepare:()=>exclusive(prepareNext),
-  async close(){if(child?.running)await api.stop();}
+  async close(){if(commandCards.running?.())throw Error('CLI 명령·인증이 진행 중입니다. 결과 확인 후 종료하세요.');if(child?.running)await api.stop();}
  };
  return api;
 }

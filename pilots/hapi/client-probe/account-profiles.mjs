@@ -1,77 +1,44 @@
-import {readFile,writeFile,rename,mkdir,rm,readdir,stat} from 'node:fs/promises';
-import {join,dirname,isAbsolute,resolve} from 'node:path';
-import {randomUUID} from 'node:crypto';
-
-// Several accounts per AI, one active at a time (the Runner has one environment). Each account
-// is its own CLAUDE_CONFIG_DIR / CODEX_HOME; switching rewrites only that key of the account
-// environment, under the same lock prepareRunner uses. Credentials are never read or copied.
+import {readFile,writeFile,rename,mkdir,rm,readdir,stat,realpath} from 'node:fs/promises';
+import {join,dirname,isAbsolute,resolve} from 'node:path';import {randomUUID} from 'node:crypto';
 const keys={claude:'CLAUDE_CONFIG_DIR',codex:'CODEX_HOME'};
-const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const rejected=message=>Object.assign(Error(message),{rejected:true,userMessage:message});
-async function writeJson(path,value){const temp=path+'.'+randomUUID()+'.tmp';await writeFile(temp,JSON.stringify(value,null,1)+'\n',{mode:0o600,flag:'wx'});await rename(temp,path);}
+async function writeJson(path,value){const temp=path+'.'+randomUUID()+'.tmp';await writeFile(temp,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx',flush:true});await rename(temp,path);}
+// One installed CLI connection per AI. The historical module name remains for internal callers;
+// this is no longer an account/profile manager and never copies credentials or creates app profiles.
 export function accountProfiles(configPath){
- async function paths(){const c=JSON.parse(await readFile(configPath,'utf8'));if(typeof c.environment!=='string'||!isAbsolute(c.environment))throw Error('Account configuration invalid');return {environment:c.environment,registry:join(dirname(c.environment),'account-profiles.json')};}
  async function load(){
-  const p=await paths(),env=JSON.parse(await readFile(p.environment,'utf8'));let saved=null;
-  try{saved=JSON.parse(await readFile(p.registry,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
-  const agents={};
-  for(const [agent,key] of Object.entries(keys)){
-   const current=typeof env[key]==='string'&&isAbsolute(env[key])?resolve(env[key]):null;if(!current)continue;
-   const accounts=Array.isArray(saved?.agents?.[agent]?.accounts)?saved.agents[agent].accounts.filter(a=>(a.id==='default'||uuid.test(a.id))&&typeof a.alias==='string'&&typeof a.path==='string'&&isAbsolute(a.path)):[];
-   if(!accounts.some(a=>a.id==='default'))accounts.unshift({id:'default',alias:'기본 계정',path:current});
-   // The environment file is authoritative for what the Runner uses; a path outside the list is shown as-is.
-   const active=accounts.find(a=>resolve(a.path)===current);
-   agents[agent]={active:active?.id??null,activePath:current,accounts};
-  }
-  return {...p,env,agents};
+  const c=JSON.parse(await readFile(configPath,'utf8'));if(typeof c.environment!=='string'||!isAbsolute(c.environment))throw Error('CLI environment invalid');
+  const env=JSON.parse(await readFile(c.environment,'utf8')),registry=join(dirname(c.environment),'cli-connections.json');let saved={};
+  try{saved=JSON.parse(await readFile(registry,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
+  return {environment:c.environment,registry,env,saved};
  }
- // Removed accounts stay in the registry (hidden) so resume can still name the account a conversation belongs to.
- const view=s=>Object.fromEntries(Object.entries(s.agents).map(([agent,a])=>[agent,{active:a.active,accounts:a.accounts.filter(x=>!x.removed).map(({id,alias})=>({id,alias,active:id===a.active}))}]));
- const cleanAlias=alias=>{alias=typeof alias==='string'?alias.trim().replace(/\s+/g,' '):'';if(!alias||alias.length>40)throw rejected('계정 이름을 1~40자로 입력하세요.');return alias;};
- async function save(s){await writeJson(s.registry,{version:1,agents:Object.fromEntries(Object.entries(s.agents).map(([agent,a])=>[agent,{accounts:a.accounts}]))});}
+ const view=async s=>Object.fromEntries((await Promise.all(Object.entries(keys).map(async([agent,key])=>{
+  const mode=s.env[key]?'explicit':'default',raw=s.env[key]||(typeof s.env.HOME==='string'?join(s.env.HOME,agent==='claude'?'.claude':'.codex'):null);
+  if(typeof raw!=='string'||!isAbsolute(raw))return null;
+  const path=await realpath(raw).catch(()=>resolve(raw)),confirmed=s.saved[agent]?.path===path&&s.saved[agent]?.mode===mode;
+  return [agent,{active:'default',confirmed,accounts:[{id:'default',alias:confirmed?'기존 CLI':'CLI 연결 확인 필요',source:confirmed?'cli':'unconfirmed',path,mode,active:true}]}];
+ }))).filter(Boolean));
  async function locked(fn){const lock=configPath+'.register-lock';try{await mkdir(lock,{mode:0o700});}catch(e){if(e.code==='EEXIST')throw rejected('다른 설정 작업이 진행 중입니다. 잠시 후 다시 시도하세요.');throw e;}try{return await fn();}finally{await rm(lock,{recursive:true});}}
  return {
   async list(){return view(await load());},
-  async add(agent,alias){
-   if(!keys[agent])throw rejected('지원하지 않는 AI입니다.');
-   alias=cleanAlias(alias);
+  async connect(agent,path,confirm,{create=false,mode='explicit'}={}){
+   if(!keys[agent]||confirm!==true||!['default','explicit'].includes(mode))throw rejected('기존 CLI 설정·로그인 폴더를 공유할지 확인하세요.');
+   if(typeof path!=='string'||!isAbsolute(path)||/[\x00-\x1f]/.test(path))throw rejected('기존 CLI 설정 폴더의 절대 경로를 선택하세요.');
    return locked(async()=>{
-    const s=await load(),a=s.agents[agent];if(!a)throw rejected('이 AI의 전용 프로필이 설정되지 않았습니다.');
-    if(a.accounts.some(x=>!x.removed&&x.alias===alias))throw rejected('같은 이름의 계정이 이미 있습니다.');
-    const id=randomUUID(),path=join(dirname(a.activePath),`${agent}-${id}`);await mkdir(path,{mode:0o700});
-    a.accounts.push({id,alias,path});await save(s);return {id,...view(s)};
+    let canonical;try{if(create===true)await mkdir(path,{recursive:true,mode:0o700});canonical=await realpath(path);if(!(await stat(canonical)).isDirectory())throw Error();}catch{throw rejected('CLI 설정 폴더를 확인하지 못했습니다. 경로·권한을 확인하세요.');}
+    const s=await load();
+    if(mode==='default'){const home=s.env.HOME;if(typeof home!=='string'||!isAbsolute(home)||canonical!==await realpath(join(home,agent==='claude'?'.claude':'.codex')).catch(()=>null))throw rejected('CLI 기본 위치와 선택한 폴더가 다릅니다. 위치를 다시 확인하세요.');}
+    // Incomplete writes cannot certify a different path. The stored confirmation must match the environment.
+    const env={...s.env};if(mode==='default')delete env[keys[agent]];else env[keys[agent]]=canonical;
+    const connection={path:canonical,mode};await writeJson(s.environment,env);
+    await writeJson(s.registry,{...s.saved,[agent]:connection});s.env=env;s.saved[agent]=connection;return view(s);
    });
   },
-  async activate(agent,id){
-   return locked(async()=>{
-    const s=await load(),a=s.agents[agent],target=a?.accounts.find(x=>x.id===id&&!x.removed);if(!target)throw rejected('등록된 계정을 선택하세요.');
-    if(a.active===id)return {changed:false,...view(s)};
-    if(!(await stat(target.path)).isDirectory())throw rejected('계정 프로필 폴더를 찾지 못했습니다.');
-    await save(s);await writeJson(s.environment,{...s.env,[keys[agent]]:target.path});
-    a.active=id;a.activePath=resolve(target.path);return {changed:true,...view(s)};
-   });
-  },
-  async rename(agent,id,alias){
-   alias=cleanAlias(alias);
-   return locked(async()=>{const s=await load(),a=s.agents[agent],target=a?.accounts.find(x=>x.id===id&&!x.removed);if(!target)throw rejected('등록된 계정을 선택하세요.');
-    if(a.accounts.some(x=>x!==target&&!x.removed&&x.alias===alias))throw rejected('같은 이름의 계정이 이미 있습니다.');target.alias=alias;await save(s);return view(s);});
-  },
-  async remove(agent,id){
-   return locked(async()=>{const s=await load(),a=s.agents[agent],target=a?.accounts.find(x=>x.id===id&&!x.removed);if(!target)throw rejected('등록된 계정을 선택하세요.');
-    if(id==='default')throw rejected('기본 계정은 삭제할 수 없습니다.');if(a.active===id)throw rejected('사용 중인 계정은 삭제할 수 없습니다. 다른 계정으로 전환한 뒤 삭제하세요.');
-    // The login folder is kept; only the list entry is hidden.
-    target.removed=true;await save(s);return view(s);});
-  },
-  // Which account's profile holds this native session. null = no profile has it (e.g. not started yet).
   async owner(agent,nativeId,cwd){
    if(!keys[agent]||typeof nativeId!=='string'||!/^[\w-]{8,80}$/.test(nativeId))return null;
-   const s=await load(),a=s.agents[agent];if(!a)return null;
-   for(const account of a.accounts){
-    if(agent==='claude'){try{await stat(join(account.path,'projects',resolve(cwd).replace(/[^a-zA-Z0-9]/g,'-'),nativeId+'.jsonl'));return {...account,active:account.id===a.active,removed:!!account.removed};}catch{}}
-    // Codex moves a thread's rollout to archived_sessions when the session is archived.
-    else if(await hasRollout(join(account.path,'sessions'),nativeId)||await hasRollout(join(account.path,'archived_sessions'),nativeId))return {...account,active:account.id===a.active,removed:!!account.removed};
-   }
-   return null;
+   const a=(await view(await load()))[agent]?.accounts[0];if(!a)return null;
+   if(agent==='claude'){try{await stat(join(a.path,'projects',resolve(cwd).replace(/[^a-zA-Z0-9]/g,'-'),nativeId+'.jsonl'));return {...a,removed:false};}catch{return null;}}
+   return await hasRollout(join(a.path,'sessions'),nativeId)||await hasRollout(join(a.path,'archived_sessions'),nativeId)?{...a,removed:false}:null;
   }
  };
 }

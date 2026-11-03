@@ -1,3 +1,4 @@
+import {accountProfiles} from './account-profiles.mjs';
 import {execFile,spawn} from 'node:child_process';
 import {readFile,writeFile,mkdir,rm,access,stat,open as openFile} from 'node:fs/promises';
 import {join,isAbsolute} from 'node:path';
@@ -35,7 +36,7 @@ export function createAccounts(configPath,{run=runStatus,open=openTerminal}={}){
  const starting=new Set();
  const checkAgent=agent=>{if(!agents.includes(agent))throw Error('Unknown agent');};
  async function status(agent){
-  checkAgent(agent);let c;try{c=await config(configPath,agent);}catch(e){return {state:e.code==='AI_NOT_CONFIGURED'?'not-configured':'configuration-error',loginPending:false,loginPhase:null};}const result=accountStatus(agent,await run(c.binaries[agent],statusArgs(agent),{env:c.env,cwd:c.cwd}));
+  checkAgent(agent);let c;try{c=await config(configPath,agent);}catch(e){return {state:e.code==='AI_NOT_CONFIGURED'?'not-configured':'configuration-error',loginPending:false,loginPhase:null};}if(c.cliConnectionRequired&&!(await accountProfiles(configPath).list())[agent]?.confirmed)return {state:'connection-required',loginPending:false,loginPhase:null};const result=accountStatus(agent,await run(c.binaries[agent],statusArgs(agent),{env:c.env,cwd:c.cwd}));
   const lock=join(c.directory,agent+'.login');let phase=null;
   try{phase=JSON.parse(await readFile(join(lock,'state.json'),'utf8')).phase;}catch{try{await access(lock);phase='opening';}catch{}}
   return {...result,loginPending:phase==='opening'||phase==='running',loginPhase:phase};
@@ -58,6 +59,7 @@ export function createAccounts(configPath,{run=runStatus,open=openTerminal}={}){
 }
 async function loginInTerminal(configPath,agent){
  if(!agents.includes(agent))throw Error('Unknown agent');const c=await config(configPath,agent),lock=join(c.directory,agent+'.login');
+ if(c.cliConnectionRequired&&!(await accountProfiles(configPath).list())[agent]?.confirmed)throw Error('CLI connection confirmation required');
  // Opening the same .command twice must not start two login flows.
  const handle=await openFile(join(lock,'started'),'wx',0o600);await handle.close();
  await writeFile(join(lock,'state.json'),JSON.stringify({phase:'running'}),{mode:0o600});

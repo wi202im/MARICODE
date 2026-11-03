@@ -294,3 +294,24 @@ test('command cards bind authenticated local machine, registered cwd and origina
  for(const patch of [{machineId:'other'},{path:root},{claudeSessionId:'missing-native-id'}]){const old=s.metadata;s.metadata={...old,...patch};await assert.rejects(api.commandCardCapabilities('Bearer fixture',s.id));s.metadata=old;}
  await writeFile(join(root,'env'),JSON.stringify({PATH:'/bin',CLAUDE_CONFIG_DIR:home}));await assert.rejects(api.commandCardRun('Bearer fixture',s.id,{contextKey:cap.contextKey,action:'account'}));assert.equal(calls,1);
 });
+
+test('CLI connection requires authentication and consent and rejects arbitrary environment',async t=>{
+ const {createServer}=await import('node:http'),{readFile}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'cli-link-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const original=join(root,'isolated'),source=join(root,'cli');await mkdir(original);await mkdir(source);
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),binary:'/bin/echo',tokenFile:join(root,'token')};await writeFile(join(root,'env'),JSON.stringify({CLAUDE_CONFIG_DIR:original,PATH:'/bin'}));await writeFile(c.accountConfig,JSON.stringify({environment:join(root,'env'),directory:join(root,'login'),binaries:{claude:'/bin/echo'}}));
+ const hub=createServer((req,res)=>{if(req.headers.authorization!=='Bearer fixture')return res.writeHead(401).end('{}');res.setHeader('content-type','application/json');res.end('{"sessions":[]}');});await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
+ const api=createRunnerSetup(c);
+ await assert.rejects(api.accountProfile('Bearer wrong',{action:'discover',agent:'claude',source}));
+ const found=await api.accountProfile('Bearer fixture',{action:'discover',agent:'claude',source});assert.equal(found.source,source);assert.equal(found.exists,true);assert.equal(found.binary,'/bin/echo');assert.equal(found.current,await (await import('node:fs/promises')).realpath(original));
+ await assert.rejects(api.accountProfile('Bearer fixture',{action:'connect',agent:'claude',source}));
+ await assert.rejects(api.accountProfile('Bearer fixture',{action:'connect',agent:'claude',source,confirm:true,env:{HOME:'/other'}}));
+ const linked=await api.accountProfile('Bearer fixture',{action:'connect',agent:'claude',source,confirm:true});assert.equal(linked.claude.active,'default');
+ assert.equal(JSON.parse(await readFile(join(root,'env'),'utf8')).CLAUDE_CONFIG_DIR,await (await import('node:fs/promises')).realpath(source));
+ assert.equal((await api.accountProfile('Bearer fixture',{action:'discover',agent:'claude',source:join(root,'missing')})).exists,false);
+});
+
+test('background CLI authentication blocks application shutdown until the command exits',async()=>{
+ let running=true;const api=createRunnerSetup({directory:'/fixture/runner',accountConfig:'/fixture/accounts',binary:'/bin/echo',tokenFile:'/fixture/token',hubUrl:'http://127.0.0.1:1'},{commandCards:{running:()=>running}});
+ await assert.rejects(api.close(),/인증/);running=false;await api.close();
+});

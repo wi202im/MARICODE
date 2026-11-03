@@ -1,55 +1,37 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile} from 'node:fs/promises';
-import {join} from 'node:path';
-import {tmpdir} from 'node:os';
+import test from 'node:test';import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,readFile,realpath,symlink,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
 import {accountProfiles} from './account-profiles.mjs';
-async function fixture(){
- const root=await mkdtemp(join(tmpdir(),'profiles-')),setup=join(root,'local-setup'),profiles=join(setup,'profiles');
- await mkdir(join(profiles,'claude'),{recursive:true});await mkdir(join(profiles,'codex'),{recursive:true});
- const environment=join(setup,'environment.private.json'),config=join(setup,'accounts.json');
- await writeFile(environment,JSON.stringify({HOME:'/h',CLAUDE_CONFIG_DIR:join(profiles,'claude'),CODEX_HOME:join(profiles,'codex')}));
- await writeFile(config,JSON.stringify({environment}));
- return {root,profiles,environment,config,p:accountProfiles(config)};
-}
-test('the existing profile is the default account and adding one creates its own private folder without switching',async()=>{
- const f=await fixture();
- assert.deepEqual((await f.p.list()).codex,{active:'default',accounts:[{id:'default',alias:'기본 계정',active:true}]});
- const added=await f.p.add('codex',' 회사  계정 ');
- assert.deepEqual(added.codex.accounts.map(a=>[a.alias,a.active]),[['기본 계정',true],['회사 계정',false]]);
- assert.equal(JSON.parse(await readFile(f.environment,'utf8')).CODEX_HOME,join(f.profiles,'codex'));
- await assert.rejects(f.p.add('codex','회사 계정'),/이미/);await assert.rejects(f.p.add('codex',''),/1~40/);await assert.rejects(f.p.add('gemini','x'),/지원하지/);
+async function fixture(t){const root=await mkdtemp(join(tmpdir(),'cli-profile-'));t.after(()=>rm(root,{recursive:true,force:true}));const initial=join(root,'initial');await mkdir(initial);const environment=join(root,'environment.private.json'),config=join(root,'accounts.json');await writeFile(environment,JSON.stringify({HOME:root,PATH:'/bin',CLAUDE_CONFIG_DIR:initial,CODEX_HOME:initial}));await writeFile(config,JSON.stringify({environment}));return {root,initial,environment,p:accountProfiles(config)};}
+test('connecting shares the selected canonical CLI folder without copying credentials and preserves the other AI environment',async t=>{
+ const f=await fixture(t),source=join(f.root,'cli');await mkdir(source);await writeFile(join(source,'.credentials.json'),'synthetic-secret');await symlink(source,join(f.root,'alias'));
+ await assert.rejects(f.p.connect('claude',source,false),e=>e.rejected);
+ const before=await f.p.list();assert.equal(before.claude.confirmed,false);
+ const r=await f.p.connect('claude',join(f.root,'alias'),true);assert.equal(r.claude.confirmed,true);assert.equal(r.claude.accounts.length,1);assert.equal(r.claude.accounts[0].path,await realpath(source));
+ const env=JSON.parse(await readFile(f.environment,'utf8'));assert.equal(env.CLAUDE_CONFIG_DIR,await realpath(source));assert.equal(env.CODEX_HOME,f.initial);assert.equal(env.HOME,f.root);
+ assert.equal(await readFile(join(source,'.credentials.json'),'utf8'),'synthetic-secret');assert.equal((await f.p.connect('claude',source,true)).claude.confirmed,true);
+ assert.equal(f.p.add,undefined);assert.equal(f.p.remove,undefined);assert.equal(f.p.activate,undefined);
 });
-test('switching rewrites only that engine key and keeps other environment values',async()=>{
- const f=await fixture(),{id}=await f.p.add('claude','개인');
- const r=await f.p.activate('claude',id);assert.equal(r.changed,true);assert.equal(r.claude.active,id);
- const env=JSON.parse(await readFile(f.environment,'utf8'));
- assert.equal(env.CLAUDE_CONFIG_DIR,join(f.profiles,'claude-'+id));assert.equal(env.CODEX_HOME,join(f.profiles,'codex'));assert.equal(env.HOME,'/h');
- assert.equal((await f.p.activate('claude',id)).changed,false);
- assert.equal((await f.p.activate('claude','default')).claude.active,'default');
- await assert.rejects(f.p.activate('claude','nope'),e=>e.rejected);
+test('a nonexistent CLI folder is created only with explicit creation and sharing consent; external edits invalidate confirmation',async t=>{
+ const f=await fixture(t),source=join(f.root,'new-cli');await assert.rejects(f.p.connect('codex',source,true));await f.p.connect('codex',source,true,{create:true});
+ assert.equal((await f.p.list()).codex.confirmed,true);
+ const env=JSON.parse(await readFile(f.environment,'utf8'));await writeFile(f.environment,JSON.stringify({...env,CODEX_HOME:f.initial}));assert.equal((await f.p.list()).codex.confirmed,false);
+ await assert.rejects(f.p.connect('other',source,true));await assert.rejects(f.p.connect('claude','relative',true));
 });
-test('a session belongs to the account whose profile holds its native transcript',async()=>{
- const f=await fixture(),{id}=await f.p.add('codex','두번째'),thread='01a19ca6-2c4a-7d82-87dc-a1b14d35a96f';
- await mkdir(join(f.profiles,'codex-'+id,'sessions/2026/11/03'),{recursive:true});
- await writeFile(join(f.profiles,'codex-'+id,'sessions/2026/11/03',`rollout-2026-11-03T00-00-00-${thread}.jsonl`),'{}');
- const owner=await f.p.owner('codex',thread,'/p');assert.equal(owner.id,id);assert.equal(owner.active,false);
- assert.equal(await f.p.owner('codex','01a19ca6-2c4a-7d82-87dc-a1b14d35a000','/p'),null);
- const archived='01a19ca6-2c4a-7d82-87dc-a1b14d35a111';await mkdir(join(f.profiles,'codex','archived_sessions'),{recursive:true});await writeFile(join(f.profiles,'codex','archived_sessions',`rollout-2026-11-03T00-00-00-${archived}.jsonl`),'{}');
- assert.equal((await f.p.owner('codex',archived,'/p')).id,'default');
- const cwd='/work/proj',claude='3b37803a-b28e-42b7-8571-e02171dfa2ec';
- await mkdir(join(f.profiles,'claude','projects','-work-proj'),{recursive:true});await writeFile(join(f.profiles,'claude','projects','-work-proj',claude+'.jsonl'),'{}');
- assert.equal((await f.p.owner('claude',claude,cwd)).active,true);
+test('native ownership searches only the connected CLI profile including archived Codex sessions',async t=>{
+ const f=await fixture(t),id='01a19ca6-2c4a-7d82-87dc-a1b14d35a96f';await mkdir(join(f.initial,'archived_sessions'));await writeFile(join(f.initial,'archived_sessions',`rollout-x-${id}.jsonl`),'{}');
+ assert.equal((await f.p.owner('codex',id,'/p')).active,true);assert.equal(await f.p.owner('claude',id,'/p'),null);
+ await mkdir(join(f.initial,'projects','-p'),{recursive:true});await writeFile(join(f.initial,'projects','-p',id+'.jsonl'),'{}');assert.equal((await f.p.owner('claude',id,'/p')).id,'default');
 });
-test('accounts can be renamed and hidden; hidden accounts still guard their conversations',async()=>{
- const f=await fixture(),{id}=await f.p.add('codex','회사'),thread='01a19ca6-2c4a-7d82-87dc-a1b14d35a222';
- assert.equal((await f.p.rename('codex',id,' 회사 계정 ')).codex.accounts[1].alias,'회사 계정');
- await assert.rejects(f.p.rename('codex','default','회사 계정'),/이미/);await assert.rejects(f.p.rename('codex',id,''),/1~40/);
- await assert.rejects(f.p.remove('codex','default'),/기본 계정/);
- await f.p.activate('codex',id);await assert.rejects(f.p.remove('codex',id),/사용 중/);await f.p.activate('codex','default');
- await mkdir(join(f.profiles,'codex-'+id,'sessions'),{recursive:true});await writeFile(join(f.profiles,'codex-'+id,'sessions',`rollout-x-${thread}.jsonl`),'{}');
- const after=await f.p.remove('codex',id);assert.deepEqual(after.codex.accounts.map(a=>a.alias),['기본 계정']);
- const owner=await f.p.owner('codex',thread,'/p');assert.equal(owner.alias,'회사 계정');assert.equal(owner.removed,true);assert.equal(owner.active,false);
- await assert.rejects(f.p.activate('codex',id),/등록된 계정/);
- assert.equal((await f.p.add('codex','회사 계정')).codex.accounts.length,2);
+
+test('confirming an unchanged CLI default invalidates an earlier Runner snapshot without starting the CLI',async t=>{
+ const {accountRevision}=await import('./machine-setup.mjs');const f=await fixture(t),path=join(f.root,'accounts.json');const c=JSON.parse(await readFile(path,'utf8'));await writeFile(path,JSON.stringify({...c,cliConnectionRequired:true}));
+ const env=JSON.parse(await readFile(f.environment,'utf8'));await writeFile(f.environment,JSON.stringify({...env,CLAUDE_CONFIG_DIR:await realpath(f.initial)})+'\n');
+ const before=await accountRevision(path);await f.p.connect('claude',f.initial,true);const connected=await accountRevision(path);assert.notEqual(before,connected);await f.p.connect('claude',f.initial,true);assert.equal(await accountRevision(path),connected);
+});
+
+test('CLI default mode omits profile overrides so Claude keeps the home-level global configuration',async t=>{
+ const f=await fixture(t),path=join(f.root,'.claude');await mkdir(path);await writeFile(join(f.root,'.claude.json'),'home-global');await writeFile(join(path,'.claude.json'),'different-explicit-global');
+ await f.p.connect('claude',path,true,{mode:'default'});const env=JSON.parse(await readFile(f.environment,'utf8'));
+ assert.equal(env.CLAUDE_CONFIG_DIR,undefined);assert.equal((await f.p.list()).claude.confirmed,true);assert.equal((await f.p.list()).claude.accounts[0].mode,'default');
+ await assert.rejects(f.p.connect('claude',f.initial,true,{mode:'default'}));assert.equal(await readFile(join(f.root,'.claude.json'),'utf8'),'home-global');
 });

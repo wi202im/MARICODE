@@ -34,3 +34,18 @@ test('chat MCP card requires explicit scoped confirmation, shows results and nev
  await button('변경 확인').onclick();assert.equal(writes,1);assert.ok([...records.values()].every(v=>!v.includes('example.test')));
  await button('변경 결과 확인').onclick();assert.equal(writes,1);assert.equal(button('적용하고 이어가기').hidden,false);assert.equal(button('서버 추가 검토').disabled,false);
 });
+
+test('MCP authentication has an explicit per-server action and checks the same request without retrying',async()=>{
+ const {createCommandCard}=await import('./command-cards-ui.mjs');const nodes=[];
+ const doc={createElement(tag){const n={tag,children:[],value:'',hidden:false,append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(){},remove(){}};nodes.push(n);return n;}};
+ let starts=0,checks=0;const card=createCommandCard({id:'fixture',name:'mcp',cap:{agent:'claude',accountId:'default',cwd:'/fixture',actions:['mcp-list','mcp-login']},document:doc,api:async(path,opt)=>{
+  if(opt?.body.action==='mcp-list')return {state:'succeeded',rows:[{name:'demo',status:'인증 필요'}]};
+  if(opt){starts++;assert.equal(opt.body.action,'mcp-login');assert.deepEqual(opt.body.params,{name:'demo'});assert.equal(opt.body.confirm,true);return {state:'running',action:'mcp-login',summary:'인증 대기'};}
+  checks++;return {state:'succeeded',action:'mcp-login',needsReconnect:true,summary:'인증 완료'};
+ }});
+ const button=text=>nodes.find(n=>n.tag==='button'&&n.textContent===text);
+ await card.load();assert.ok(button('인증 시작'));button('인증 시작').onclick();assert.equal(starts,0);
+ await button('변경 확인').onclick();assert.equal(starts,1);assert.equal(button('인증 결과 확인').hidden,false);
+ button('인증 시작').onclick();assert.equal(starts,1);
+ await button('인증 결과 확인').onclick();assert.equal(starts,1);assert.equal(checks,1);assert.equal(button('적용하고 이어가기').hidden,false);
+});

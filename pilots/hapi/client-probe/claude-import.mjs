@@ -144,9 +144,9 @@ export function claudeImports({directory,destination,project,machineId}){
     if(check)return {state:'none'};
     const current=await snapshot(source,input.id);
     if(current.fingerprint!==input.fingerprint&&current.catalogFingerprint!==input.fingerprint)throw Error('선택 후 원본 기록이 바뀌었습니다. 원본 Claude 작업을 마친 뒤 다시 찾으세요.');
-    await folder(destination);if(await realpath(destination)===await realpath(source))throw Error('Maricode 전용 프로필은 가져오기 원본으로 사용할 수 없습니다.');
+    await folder(destination);const shared=await realpath(destination)===await realpath(source);
     const destProjects=await folder(join(destination,'projects'),{create:true}),base=await folder(join(destProjects,encoded),{create:true});
-    await absent(join(base,input.id+'.jsonl'));await absent(join(base,input.id));
+    if(!shared){await absent(join(base,input.id+'.jsonl'));await absent(join(base,input.id));}
     const record={state:'copying',hubId:randomUUID(),nativeId:input.id,source,fingerprint:input.fingerprint,project,machineId,
      metadata:{path:project,machineId,flavor:'claude',claudeSessionId:input.id,name:current.title,host:'이 컴퓨터'}};
     await writeFile(path,JSON.stringify(record),{flag:'wx',mode:0o600,flush:true});
@@ -154,8 +154,8 @@ export function claudeImports({directory,destination,project,machineId}){
     // Immutable display snapshot: later native writes must not duplicate the
     // live HAPI conversation or turn old tool events into actionable approvals.
     await writeFile(path+'.transcript',current.files[0].data,{flag:'wx',mode:0o600,flush:true});
-    if(current.files.length>1){await mkdir(join(base,input.id),{mode:0o700});await mkdir(join(base,input.id,'subagents'),{mode:0o700});}
-    for(const file of current.files)await writeFile(join(base,file.name),file.data,{flag:'wx',mode:0o600,flush:true});
+    if(!shared&&current.files.length>1){await mkdir(join(base,input.id),{mode:0o700});await mkdir(join(base,input.id,'subagents'),{mode:0o700});}
+    if(!shared)for(const file of current.files)await writeFile(join(base,file.name),file.data,{flag:'wx',mode:0o600,flush:true});
     record.state='registering';await save(path,record);
     await register(record);
     return await observe(record,path,lookup);

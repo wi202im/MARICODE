@@ -1,3 +1,4 @@
+import {cliProfileControls} from './cli-profile-ui.mjs';
 import {cardCommands,cardCommand,createCommandCard,reconnectCommandSession} from './command-cards-ui.mjs';
 import {officialCliControls} from './official-cli-ui.mjs';
 import {supportedChatCommands,chatCommandName,chatCommandSupported} from './command-support.mjs';
@@ -1034,34 +1035,18 @@ async function refreshAccounts(){
  try{
   const [data,profiles,cli,folders]=await Promise.all([api('/api/accounts'),api('/api/account-profiles').catch(()=>null),api('/api/official-cli').catch(()=>null),api('/api/projects').catch(()=>null)]);if(auth!==token)return;
   $('account-host').textContent=`확인 대상: ${data.host}`;
-  const labels={connected:'구독 로그인 확인', 'signed-out':'로그인 필요', 'not-installed':'설치 경로에서 CLI를 찾지 못함','other-auth':'다른 인증 방식 사용 중 · 자동 변경 안 함','not-configured':'아직 연결하지 않은 AI',unknown:'상태 확인 실패 · 기존 인증을 변경하지 않음'};
+  const labels={'connection-required':'기존 CLI 설정 연결 필요',connected:'구독 로그인 확인', 'signed-out':'로그인 필요', 'not-installed':'설치 경로에서 CLI를 찾지 못함','other-auth':'다른 인증 방식 사용 중 · 자동 변경 안 함','not-configured':'아직 연결하지 않은 AI',unknown:'상태 확인 실패 · 기존 인증을 변경하지 않음'};
   $('account-list').replaceChildren(...data.providers.map(p=>{
    const card=document.createElement('article'),h=document.createElement('h3'),status=document.createElement('p'),button=document.createElement('button');h.textContent=p.agent==='claude'?'Claude Code':'Codex';status.textContent=labels[p.state]??labels.unknown;
    const note=document.createElement('small');note.textContent=p.loginPending?'로그인 창 실행/진행 중입니다. Mac에서 완료한 뒤 상태를 다시 확인하세요.':data.localLogin?'계정 식별 정보는 공식 CLI에서 확인하세요.':'새 로그인은 해당 서버 Mac에서 진행해 주세요.';
-   button.textContent='Mac에서 공식 로그인 시작';button.disabled=!data.localLogin||p.state!=='signed-out'||p.loginPending;button.onclick=()=>startAccountLogin(p.agent);card.append(h,status,note,button);const prof=profiles?.[p.agent];if(prof)card.append(accountProfileControls(p.agent,prof,status,data.localLogin));card.append(officialCliControls({agent:p.agent,profile:prof,local:data.localLogin,state:cli?.[p.agent],projects:folders?.projects??[],selected:selectedProject,api,valid:()=>auth===token&&!!token}));return card;
+   button.textContent='연결한 CLI로 공식 로그인';button.disabled=!data.localLogin||p.state!=='signed-out'||p.loginPending;button.onclick=()=>startAccountLogin(p.agent);card.append(h,status,note);const prof=profiles?.[p.agent];if(prof)card.append(accountProfileControls(p.agent,prof,status,data.localLogin));card.append(button);card.append(officialCliControls({agent:p.agent,profile:prof,local:data.localLogin,state:cli?.[p.agent],projects:folders?.projects??[],selected:selectedProject,api,valid:()=>auth===token&&!!token}));return card;
   }));$('account-notice').textContent='상태 확인 완료. 기존 로그인은 그대로 사용합니다.';
  }catch{if(auth===token)$('account-notice').textContent='계정 상태를 확인하지 못했습니다. 연결과 서버 설정을 확인해 주세요.';}
  finally{accountsBusy=false;$('refresh-accounts').disabled=false;}
 }
-// One account per AI is active at a time; switching restarts this computer's Runner (server refuses while anything runs).
+// One CLI connection per AI; no app-specific account creation or profile switching UI.
 function accountProfileControls(agent,prof,status,local){
- const box=document.createElement('div'),select=document.createElement('select'),apply=document.createElement('button'),name=document.createElement('input'),add=document.createElement('button'),rename=document.createElement('button'),remove=document.createElement('button'),hint=document.createElement('small');let armed=false;
- box.className='account-profiles';const active=prof.accounts.find(a=>a.active);
- status.textContent=`${active?`‘${active.alias}’`:'현재 계정'} · ${status.textContent}`;
- select.setAttribute('aria-label',(agent==='claude'?'Claude':'Codex')+' 사용할 계정');
- select.replaceChildren(...prof.accounts.map(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.alias+(a.active?' (사용 중)':'');return o;}));select.value=prof.active??'';
- apply.type='button';apply.textContent='이 계정으로 전환';name.placeholder='새 계정 이름 (예: 회사)';name.maxLength=40;name.setAttribute('aria-label','새 계정 이름');add.type='button';add.textContent='계정 추가';rename.type=remove.type='button';rename.textContent='선택한 계정 이름 바꾸기';remove.textContent='목록에서 삭제';remove.title='로그인 폴더는 남기고 목록에서만 뺍니다. 이 계정으로 만든 대화는 재개하지 않습니다.';
- hint.textContent='한 번에 한 계정만 사용합니다. 전환하면 실행기를 다시 시작하며 실행 중인 대화가 없어야 합니다. 다른 계정으로 만든 대화는 그 계정으로 전환해야 재개됩니다. 새 계정은 전환 후 로그인합니다.';
- const sync=()=>{apply.disabled=!local||accountsBusy||select.value===prof.active;add.disabled=rename.disabled=!local||accountsBusy||!name.value.trim();remove.disabled=!local||accountsBusy||select.value===prof.active||select.value==='default';if(remove.disabled||!armed){armed=false;remove.textContent='목록에서 삭제';}};
- select.onchange=()=>{armed=false;sync();};name.oninput=sync;sync();
- const run=async(body,doing)=>{if(accountsBusy)return;accountsBusy=true;sync();$('account-notice').textContent=doing;
-  try{await api('/api/account-profiles',{method:'POST',body});accountsBusy=false;await refreshAccounts();if(body.action==='switch'){await refreshCatalog();$('account-notice').textContent='계정을 전환했습니다. 로그인 상태를 확인하세요.';}}
-  catch(e){$('account-notice').textContent=e.message||'계정 요청 결과를 확인하지 못했습니다.';}finally{accountsBusy=false;sync();}};
- apply.onclick=()=>run({action:'switch',agent,id:select.value},'계정을 전환하고 실행기를 다시 시작하는 중입니다…');
- add.onclick=()=>run({action:'add',agent,alias:name.value},'계정을 추가하는 중입니다…');
- rename.onclick=()=>run({action:'rename',agent,id:select.value,alias:name.value},'계정 이름을 바꾸는 중입니다…');
- remove.onclick=()=>{if(!armed){armed=true;remove.textContent='삭제 확인 · 로그인 폴더는 남김';return;}armed=false;run({action:'remove',agent,id:select.value},'목록에서 삭제하는 중입니다…');};
- const row=document.createElement('div'),addRow=document.createElement('div');row.className=addRow.className='account-profile-row';row.append(select,apply);addRow.append(name,add);const manage=document.createElement('div');manage.className='account-profile-manage';manage.append(rename,remove);box.append(row,addRow,manage,hint);return box;
+ const auth=token;return cliProfileControls({agent,local,active:prof.accounts[0],api,valid:()=>auth===token&&!!token,linked:async()=>{await refreshAccounts();await refreshCatalog();$('account-notice').textContent='기존 CLI 설정을 연결했습니다. 다음 대화부터 이 연결을 사용합니다.';}});
 }
 async function startAccountLogin(agent){
  if(accountsBusy)return;accountsBusy=true;for(const b of $('account-list').querySelectorAll('button'))b.disabled=true;
@@ -1126,7 +1111,7 @@ if(workspaceLayout){
  const bridge=window.webkit?.messageHandlers?.maricode;
  try{const agent=sessionStorage.getItem('maricode-new-session-agent');if(['codex','claude'].includes(agent))$('task-agent').value=agent;}catch{}
  if(bridge){$('add-project').hidden=false;$('add-project').onclick=()=>bridge.postMessage('add-project');
-  $('prepare-task-agent').onclick=()=>{try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
+  $('prepare-task-agent').onclick=()=>{if(draftAccount?.provider?.state==='connection-required'){workspacePanel('info');$('accounts-panel').open=true;refreshAccounts();return;}try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
  }
  window.addEventListener('maricode-projects-changed',async event=>{await loadTaskProjects();const added=projectCatalog.find(p=>p.path===event.detail?.path);if(added)await openNewWorkspace(added.key);else renderWorkspace();});
  $('empty-action').onclick=()=>openNewWorkspace();
