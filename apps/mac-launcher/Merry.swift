@@ -50,6 +50,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
 
     var pendingConfiguration: String?
     var authenticating = false
+    // The local view stays hidden until a real page loads so the empty WebView and one-use grant page never flash white.
+    var localPageReady = false
     var connectFile: URL { URL(fileURLWithPath: dataDirectory()).appendingPathComponent("connect.private.html") }
 
 
@@ -172,7 +174,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
     func renderScreen() {
         let current = utilityTrail.current
-        for (id, view) in machineViews { view.isHidden = current != nil || id != activeMachine }
+        for (id, view) in machineViews { view.isHidden = current != nil || id != activeMachine || (view === webView && !localPageReady) }
         for (id, view) in utilityViews { view.isHidden = id != current }
         backButton.isHidden = current == nil
         let section = current == "settings" ? "컴퓨터 설정" : current == "connections" ? "컴퓨터 연결" : nil
@@ -405,9 +407,9 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         if authenticating && webView.url?.isFileURL == true {
             // Only the exact app-generated one-use grant file is ever loaded as file:.
             webView.evaluateJavaScript("document.forms[0].submit()") { [weak self] _, error in
-                if error != nil { self?.authenticating = false; self?.status.stringValue = "작업 연결 실패 · 다시 연결을 눌러 주세요." }
+                if error != nil { self?.authenticating = false; self?.localPageReady = true; self?.renderScreen(); self?.status.stringValue = "작업 연결 실패 · 다시 연결을 눌러 주세요." }
             }
-        } else { authenticating = false; if activeMachine == "local" { status.stringValue = "" } }
+        } else { authenticating = false; localPageReady = true; renderScreen(); if activeMachine == "local" { status.stringValue = "" } }
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if webView === self.webView { authenticating = false }
@@ -766,7 +768,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 if line == "REMOTE_UNKNOWN" { self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 상태를 확인하지 못했습니다. 전달 종료로 소유 프로세스 정리를 확인하세요. 자동 재시작하지 않습니다." }
                 if line == "CONNECT_READY" && !self.stopping {
                     self.connect.isEnabled = true
-                    self.authenticating = true
+                    self.authenticating = true; self.localPageReady = false; self.renderScreen()
                     self.webView.loadFileURL(self.connectFile, allowingReadAccessTo: self.connectFile)
                 }
                 if line == "CONNECT_FAILED" { self.authenticating = false; self.loadDesktop("/setup"); self.connect.isEnabled = true; self.status.stringValue = "로컬 연결을 준비하지 못했습니다. 이 Mac의 AI 작업 설정을 확인하세요." }
