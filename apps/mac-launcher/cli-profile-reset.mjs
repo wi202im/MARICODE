@@ -1,4 +1,4 @@
-import {readFile,writeFile,rename,lstat,rm} from 'node:fs/promises';
+import {readFile,writeFile,rename,lstat,rm,readdir,stat} from 'node:fs/promises';
 import {join,isAbsolute} from 'node:path';import {homedir,userInfo} from 'node:os';import {randomUUID} from 'node:crypto';
 const key='cli-shared-profile-v1';
 const json=async path=>JSON.parse(await readFile(path,'utf8'));
@@ -28,8 +28,19 @@ export async function resetLegacyCliProfiles(directory){
  }
  await save(marker,{version:1,reset:legacy});return {reset:legacy};
 }
-// Claude reads its macOS keychain login by USER; environments saved before 1.1.1 lack it.
+// What a terminal gets from path_helper (/etc/paths, /etc/paths.d — Homebrew registers there) plus ~/.local/bin,
+// read statically without running shell startup files. stdio MCP servers (npx, uvx) fail with ENOENT without it.
+export async function toolPath(saved,{etc='/etc',home=homedir()}={}){
+ const lines=async f=>{try{return (await readFile(f,'utf8')).split('\n').map(l=>l.trim());}catch{return [];}};
+ let extra=await lines(join(etc,'paths'));
+ try{for(const f of (await readdir(join(etc,'paths.d'))).sort())extra.push(...await lines(join(etc,'paths.d',f)));}catch{}
+ extra.push(join(home,'.local/bin'));
+ const dirs=[];for(const d of extra){if(!isAbsolute(d)||d.includes(':'))continue;try{if((await stat(d)).isDirectory())dirs.push(d);}catch{}}
+ return [...new Set([...saved.split(':').filter(Boolean),...dirs])].join(':');
+}
+// Claude reads its macOS keychain login by USER; environments saved before 1.1.1 lack it, and their PATH lacks tool dirs.
 export async function addCliUser(directory){
  const environment=join(directory,'local-setup','environment.private.json');if(!await plain(environment))return;
- const env=await json(environment);if(!env.USER)await save(environment,{USER:userInfo().username,...env});
+ const env=await json(environment),PATH=typeof env.PATH==='string'?await toolPath(env.PATH):env.PATH;
+ if(!env.USER||PATH!==env.PATH)await save(environment,{USER:userInfo().username,...env,PATH});
 }

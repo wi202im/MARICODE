@@ -81,7 +81,7 @@ async function openCommandCard(name){
  const key=id+':'+name;let card=localCommandCards.get(key);
  if(card&&card.contextKey!==cap.contextKey){card.element.remove();localCommandCards.delete(key);card=null;}
  if(!card||!card.element.isConnected){
-  card=createCommandCard({id,name,cap,liveTools:()=>sessionId===id?session?.metadata?.tools:null,api:async(path,options)=>{
+  card=createCommandCard({id,name,cap,liveTools:()=>sessionId===id?session?.metadata?.tools:null,liveMessages:()=>sessionId===id?messages:null,api:async(path,options)=>{
    if(options?.method==='POST'&&path.startsWith('/api/accounts/')){const latest=await commandCapabilities(id);if(token!==auth||sessionId!==id||latest?.contextKey!==cap.contextKey)throw Object.assign(Error('CLI 연결이 바뀌었습니다. 카드를 다시 여세요.'),{rejected:true});}
    return api(path,options);
   },accountSettings:()=>{workspacePanel('info');$('accounts-panel').open=true;

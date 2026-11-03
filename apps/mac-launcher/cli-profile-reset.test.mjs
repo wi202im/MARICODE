@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm,access,symlink} from 'node:fs/promises';import {tmpdir,userInfo} from 'node:os';import {join} from 'node:path';
-import {resetLegacyCliProfiles,addCliUser} from './cli-profile-reset.mjs';
+import {resetLegacyCliProfiles,addCliUser,toolPath} from './cli-profile-reset.mjs';
 async function fixture(t){const root=await mkdtemp(join(tmpdir(),'cli-reset-'));t.after(()=>rm(root,{recursive:true,force:true}));const setup=join(root,'local-setup');await mkdir(join(setup,'profiles/claude'),{recursive:true});await writeFile(join(setup,'profiles/claude/fixture'),'old-test');const environment=join(setup,'environment.private.json'),accountConfig=join(setup,'accounts.json');await writeFile(environment,JSON.stringify({HOME:join(root,'home'),PATH:'/bin',CLAUDE_CONFIG_DIR:join(setup,'profiles/claude'),CODEX_HOME:join(setup,'profiles/codex')}));await writeFile(accountConfig,JSON.stringify({environment,directory:join(setup,'login'),binaries:{claude:'/bin/echo'}}));await writeFile(join(root,'backend.json'),JSON.stringify({accountConfig}));await writeFile(join(root,'projects.json'),'keep');return {root,setup,environment,accountConfig};}
 test('one-time reset removes only app-owned profiles and forces fresh CLI connection; later launches preserve new data',async t=>{
  const f=await fixture(t),external=join(f.root,'home/.claude-global');await mkdir(external,{recursive:true});await writeFile(join(external,'fixture'),'keep');
@@ -16,7 +16,13 @@ test('reset refuses symlinked app profile roots and external config paths withou
 });
 test('startup adds the missing login USER once so connected installs need no reconnection',async t=>{
  const f=await fixture(t);await addCliUser(f.root);const env=JSON.parse(await readFile(f.environment,'utf8'));
- assert.equal(env.USER,userInfo().username);assert.equal(env.PATH,'/bin');
+ assert.equal(env.USER,userInfo().username);assert.equal(env.PATH.split(':')[0],'/bin');
  await writeFile(f.environment,JSON.stringify({...env,USER:'kept'}));await addCliUser(f.root);assert.equal(JSON.parse(await readFile(f.environment,'utf8')).USER,'kept');
  const empty=await mkdtemp(join(tmpdir(),'cli-user-'));t.after(()=>rm(empty,{recursive:true,force:true}));await addCliUser(empty);
+});
+test('tool PATH keeps the saved order and adds the macOS system and Homebrew dirs a terminal sees',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'tool-path-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const etc=join(root,'etc'),brew=join(root,'brew'),local=join(root,'home/.local/bin');await mkdir(join(etc,'paths.d'),{recursive:true});await mkdir(brew);await mkdir(local,{recursive:true});
+ await writeFile(join(etc,'paths'),'/usr/bin\n/bin\n'+join(root,'missing')+'\nrelative\n');await writeFile(join(etc,'paths.d/homebrew'),brew+'\n');
+ assert.equal(await toolPath('/app:/usr/bin',{etc,home:join(root,'home')}),['/app','/usr/bin','/bin',brew,local].join(':'));
 });

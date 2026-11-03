@@ -68,9 +68,25 @@ test('Claude MCP rows offer authentication only where the CLI reports it is need
 });
 test('the MCP card lists servers the current conversation actually loaded, separately from the CLI settings list',async()=>{
  const {createCommandCard,liveMcpServers}=await import('./command-cards-ui.mjs');
- assert.deepEqual(liveMcpServers(['Read','mcp__demo-db__query','mcp__demo-db__sample','mcp__claude_ai_Claude_Docs__read']),['claude.ai Claude Docs','demo-db']);
+ assert.deepEqual(liveMcpServers(['Read','mcp__demo-db__query','mcp__demo-db__sample','mcp__claude_ai_Claude_Docs__read']),{servers:['claude.ai Claude Docs','demo-db'],failed:[]});
  assert.equal(liveMcpServers(undefined),null);
+ // Claude defers most MCP tools; the conversation itself shows what loaded later and what failed at start.
+ const out=(...blocks)=>({content:{content:{type:'output',data:{type:'assistant',message:{content:blocks}}}}}),back=(...blocks)=>({content:{content:{type:'output',data:{type:'user',message:{content:blocks}}}}});
+ const messages=[out({type:'tool_use',name:'mcp__yeona__jira'}),back({type:'tool_result',content:[{type:'tool_reference',tool_name:'mcp__claude_ai_Slack__read'}]}),
+  back({type:'tool_result',content:'No matching deferred tools found. Note: these configured MCP servers failed to connect, so their tools are unavailable for this session: figma-api (ENOENT): "Executable not found in $PATH: npx"; slack (ENOENT): "Executable not found in $PATH: npx". Treat this as a connection failure.'})];
+ assert.deepEqual(liveMcpServers(['mcp__demo__run'],messages),{servers:['claude.ai Slack','demo','yeona'],failed:['figma-api','slack']});
+ assert.deepEqual(liveMcpServers(null,[...messages,out({type:'tool_use',name:'mcp__slack__post'})]).failed,['figma-api']);
  const nodes=[];const document={createElement(tag){const n={tag,children:[],append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(){},remove(){}};nodes.push(n);return n;}};
  const card=createCommandCard({id:'fixture',name:'mcp',document,liveTools:()=>['mcp__demo__run'],cap:{agent:'claude',actions:['mcp-list']},api:async()=>({state:'succeeded',summary:'CLI 조회 결과',rows:[{name:'ok',status:'CLI 연결 확인'}]})});
- await card.load();assert.ok(nodes.some(n=>n.textContent==='확인이 필요한 MCP 없음'));assert.ok(nodes.some(n=>n.textContent==='이 대화의 MCP 1개 · demo\n필요할 때 불러오는 MCP는 여기 없을 수 있습니다.'));
+ await card.load();assert.ok(nodes.some(n=>n.textContent==='확인이 필요한 MCP 없음'));assert.ok(nodes.some(n=>n.textContent==='이 대화의 MCP 1개 · demo\n아직 쓰지 않은 MCP는 여기 없을 수 있습니다.'));
+});
+test('a server that failed when the conversation started offers resuming the same session to load it again',async()=>{
+ const {createCommandCard}=await import('./command-cards-ui.mjs');const nodes=[];let resumed=0;
+ const document={createElement(tag){const n={tag,children:[],append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(){},remove(){}};nodes.push(n);return n;}};
+ const failedNote={content:{content:{type:'output',data:{type:'user',message:{content:[{type:'tool_result',content:'these configured MCP servers failed to connect, so their tools are unavailable for this session: slack (ENOENT): "x". Treat'}]}}}}};
+ const card=createCommandCard({id:'fixture',name:'mcp',document,liveTools:()=>[],liveMessages:()=>[failedNote],reconnect:async()=>{resumed++;return true;},cap:{agent:'claude',actions:['mcp-list']},api:async()=>({state:'succeeded',summary:'CLI 조회 결과',rows:[{name:'slack',status:'CLI 연결 확인'}]})});
+ await card.load();
+ assert.ok(nodes.some(n=>n.textContent?.startsWith('이 대화의 MCP 0개\n이 대화에서 연결 실패: slack')));
+ const button=nodes.find(n=>n.tag==='button'&&n.textContent==='같은 세션 다시 시작해 MCP 다시 불러오기');assert.ok(button);assert.notEqual(button.hidden,true);
+ await button.onclick();assert.equal(resumed,1);assert.equal(button.hidden,true);
 });
