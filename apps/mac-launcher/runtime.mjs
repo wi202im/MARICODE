@@ -1,4 +1,4 @@
-import {cleanStart110} from './clean-start.mjs';
+import {cleanStart110,appReset,requestAppReset,cancelAppReset,appResetRequested} from './clean-start.mjs';
 import {resetLegacyCliProfiles,addCliUser} from './cli-profile-reset.mjs';
 import {acquireRuntimeLock} from './runtime-lock.mjs';
 import {resolveHapiBinary} from './bundled-hapi.mjs';
@@ -27,6 +27,7 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
   await checkDataFormat(directory);
   stage=cleanInstall?'transition':'configuration';
   const cleanStart=cleanInstall?await cleanStart110(directory):{reset:false};
+  const reset=await appReset(directory);
   stage='configuration';
   if(!cleanInstall)await resetLegacyCliProfiles(directory);
   await addCliUser(directory);
@@ -45,9 +46,9 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
   }
   if(backend)desktopAccess=createDesktopAccess({directory,authenticate:()=>backend.authenticate()});
   stage='web';
-  web=createServer({cleanStart:cleanStart.reset,origins:remote?[remote]:[],desktopAccess,pairing:backend?createPairing({authenticate:()=>backend.authenticate()}):undefined,...(backend?{upstream:backend.upstream,accountConfig:backend.accountConfig,runnerService:backend.runnerService}:{upstream:`http://127.0.0.1:${unconfiguredHub.address().port}`}),sessions:[],environmentPath:join(directory,'environment.json')});
+  web=createServer({cleanStart:cleanStart.reset,appReset:{reset:reset.reset,requested:()=>appResetRequested(directory),request:()=>requestAppReset(directory),cancel:()=>cancelAppReset(directory)},origins:remote?[remote]:[],desktopAccess,pairing:backend?createPairing({authenticate:()=>backend.authenticate()}):undefined,...(backend?{upstream:backend.upstream,accountConfig:backend.accountConfig,runnerService:backend.runnerService}:{upstream:`http://127.0.0.1:${unconfiguredHub.address().port}`}),sessions:[],environmentPath:join(directory,'environment.json')});
   await new Promise((resolve,reject)=>{web.once('error',reject);web.listen(port,'127.0.0.1',resolve);});
-  return {url:`http://127.0.0.1:${web.address().port}`,get remotePhase(){return forward.phase;},
+  return {url:`http://127.0.0.1:${web.address().port}`,appReset:reset.reset,get remotePhase(){return forward.phase;},
   async startRemote(expected){
    if(closed||closing||remoteBusy||!backend||!remote||expected!==remote)throw Error('Remote start unavailable');
    remoteBusy=true;
@@ -84,6 +85,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  let runtime;
  try{
   runtime=await startDesktopWeb({directory:process.argv[2],port:Number(process.argv[3]??61192),cleanInstall:process.argv[4]==='--clean-start-1.1.0',onForwardExit:()=>process.stdout.write('REMOTE_UNKNOWN\n')});
+  if(runtime.appReset)process.stdout.write('APP_RESET\n');
   process.stdout.write('READY '+runtime.url+'\n');
   let stopping=false;const stop=async()=>{if(stopping)return;stopping=true;try{await runtime.close();process.exit(0);}catch{stopping=false;process.stdout.write('STOP_BLOCKED\n');}};
   process.stdin.setEncoding('utf8');let input='';process.stdin.on('data',chunk=>{input+=chunk;let i;while((i=input.indexOf('\n'))!==-1){const command=input.slice(0,i);input=input.slice(i+1);if(command==='quit')void stop();else if(command.startsWith('remote-start ')&&!stopping)void runtime.startRemote(command.slice(13)).then(()=>process.stdout.write('REMOTE_ON\n'),()=>process.stdout.write(runtime.remotePhase==='unknown'?'REMOTE_UNKNOWN\n':'REMOTE_FAILED\n'));else if(command==='remote-stop'&&!stopping)void runtime.stopRemote().then(()=>process.stdout.write('REMOTE_OFF\n'),()=>process.stdout.write('REMOTE_UNKNOWN\n'));else if(command==='connect'&&!stopping)void runtime.connect().then(()=>process.stdout.write('CONNECT_READY\n'),()=>process.stdout.write('CONNECT_FAILED\n'));}if(input.length>1024)input='';});process.stdin.on('end',()=>void stop());process.stdin.resume();

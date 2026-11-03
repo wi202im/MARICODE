@@ -372,7 +372,7 @@ test('permanent delete removes only hidden, ended sessions from the Hub and forg
  const service=createRunnerSetup({directory,accountConfig,projectsPath,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:`http://127.0.0.1:${hub.address().port}`});
  const del={kind:'session',id:sid,action:'delete'};
  await assert.rejects(service.manage('Bearer synthetic',del));assert.equal(deleted.length,0);
- active=false;await assert.rejects(service.manage('Bearer synthetic',del),/숨긴/);assert.equal(deleted.length,0);
+ active=false;await assert.rejects(service.manage('Bearer synthetic',del),/제거한/);assert.equal(deleted.length,0);
  await service.manage('Bearer synthetic',{kind:'session',id:sid,action:'remove'});
  await service.manage('Bearer synthetic',del);assert.deepEqual(deleted,['/api/sessions/'+sid]);
  assert.equal((await service.workspace('Bearer synthetic')).length,0);assert.equal((await projectRegistry(projectsPath).navigation()).sessions[sid],undefined);

@@ -50,7 +50,7 @@ export function allowedRoute(method,url,sessionId) {
   if(method==='POST'&&p.startsWith(base+'/permissions/')&&/^\/api\/sessions\/[^/]+\/permissions\/(?:[A-Za-z0-9_-]|%3[Aa]|:)+\/(approve|deny)$/.test(p))return true;
   return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork'].some(x=>p===base+x);
 }
-export function createServer({cleanStart=false,pairing,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
+export function createServer({cleanStart=false,appReset=null,pairing,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
   if(runnerConfig&&(runnerConfig.accountConfig!==accountConfig||new URL(runnerConfig.hubUrl).origin!==new URL(upstream).origin))throw Error('Runner must use the displayed account configuration and Hub');
   if(runnerConfig&&(handoffTarget||taskTarget))throw Error('Runner workspace cannot use a different fixed task target');
   const environment=environmentPath?createEnvironment(environmentPath):null;
@@ -180,6 +180,14 @@ export function createServer({cleanStart=false,pairing,desktopAccess,upstream,se
           res.writeHead(405).end();return;
         }
         const setupAssets=new Map([['/setup','setup/index.html'],['/setup/','setup/index.html'],['/setup/app.mjs','setup/app.mjs'],['/setup/progress.mjs','setup/progress.mjs'],['/setup/style.css','setup/style.css']]);
+        if(u.pathname==='/api/environment/reset'&&appReset){
+          // Local settings only: the reset itself runs on the next app start, before Hub/Runner.
+          if(!local||u.search||req.method!=='POST'||req.headers['x-setup-nonce']!==setupNonce||req.headers.origin!==`http://${host}`){res.writeHead(403).end();return;}
+          let body='';for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>256){res.writeHead(413).end();return;}}
+          let input;try{input=JSON.parse(body);}catch{res.writeHead(400).end();return;}
+          if(input?.cancel===true)await appReset.cancel();else if(input?.confirm==='초기화')await appReset.request();else{res.writeHead(400).end();return;}
+          res.setHeader('Content-Type','application/json');res.end(JSON.stringify({resetRequested:await appReset.requested()}));return;
+        }
         if(setupAssets.has(u.pathname)||u.pathname==='/api/environment'){
           if(!local||u.search){res.writeHead(403).end();return;}
           if(req.method==='GET'&&setupAssets.has(u.pathname)){
@@ -192,7 +200,7 @@ export function createServer({cleanStart=false,pairing,desktopAccess,upstream,se
               try{await environment.save(JSON.parse(body));for(const stream of remoteStreams)stream.destroy();remoteStreams.clear();}
               catch{res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({error:'설정을 저장하지 못했습니다. 현재 설정을 다시 조회하세요.'}));return;}
             }else if(req.method!=='GET'){res.writeHead(405).end();return;}
-            res.setHeader('Content-Type','application/json');res.end(JSON.stringify({...await environment.read(),nonce:setupNonce,cleanStart:cleanStart===true,aiConfigurationRegistered:!!accountsService,aiRegistrationAvailable:!!registrationService,runnerSetupAvailable:!!runnerService,discoveryAvailable:true,remoteEndpointConfigured:origins.length>0}));return;
+            res.setHeader('Content-Type','application/json');res.end(JSON.stringify({...await environment.read(),nonce:setupNonce,cleanStart:cleanStart===true,appReset:appReset?.reset===true,resetRequested:appReset?await appReset.requested():false,resetAvailable:!!appReset,aiConfigurationRegistered:!!accountsService,aiRegistrationAvailable:!!registrationService,runnerSetupAvailable:!!runnerService,discoveryAvailable:true,remoteEndpointConfigured:origins.length>0}));return;
           }
           res.writeHead(405).end();return;
         }

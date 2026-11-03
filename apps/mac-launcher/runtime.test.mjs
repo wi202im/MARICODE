@@ -87,3 +87,15 @@ test('1.1.0 clean launch clears old catalog and roles before serving first-run s
  }finally{await runtime?.close();}
 });
 test('upgrade cannot clean while another app runtime owns the directory',async t=>{const {writeFile,readFile}=await import('node:fs/promises');const directory=await mkdtemp(join(tmpdir(),'maricode-upgrade-busy-'));t.after(()=>rm(directory,{recursive:true,force:true}));const runtime=await startDesktopWeb({directory,port:0});try{await writeFile(join(directory,'projects.json'),'keep');await assert.rejects(startDesktopWeb({directory,port:0,cleanInstall:true}),e=>e.startupKind==='locked');assert.equal(await readFile(join(directory,'projects.json'),'utf8'),'keep');}finally{await runtime.close();}});
+test('app reset is requested from settings and applied on the next launch, returning to first-run setup',async t=>{
+ const {mkdir,writeFile}=await import('node:fs/promises');const directory=await mkdtemp(join(tmpdir(),'maricode-reset-'));t.after(()=>rm(directory,{recursive:true,force:true}));let runtime;
+ try{runtime=await startDesktopWeb({directory,port:0});const state=await (await fetch(runtime.url+'/api/environment')).json();
+  await mkdir(join(directory,'hub'),{recursive:true});await writeFile(join(directory,'projects.json'),'registrations');
+  const post=(body,headers={})=>fetch(runtime.url+'/api/environment/reset',{method:'POST',headers:{origin:runtime.url,'content-type':'application/json','x-setup-nonce':state.nonce,...headers},body:JSON.stringify(body)});
+  assert.equal((await post({confirm:'초기화'},{'x-setup-nonce':'wrong'})).status,403);assert.equal((await post({confirm:'nope'})).status,400);
+  assert.equal((await post({confirm:'초기화'})).status,200);assert.equal((await (await fetch(runtime.url+'/api/environment')).json()).resetRequested,true);
+  await runtime.close();runtime=null;await access(join(directory,'projects.json'));
+  runtime=await startDesktopWeb({directory,port:0});const after=await (await fetch(runtime.url+'/api/environment')).json();
+  assert.equal(after.configured,false);assert.equal(after.resetRequested,false);await assert.rejects(access(join(directory,'projects.json')));await assert.rejects(access(join(directory,'hub')));
+ }finally{await runtime?.close();}
+});

@@ -52,6 +52,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     var authenticating = false
     // The local view stays hidden until a real page loads so the empty WebView and one-use grant page never flash white.
     var localPageReady = false
+    // Set when the runtime reports an app reset; this app's WebKit store is cleared once before the first page.
+    var appResetPending = false
     var connectFile: URL { URL(fileURLWithPath: dataDirectory()).appendingPathComponent("connect.private.html") }
 
 
@@ -260,14 +262,15 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
     func restoreAfterReleaseTransition() {
         let key = "MaricodeCleanStart110WebData"
-        if Bundle.main.object(forInfoDictionaryKey: "MARICODERelease") as? Bool == true,
-           Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "1.1.0",
-           !UserDefaults.standard.bool(forKey: key) {
+        let releaseTransition = Bundle.main.object(forInfoDictionaryKey: "MARICODERelease") as? Bool == true &&
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "1.1.0" &&
+            !UserDefaults.standard.bool(forKey: key)
+        if releaseTransition || appResetPending {
             // This app's WebKit store only. Other browsers and external CLI authentication are untouched.
             webView.configuration.websiteDataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { [weak self] in
                 DispatchQueue.main.async {
                     guard let self, self.process != nil, !self.stopping else { return }
-                    UserDefaults.standard.set(true, forKey: key)
+                    if releaseTransition { UserDefaults.standard.set(true, forKey: key) }; self.appResetPending = false
                     self.restoreDesktop(); self.restoreMachineTabs()
                 }
             }
@@ -756,6 +759,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 while let end = self.received.firstIndex(of: "\n") {
                     let line = String(self.received[..<end])
                     self.received.removeSubrange(...end)
+                if line == "APP_RESET" { self.appResetPending = true }
                 if line == "READY http://127.0.0.1:61192" && !self.stopping {
                     self.url = URL(string: "http://127.0.0.1:61192/setup")
                     self.status.stringValue = "실행 중 · 이 Mac의 127.0.0.1:61192"

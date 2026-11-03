@@ -1148,43 +1148,49 @@ function openNavigation(target){
  showNavigation();$('navigation-edit').hidden=false;$('navigation-restores').hidden=true;$('navigation-confirm').hidden=true;
  $('navigation-title').textContent=({project:'프로젝트',workspace:'작업공간',session:'세션'})[target.kind]+' 관리';
  $('navigation-context').textContent=target.name+' · '+target.path;$('navigation-name').value=target.name;$('navigation-status').textContent='';
- $('navigation-remove').hidden=target.default===true;$('navigation-remove').textContent=target.kind==='session'?'목록에서 숨기기':'등록 해제';
- $('navigation-remove-help').textContent=target.default?'기본 작업공간은 프로젝트와 함께 등록 해제합니다.':target.kind==='session'?'실행이 끝난 세션을 목록에서 숨깁니다. 대화 기록은 삭제하지 않습니다.':target.kind==='project'?'하위 작업공간과 세션도 목록에서 제외합니다. 소스·Git·대화 기록은 그대로 남습니다.':'이 작업공간과 세션을 목록에서 제외합니다. 실제 폴더와 Git 워크트리는 삭제하지 않습니다.';
+ $('navigation-remove').hidden=target.default===true;$('navigation-remove').textContent=target.kind==='session'?'세션 제거':'등록 해제';
+ $('navigation-remove-help').textContent=target.default?'기본 작업공간은 프로젝트와 함께 등록 해제합니다.':target.kind==='session'?'목록에서만 제거하거나 앱의 대화 기록까지 삭제할 수 있습니다.':target.kind==='project'?'하위 작업공간과 세션도 목록에서 제외합니다. 소스·Git·대화 기록은 그대로 남습니다.':'이 작업공간과 세션을 목록에서 제외합니다. 실제 폴더와 Git 워크트리는 삭제하지 않습니다.';
  // The server refuses to hide a running session; say so up front instead of failing after confirmation.
  const running=target.kind==='session'&&(target.id===sessionId?session?.active:sessionCards.get(target.id)?.snapshot?.active)===true;
  // Hiding a running session ends it first, after one confirmation, instead of disabling the button.
- navigationTarget.running=running;if(running){$('navigation-remove').textContent='실행 종료 후 숨기기';$('navigation-remove-help').textContent='실행 중인 세션입니다. 실행을 종료한 뒤 목록에서 숨깁니다. 대화 기록은 삭제하지 않습니다.';}
+ navigationTarget.running=running;if(running)$('navigation-remove-help').textContent='실행 중인 세션입니다. 제거하면 먼저 실행을 종료합니다.';
  $('navigation-name').focus();
 }
 async function changeNavigation(input){
  if(navigationPending)return;navigationPending=true;for(const b of $('navigation-dialog').querySelectorAll('button,input'))b.disabled=true;$('navigation-status').textContent='변경 중…';
- try{await api('/api/navigation',{method:'POST',body:input});await openWorkspace();closeNavigation();notice(input.action==='rename'?'표시 이름을 변경했습니다.':input.action==='restore'?'목록에 복원했습니다.':input.action==='delete'?'세션을 영구 삭제했습니다. CLI 원본 기록은 남아 있습니다.':'목록에서 정리했습니다. 보기 설정에서 복원할 수 있습니다.');}
+ try{await api('/api/navigation',{method:'POST',body:input});await openWorkspace();closeNavigation();notice(input.action==='rename'?'표시 이름을 변경했습니다.':input.action==='restore'?'목록에 복원했습니다.':input.action==='delete'?'세션 기록을 삭제했습니다. CLI 원본 기록은 남아 있습니다.':'목록에서 정리했습니다. 보기 설정에서 복원할 수 있습니다.');}
  catch(error){const text=error.message+' 응답이 끊긴 경우 목록을 새로고침해 결과부터 확인하세요.';$('navigation-status').textContent=text;if($('navigation-dialog').hidden)notice(text);}
  finally{navigationPending=false;for(const b of $('navigation-dialog').querySelectorAll('button,input'))b.disabled=false;}
 }
 async function restoreNavigation(){
- if(navigationPending)return;$('display-preferences').open=false;navigationTarget=null;showNavigation();$('navigation-edit').hidden=true;$('navigation-restores').hidden=false;$('navigation-restores').replaceChildren();$('navigation-title').textContent='등록 해제·숨긴 항목';$('navigation-context').textContent='같은 항목으로 복원합니다. 세션을 새로 만들거나 실행하지 않습니다.';$('navigation-status').textContent='조회 중…';
+ if(navigationPending)return;$('display-preferences').open=false;navigationTarget=null;showNavigation();$('navigation-edit').hidden=true;$('navigation-restores').hidden=false;$('navigation-restores').replaceChildren();$('navigation-title').textContent='제거한 항목';$('navigation-context').textContent='같은 항목으로 복원합니다. 세션을 새로 만들거나 실행하지 않습니다.';$('navigation-status').textContent='조회 중…';
  try{const data=await api('/api/navigation');if($('navigation-dialog').hidden||navigationTarget)return;
   const items=[...data.removed,...allSessionEntries.filter(s=>s.hidden).map(s=>({kind:'session',id:s.id,name:s.displayName??s.label}))];
   for(const item of items){const row=document.createElement('div'),label=document.createElement('span'),button=document.createElement('button');label.textContent=({project:'프로젝트',workspace:'작업공간',session:'세션'})[item.kind]+' · '+item.name;button.textContent='복원';button.setAttribute('aria-label',item.name+' 복원');button.onclick=()=>changeNavigation({kind:item.kind,id:item.id,action:'restore'});row.append(label,button);
    // Permanent delete removes only the app record; a second click confirms because it cannot be undone.
-   if(item.kind==='session'){const remove=document.createElement('button');remove.textContent='영구 삭제';remove.className='danger';remove.setAttribute('aria-label',item.name+' 영구 삭제');
+   if(item.kind==='session'){const remove=document.createElement('button');remove.textContent='기록 삭제';remove.className='danger';remove.setAttribute('aria-label',item.name+' 기록 삭제');
     remove.onclick=()=>{if(remove.dataset.confirm){changeNavigation({kind:'session',id:item.id,action:'delete'});return;}remove.dataset.confirm='1';remove.textContent='삭제 확인';$('navigation-status').textContent='앱의 대화 기록을 영구 삭제합니다. 되돌릴 수 없습니다. 터미널 Claude CLI의 원본 기록은 남습니다. 한 번 더 누르면 삭제합니다.';};row.append(remove);}
    $('navigation-restores').append(row);}
-  $('navigation-status').textContent=items.length?'프로젝트를 복원하면 그 안의 숨긴 세션도 관리할 수 있습니다.':'복원할 항목이 없습니다.';
+  $('navigation-status').textContent=items.length?'프로젝트를 복원하면 그 안의 제거한 세션도 관리할 수 있습니다.':'복원할 항목이 없습니다.';
  }catch(e){$('navigation-status').textContent=e.message;}
 }
 if(workspaceLayout){
  $('navigation-dialog').addEventListener('cancel',e=>{e.preventDefault();if(!navigationPending)closeNavigation();});
  $('navigation-close').onclick=()=>{if(!navigationPending)closeNavigation();};
  $('navigation-rename').onclick=()=>{if(navigationTarget)changeNavigation({kind:navigationTarget.kind,id:navigationTarget.id,action:'rename',name:$('navigation-name').value});};
- $('navigation-remove').onclick=()=>{$('navigation-confirm').hidden=false;$('navigation-confirm-remove').textContent=navigationTarget.kind==='session'?(navigationTarget.running?'종료하고 숨기기':'숨기기 확인'):'등록 해제 확인';};
+ $('navigation-remove').onclick=()=>{const t=navigationTarget,session=t.kind==='session';$('navigation-confirm').hidden=false;$('navigation-confirm-delete').hidden=!session;
+  $('navigation-confirm-remove').textContent=session?'목록에서만 제거':'등록 해제 확인';
+  $('navigation-confirm-text').textContent=session?`${t.running?'실행을 종료한 뒤 ':''}어떻게 제거할까요? 목록에서만 제거하면 ‘제거한 항목 복원’에서 되돌릴 수 있습니다. 기록까지 삭제하면 앱의 대화 기록이 영구 삭제되며 되돌릴 수 없습니다(터미널 CLI 원본 기록은 남음).`:'위 항목을 목록에서 정리할까요? 원본은 유지하며 나중에 복원할 수 있습니다.';};
  $('navigation-cancel-remove').onclick=()=>{$('navigation-confirm').hidden=true;};
- $('navigation-confirm-remove').onclick=async()=>{const t=navigationTarget;if(!t)return;
+ // Session removal: bookmark only (restorable) or also delete the app record. A running session is ended first.
+ async function removeTarget(deleteRecord){const t=navigationTarget;if(!t)return;
   if(t.kind==='session'&&t.running){closeNavigation();navigationTarget=null;
    if(t.id!==sessionId){selectSession(t.id);await refresh();}
-   if(await endCurrentSession(false))await changeNavigation({kind:'session',id:t.id,action:'remove'});return;}
-  changeNavigation({kind:t.kind,id:t.id,action:'remove'});};
+   if(!await endCurrentSession(false))return;}
+  await changeNavigation({kind:t.kind,id:t.id,action:'remove'});
+  if(deleteRecord)await changeNavigation({kind:'session',id:t.id,action:'delete'});}
+ $('navigation-confirm-remove').onclick=()=>removeTarget(false);
+ $('navigation-confirm-delete').onclick=()=>removeTarget(true);
  $('restore-navigation').onclick=restoreNavigation;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!navigationPending)closeNavigation();});
 }
