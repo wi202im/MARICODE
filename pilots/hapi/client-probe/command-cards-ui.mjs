@@ -28,15 +28,21 @@ export function liveMcpServers(tools){
  const names=new Set(tools.flatMap(t=>{const m=/^mcp__(.+?)__/.exec(t);return m?[m[1].replace(/^claude_ai_(.*)$/,(_,r)=>'claude.ai '+r.replaceAll('_',' '))]:[];}));
  return [...names].sort();
 }
+// claude.ai account connectors are authorized on claude.ai, so unused ones are not actionable from the CLI card.
+const needsAction=status=>['인증 필요','연결 실패','프로젝트 승인 필요'].includes(status);
 export function createCommandCard({id,name,cap,api,storage,valid=()=>true,reconnect,accountSettings,backToChat,liveTools=()=>null,document:doc=globalThis.document}){
  const el=(tag,text)=>{const n=doc.createElement(tag);if(text)n.textContent=text;return n;};
  const card=el('section');card.className='cli-command-card';card.setAttribute('aria-label',`/${name} 명령 카드`);
  const head=el('header'),title=el('strong',`/${name} · ${cap.agent==='claude'?'Claude':'Codex'}`),close=el('button','닫기');close.type='button';head.append(title,close);
  const context=el('p',`${cap.alias||cap.accountId} · ${cap.cwd}`);context.className='cli-card-context';
  const note=el('small','공식 CLI를 이 컴퓨터에서 실행합니다. 결과는 AI에게 전송하지 않습니다.');
- const reflection=el('p');reflection.hidden=name!=='mcp';reflection.textContent='설정 조회와 현재 대화의 MCP 도구 연결은 별개입니다.';
+ const reflection=el('p');
  const status=el('p','조회 준비');status.setAttribute('role','status');const rows=el('div'),controls=el('div'),writeStatus=el('p');writeStatus.setAttribute('role','status');
- const check=el('button','조회 결과 확인'),reload=el('button','목록 새로고침'),writeCheck=el('button','변경 결과 확인'),apply=el('button','적용하고 이어가기');for(const b of [check,reload,writeCheck,apply])b.type='button';controls.append(reload,check);const live=el('p');live.hidden=name!=='mcp';card.append(head,context,note,live,controls,status,rows,reflection);
+ const check=el('button','조회 결과 확인'),reload=el('button','목록 새로고침'),writeCheck=el('button','변경 결과 확인'),apply=el('button','적용하고 이어가기');for(const b of [check,reload,writeCheck,apply])b.type='button';controls.append(reload,check);const live=el('p');live.hidden=name!=='mcp';
+ // MCP: the live servers and rows needing action stay open; the full settings list starts folded.
+ const all=el('details'),allSummary=el('summary'),allRows=el('div');all.append(allSummary,allRows);all.hidden=true;
+ if(name==='mcp'){reload.textContent='새로고침';head.insertBefore?.(reload,close);note.hidden=true;}
+ card.append(head,context,note,live,controls,status,rows,all,reflection);
  const buttons=[],key=kind=>`maricode-command-card:${id}:${name}:${kind}`;
  const stored=kind=>{try{return JSON.parse(storage?.getItem(key(kind)));}catch{return null;}};
  const save=kind=>v=>{try{if(v)storage?.setItem(key(kind),JSON.stringify(v));else storage?.removeItem(key(kind));}catch{}};
@@ -59,14 +65,24 @@ export function createCommandCard({id,name,cap,api,storage,valid=()=>true,reconn
  if(name==='account'){accountFlow=createAccountCardControls({agent:cap.agent,api,storage,valid:()=>!disposed&&valid(),settings:accountSettings,back:backToChat,changed:render,document:doc});card.append(accountFlow.element);controls.hidden=status.hidden=true;}
  async function load(){if(!valid())return;if(accountFlow)return accountFlow.load();await read.run(definitions.find(d=>d[0]===name)[1]);}
  reload.onclick=load;check.onclick=()=>valid()&&read.check();writeCheck.onclick=()=>valid()&&write.check();
- apply.onclick=async()=>{if(!valid()||reconnecting||resumeDone||!write.value?.needsReconnect)return;reconnecting=true;render();try{const done=await reconnect(id);resumeDone=done;if(done)reflection.textContent='같은 세션 재개 완료 · 실제 MCP 도구 연결은 미확인입니다. CLI 목록 새로고침만으로 도구 연결이 검증되지는 않습니다.';writeStatus.textContent=done?'같은 세션을 재개했습니다. MCP 실제 도구 연결은 아직 확인하지 않았습니다. 대화에서 필요한 도구를 사용해 확인하세요.':'재개를 취소했습니다. 설정은 저장되어 있습니다.';}catch(e){writeStatus.textContent=e.message;}finally{reconnecting=false;apply.disabled=resumeDone;}};
+ apply.onclick=async()=>{if(!valid()||reconnecting||resumeDone||!write.value?.needsReconnect)return;reconnecting=true;render();try{const done=await reconnect(id);resumeDone=done;if(done)reflection.textContent='같은 세션 재개 완료 · 실제 MCP 도구 연결은 미확인입니다. CLI 목록 새로고침만으로 도구 연결이 검증되지는 않습니다.';writeStatus.textContent=done?'같은 세션을 재개했습니다. MCP 실제 도구 연결은 아직 확인하지 않았습니다. 대화에서 필요한 도구를 사용해 확인하세요.':'재개를 취소했습니다. 설정은 저장되어 있습니다.';}catch(e){writeStatus.textContent=e.message;}finally{reconnecting=false;apply.disabled=resumeDone;reflection.hidden=!reflection.textContent;}};
  close.onclick=()=>{if(!read.busy&&!write.busy&&!read.pending&&!write.pending&&!reconnecting&&!accountFlow?.busy){disposed=true;card.remove();}};
  function render(){if(disposed)return;reload.disabled=read.busy||read.pending;check.hidden=!read.pending;check.disabled=read.busy;writeCheck.textContent=write.value?.action==='mcp-login'?'인증 결과 확인':'변경 결과 확인';writeCheck.hidden=!write.pending;writeCheck.disabled=write.busy;apply.hidden=!write.value?.needsReconnect;apply.disabled=reconnecting||write.busy||resumeDone;close.disabled=read.busy||write.busy||read.pending||write.pending||reconnecting||!!accountFlow?.busy;
   for(const b of buttons)b.disabled=write.pending||write.busy;scope.disabled=write.pending||write.busy;
-  const servers=liveMcpServers(liveTools());live.textContent=servers?`이 대화가 시작할 때 불러온 MCP ${servers.length}개${servers.length?' · '+servers.join(', '):''} (필요할 때 불러오는 MCP는 빠질 수 있음)`:'이 대화가 불러온 MCP 정보가 아직 없습니다. 대화를 시작하면 표시됩니다.';
-  const count=read.value?.rows?.length;status.textContent=read.busy?'공식 CLI 조회 중…':read.value?.summary?(count>1?`${count}개 · `:'')+read.value.summary:(read.pending?'미확인 조회가 있습니다. 결과를 확인하세요.':'조회 준비');
+  reflection.hidden=!reflection.textContent;
+  const servers=liveMcpServers(liveTools());live.textContent=servers?`이 대화의 MCP ${servers.length}개${servers.length?' · '+servers.join(', '):''}\n필요할 때 불러오는 MCP는 여기 없을 수 있습니다.`:'이 대화가 불러온 MCP 정보가 아직 없습니다. 대화를 시작하면 표시됩니다.';
+  const listed=read.value?.rows??[],attention=name==='mcp'?listed.filter(r=>needsAction(r.status)&&!r.name.startsWith('claude.ai ')):[];
+  status.textContent=read.busy?'공식 CLI 조회 중…':name==='mcp'&&listed.length?(attention.length?`확인 필요 ${attention.length}개`:'확인이 필요한 MCP 없음'):read.value?.summary??(read.pending?'미확인 조회가 있습니다. 결과를 확인하세요.':'조회 준비');
   writeStatus.textContent=write.busy?'설정 변경 중…':write.value?.summary??(write.pending?'앞선 변경 결과가 미확인입니다. 다시 변경하지 않고 결과를 조회하세요.':'');
-  if(rowsValue===read.value)return;rowsValue=read.value;rows.replaceChildren();for(const row of read.value?.rows??[]){const line=el('div');line.className='cli-card-row';line.append(el('strong',row.name),el('span',row.status));if(name==='mcp'&&cap.actions.includes('mcp-remove')){const remove=el('button','삭제 검토');remove.type='button';remove.onclick=()=>propose('mcp-remove',{name:row.name,...(cap.agent==='claude'?{scope:scope.value}:{})});line.append(remove);}if(name==='mcp'&&cap.actions.includes('mcp-login')&&row.status!=='비활성'&&(cap.agent!=='claude'||row.status==='인증 필요')){const login=el('button','인증 시작');login.type='button';login.onclick=()=>propose('mcp-login',{name:row.name});line.append(login);}rows.append(line);}
+  if(rowsValue===read.value)return;rowsValue=read.value;rows.replaceChildren();allRows.replaceChildren();
+  const line=(row,{remove=false,login=false}={})=>{const n=el('div');n.className='cli-card-row';n.append(el('strong',row.name),el('span',row.status));
+   if(remove&&cap.actions.includes('mcp-remove')){const b=el('button','삭제 검토');b.type='button';b.onclick=()=>propose('mcp-remove',{name:row.name,...(cap.agent==='claude'?{scope:scope.value}:{})});n.append(b);}
+   if(login&&cap.actions.includes('mcp-login')&&row.status!=='비활성'){const b=el('button','인증 시작');b.type='button';b.onclick=()=>propose('mcp-login',{name:row.name});n.append(b);}return n;};
+  if(name!=='mcp'){for(const row of listed)rows.append(line(row));return;}
+  // Claude reports which servers need auth; Codex rows carry no auth state, so their login stays in the full list.
+  for(const row of attention)rows.append(line(row,{login:cap.agent==='claude'&&row.status==='인증 필요'}));
+  for(const row of listed)allRows.append(line(row,{remove:true,login:cap.agent!=='claude'}));
+  allSummary.textContent=`설정된 MCP 전체 ${listed.length}개`;all.hidden=!listed.length;
  }
  render();return {element:card,load,show:()=>{card.hidden=false;},hide:()=>{card.hidden=true;}};
 }
