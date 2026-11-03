@@ -49,3 +49,11 @@ test('MCP authentication has an explicit per-server action and checks the same r
  button('인증 시작').onclick();assert.equal(starts,1);
  await button('인증 결과 확인').onclick();assert.equal(starts,1);assert.equal(checks,1);assert.equal(button('적용하고 이어가기').hidden,false);
 });
+
+test('MCP apply resumes once and never labels real tools verified',async()=>{
+ const {createCommandCard}=await import('./command-cards-ui.mjs');const nodes=[];let resumes=0;
+ const document={createElement(tag){const n={tag,children:[],append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(){},remove(){}};nodes.push(n);return n;}};
+ const card=createCommandCard({id:'fixture',name:'mcp',document,cap:{agent:'codex',actions:['mcp-list','mcp-login']},reconnect:async()=>{resumes++;return true;},api:async(path,opt)=>opt.body.action==='mcp-list'?{state:'succeeded',rows:[{name:'demo',status:'인증 필요'}]}:{state:'succeeded',needsReconnect:true,summary:'인증 완료'}});
+ const button=text=>nodes.find(n=>n.tag==='button'&&n.textContent===text);
+ await card.load();button('인증 시작').onclick();await button('변경 확인').onclick();await button('적용하고 이어가기').onclick();await button('적용하고 이어가기').onclick();assert.equal(resumes,1);assert.equal(button('적용하고 이어가기').disabled,true);assert.ok(nodes.some(n=>n.textContent?.includes('실제 도구 연결은 아직 확인하지 않았습니다')));
+});

@@ -79,12 +79,19 @@ async function openCommandCard(name){
  if(mine!==epoch||!token||token!==auth)return false;
  if(!cardCommands(cap).some(c=>c.name===name))throw Error('이 세션·설치된 CLI에서는 해당 명령 카드를 사용할 수 없습니다.');
  const key=id+':'+name;let card=localCommandCards.get(key);
+ if(card&&card.contextKey!==cap.contextKey){card.element.remove();localCommandCards.delete(key);card=null;}
  if(!card||!card.element.isConnected){
-  card=createCommandCard({id,name,cap,api,storage:sessionStorage,valid:()=>token===auth&&sessionId===id,reconnect:async()=>{
+  card=createCommandCard({id,name,cap,api:async(path,options)=>{
+   if(options?.method==='POST'&&path.startsWith('/api/accounts/')){const latest=await commandCapabilities(id);if(token!==auth||sessionId!==id||latest?.contextKey!==cap.contextKey)throw Object.assign(Error('CLI 연결이 바뀌었습니다. 카드를 다시 여세요.'),{rejected:true});}
+   return api(path,options);
+  },accountSettings:()=>{workspacePanel('info');$('accounts-panel').open=true;
+   let back=$('chat-account-return');if(!back){back=document.createElement('button');back.id='chat-account-return';back.type='button';$('accounts-panel').append(back);}
+   back.textContent='설정 확인 후 대화로 돌아가기';back.onclick=async()=>{if(token===auth&&sessionId===id){workspacePanel('chat');try{await openCommandCard(name);}catch(e){notice(e.message);}$('prompt').focus();}};refreshAccounts();
+  },backToChat:()=>{workspacePanel('chat');card.hide();$('prompt').focus();},storage:sessionStorage,valid:()=>token===auth&&sessionId===id,reconnect:async()=>{
    if(busy||id!==sessionId||token!==auth)throw Error('현재 작업을 마친 뒤 같은 세션에서 진행하세요.');
    busy=true;render();const held=actions;
    try{return await reconnectCommandSession({id,read:()=>({...session,id:sessionId,connected,pending:held!==actions||!!actions?.pending||!!permissionActions?.pending||!!settingsPending()}),refresh,confirm:()=>confirmArchive($('title').textContent,id),archive:expected=>held.archive(expected),resume:()=>held.resume()});}finally{busy=false;render();}
-  }});card.sessionId=id;localCommandCards.set(key,card);commandCardHost.append(card.element);
+  }});card.sessionId=id;card.contextKey=cap.contextKey;localCommandCards.set(key,card);commandCardHost.append(card.element);
  }
  card.show();card.element.scrollIntoView({block:'nearest'});await card.load();return true;
 }
@@ -284,7 +291,7 @@ async function selectSession(id){
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
-  sessionId=id;for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
+  sessionId=id;$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
   const permissionKey=`hapi-permission-pending:${id}`;
