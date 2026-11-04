@@ -8,6 +8,7 @@
 - 색: `theme.css` 토큰을 VS Code Dark Modern 값으로(배경 #1f1f1f/#181818, 글자 #cccccc, 강조 #0078d4, 선택 #04395e) 바꾸고, VSCode Elements가 읽는 `--vscode-*` 변수를 같은 토큰에 연결했다. 토큰을 쓰는 작업·설정·연결 화면 모두에 적용되며 zinc 직접 색 일부를 토큰으로 바꿨다.
 - 아이콘: 화면 아이콘을 Lucide에서 Codicons(VS Code 공식, `vendor/codicons`)로 교체(`icons.mjs`의 `icon()`, HTML 21곳, CSS 의사요소). 파일 형식 아이콘은 Material 유지. Lucide 자료는 삭제.
 - 컴포넌트: VSCode Elements 2.5.1(`vendor/vscode-elements/bundled.js`). 파일 트리는 `vscode-tree`(폴더는 처음 열릴 때 `open` 속성 변화를 감시해 읽음 — 마우스·키보드 공통), 오른쪽 패널 접기 4곳은 `vscode-collapsible`. 그 외 버튼·입력·목록 선택·패널 탭·가운데 파일 탭은 `workspace/vscode.css`로 VS Code 모양을 맞췄다(라이브러리 부품으로 바꾸지 않음).
+- 후속(사용자 요청 ‘아직 안 바꾼 것도 마저’): 합성 Hub(예시 세션·메시지, 실제 자료 없음)로 실제 작업 화면을 띄워 왼쪽 목록·채팅·입력창·새 대화·명령 팔레트·모델 설정·로그인 화면을 보며 맞췄다. 모서리(창·카드·팝업 6px, 버튼·입력·칩·코드 4px 이하), 보조 버튼은 회색 채움(테두리 제거), 입력·선택 26~28px 밀도, 보내기는 `send` 아이콘 네모 버튼, 명령 팔레트는 VS Code 빠른 선택(위쪽, 22px 행, 파란 선택 행)으로. 모두 `workspace/vscode.css`. 기본 요소를 라이브러리 부품으로 바꾸는 일은 JS 의존(입력창 키 처리, 동적 select 옵션, 폼 제출)이 커서 하지 않았다.
 - 주의: `vscode-tree`가 항목에 자체 `data-path`를 쓰므로 앱 경로는 `data-file`에 둔다(헤드리스 시험에서 발견, 검사에 반영).
 - **된다 — 헤드리스 Chrome(격리 프로필, 소스 시험 서버):** 컴포넌트 등록·Codicon 글꼴·실제 클릭으로 폴더 펼침·열린 파일 선택 표시, 콘솔/CSP 오류 없음. **된다 — 자동:** 전체 통과. **확인 안 함:** Mac 앱(WebKit) 화면, 실제 세션 데이터로 왼쪽 목록·채팅 화면 모양.
 

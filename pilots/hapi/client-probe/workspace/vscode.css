@@ -32,3 +32,30 @@ vscode-collapsible.account-panel{border:0;border-radius:0;padding:0}
 .inspector,.inspector-statusbar{background:var(--sidebar)}
 #entries .tree-icon{display:block;margin-top:3px}
 .file-navigation button{background:var(--vscode-button-secondaryBackground);border:0}
+/* Corners: VS Code uses ~6px for widgets (quick pick, dialogs, chat input) and 2-4px for inline controls. */
+.connection-panel,.account-panel,#tools details,.task-create,.draft-target,.display-menu,.navigation-card,#claude-import-panel,#imported-history,#session-entry-modes,.turn-alert,.palette,.find-bar,.pairing-dialog,
+.composer-wrap #send-form,.agent-settings,.approval-guidance,.permission-card,.archive-dialog,.live-permissions,.activity-tool,.edit-preview,#command-suggestions,.cli-command-card,.branch-banner,.login-card,.workspace-welcome button{border-radius:6px}
+input,select,textarea,.bubble.user,.code-block,.markdown-table,.question-form label,.attachment-chip,.cli-output,.branch-repo,.markdown-view pre{border-radius:4px}
+.composer-options button,.attach-button,.welcome-symbol{border-radius:2px}
+/* Chat: VS Code chat send action. */
+#send{border-radius:4px;width:28px;height:28px;min-height:28px}
+/* Secondary buttons: VS Code fills them grey instead of outlining. Primary (.primary and the accent rules) stay blue. */
+:is(.connection-banner,.handoff-controls,.account-panel,.file-navigation,.task-create,.navigation-card,.account-profile-row,.pairing-actions,.official-cli-actions,.settings-fields,.archive-buttons,.composer-activity) button:not(.primary):not(#create-task):not(#claude-import-start),
+.turn-alert button:first-of-type,.agent-settings>button,.permission-card button:not(:first-child),.branch-repo li button,.branch-add button,.branch-disable,.branch-pin>button,.branch-banner button:not(.primary){background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);border:1px solid transparent}
+:is(.connection-banner,.handoff-controls,.account-panel,.file-navigation,.task-create,.navigation-card,.account-profile-row,.pairing-actions,.official-cli-actions,.settings-fields,.archive-buttons,.composer-activity) button:not(.primary):not(#create-task):not(#claude-import-start):hover:not(:disabled),
+.agent-settings>button:hover:not(:disabled),.permission-card button:not(:first-child):hover:not(:disabled),.branch-banner button:not(.primary):hover:not(:disabled){background:var(--vscode-button-secondaryHoverBackground)}
+/* Form controls: VS Code density (26px rows). */
+input:not([type=checkbox]):not([type=radio]),select{min-height:26px;padding:3px 8px;font-size:13px}
+textarea{font-size:13px}
+.task-create select,.task-create input:not([type=checkbox]){min-height:28px}
+.conversation>.task-create select,.conversation>.task-create input:not([type=checkbox]),.cli-command-card input,.cli-command-card select,.question-form input[type=text]{height:28px;min-height:28px;border-radius:4px;background:var(--surface2);padding:3px 8px}
+.cli-command-card button{min-height:26px}
+/* Command palette as VS Code's quick pick: near the top, compact rows, blue active row, input with a focus border. */
+.palette-backdrop{background:transparent;padding-top:8px}
+.palette{width:min(600px,calc(100vw - 32px));background:var(--vscode-dropdown-listBackground,var(--surface0));border-color:var(--border);box-shadow:0 0 8px 2px #0000005c}
+#palette-input{margin:6px;width:calc(100% - 12px);border:1px solid var(--focus);background:var(--surface2);border-radius:2px;padding:4px 6px;font-size:13px}
+#palette-list{padding:0 0 4px}
+.palette-option{border-radius:0;padding:2px 10px;min-height:22px;gap:8px}
+.palette-option:hover{background:var(--hover)}.palette-option.active{background:var(--selection);color:#ffffff}
+.palette-option kbd{border-radius:3px;background:#8080802b;border-color:#33333399;border-bottom-color:#44444499}
+.palette-foot{padding:4px 10px}
