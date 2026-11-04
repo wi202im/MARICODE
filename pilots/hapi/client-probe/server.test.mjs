@@ -519,3 +519,15 @@ test('with the Runner stopped, this Mac reads its own session folder from disk; 
  assert.equal((await get('file?path=..%2F..%2Fetc%2Fhosts')).status,403);
  machine='other';assert.equal((await get('directory?path=')).status,403);
 });
+test('every module the workspace page imports is served',async t=>{
+ const {readFile}=await import('node:fs/promises');
+ const server=createServer({upstream:'http://127.0.0.1:9',sessionId:id});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
+ const origin=`http://127.0.0.1:${server.address().port}`,seen=new Set(),todo=['/app.mjs'];
+ while(todo.length){
+  const path=todo.pop();if(seen.has(path))continue;seen.add(path);
+  const r=await fetch(origin+path);assert.equal(r.status,200,path);await r.arrayBuffer();
+  const source=await readFile(new URL('.'+path,import.meta.url),'utf8');
+  for(const m of source.matchAll(/(?:import|from)\s*\(?\s*['"](\.{1,2}\/[^'"$]+)['"]/g))todo.push(new URL(m[1],'http://x'+path).pathname);
+ }
+ assert.ok(seen.size>30);
+});
