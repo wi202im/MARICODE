@@ -196,9 +196,10 @@ function renderWorkflow(){
   });
   $('permission-list').replaceChildren(...nodes);
   }
-  const opened=new Set([...$('tools').querySelectorAll('details[open]')].map(x=>x.dataset.callId));
+  // Only the older single-page layout keeps a separate tool list; the workspace shows tools inline in the chat.
+  if($('tools')){const opened=new Set([...$('tools').querySelectorAll('details[open]')].map(x=>x.dataset.callId));
   const tools=toolViews(messages).map(tool=>renderTool(tool,opened.has(tool.id),session?.metadata?.path));
-  $('tools').replaceChildren(...tools);$('tools-empty').hidden=tools.length>0;
+  $('tools').replaceChildren(...tools);$('tools-empty').hidden=tools.length>0;}
 }
 async function decidePermission(id,request,action,scope,answers){
   if(busy||!connected||permissionActions?.pending)return;
@@ -692,11 +693,11 @@ function workspacePanel(view){
  const panel=view==='chat'?lastInspector:view;
  const label=view==='chat'?'상세 사이드바 보이기':'상세 사이드바 숨기기';
  $('info-tab').setAttribute('aria-expanded',String(view!=='chat'));$('info-tab').setAttribute('aria-label',label);$('info-tab').title=label;
- $('files').hidden=panel!=='files';$('tool-panel').hidden=panel!=='tools';$('session-info').hidden=panel!=='info';
- $('inspector-title').textContent=panel==='files'?'프로젝트 파일':panel==='tools'?'도구 실행 상세':'세션 정보';
+ $('files').hidden=panel!=='files';$('session-info').hidden=panel!=='info';
+ $('inspector-title').textContent=panel==='files'?'프로젝트 파일':'세션 정보';
  document.querySelector('.workspace').classList.toggle('inspector-visible',view!=='chat');
  $('chat').hidden=false;
- for(const [id,type] of [['session-info-tab','info'],['files-tab','files'],['tools-tab','tools']])$(id).setAttribute('aria-pressed',String(panel===type));
+ for(const [id,type] of [['session-info-tab','info'],['files-tab','files']])$(id).setAttribute('aria-pressed',String(panel===type));
 }
 function workspaceDrawer(open){if(!workspaceLayout)return;$('sidebar').classList.toggle('open',open);$('scrim').hidden=!open;updateSidebarToggle();}
 const compactSidebar=window.matchMedia('(max-width:760px)');
@@ -712,7 +713,7 @@ function updateSidebarToggle(){
 
 if(workspaceLayout){
  $('git-summary').onclick=()=>workspacePanel('info');$('git-refresh').onclick=()=>{loadGit(true);gitReview?.reset();};
- $('tools-tab').onclick=()=>workspacePanel('tools');$('session-info-tab').onclick=()=>workspacePanel('info');$('info-tab').onclick=()=>workspacePanel(workspaceView==='chat'?lastInspector:'chat');$('back-chat').onclick=()=>workspacePanel('chat');
+ $('session-info-tab').onclick=()=>workspacePanel('info');$('info-tab').onclick=()=>workspacePanel(workspaceView==='chat'?lastInspector:'chat');$('back-chat').onclick=()=>workspacePanel('chat');
  updateSidebarToggle();
  compactSidebar.addEventListener('change',()=>workspaceDrawer(false));
  $('open-nav').onclick=()=>{if(compactSidebar.matches){workspaceDrawer(!$('sidebar').classList.contains('open'));return;}sidebarCollapsed=!sidebarCollapsed;try{sessionStorage.setItem('maricode-sidebar-collapsed',String(sidebarCollapsed));}catch{}updateSidebarToggle();};$('close-nav').onclick=()=>workspaceDrawer(false);$('scrim').onclick=()=>workspaceDrawer(false);
