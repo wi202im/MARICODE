@@ -127,22 +127,11 @@
 .markdown-view table{border-collapse:collapse;display:block;overflow:auto;margin:16px 0}.markdown-view th,.markdown-view td{border:1px solid var(--border-strong);padding:6px 12px}.markdown-view th{background:var(--surface1)}
 .markdown-view hr{border:0;border-top:1px solid var(--border)}
 @media(max-width:760px){.markdown-view{padding:16px}.file-pane-head{padding:8px 12px}}
-/* File tree (right panel): VS Code-like rows with Material Icon Theme icons. */
-#entries ul{list-style:none;margin:0;padding:0}
-#entries .tree-row{display:flex;align-items:center;gap:6px;width:100%;min-height:26px;padding-top:2px;padding-bottom:2px;padding-right:8px;border:0;border-radius:5px;background:none;font-size:13px;color:var(--foreground);overflow-wrap:normal}
-#entries .tree-row::before{content:none}
-#entries .tree-row:hover{background:var(--surface1)}#entries .tree-row.active{background:var(--surface2)}
-#entries .tree-row:focus-visible{outline:1px solid var(--border-strong);outline-offset:-1px}
-.tree-chevron{width:12px;flex:none;color:var(--dim);font-size:10px;text-align:center}
-.tree-icon{width:16px;height:16px;flex:none}
-.tree-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#entries .tree-row[data-kind=directory] .tree-name,#entries .tree-row[data-kind=other] .tree-name{font-weight:500}
-@media(max-width:760px){#entries .tree-row{min-height:36px}}
 /* Lucide icons drawn by CSS for pseudo-elements (masks take the text colour). */
 .bubble.agent>small::before{content:"";background:var(--surface2) url(/vendor/lucide/sparkles.svg) center/14px no-repeat}
 :where(details:not(.activity-group,.activity-tool,#display-preferences,.connection-menu,#tools details))>summary::before,#tools summary::before{content:"";display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;background:var(--dim);-webkit-mask:url(/vendor/lucide/chevron-right.svg) center/contain no-repeat;mask:url(/vendor/lucide/chevron-right.svg) center/contain no-repeat;transition:transform .12s}
 #tools details[open]>summary::before{content:"";transform:rotate(90deg)}
 .connection-menu>summary::after{content:"";display:inline-block;width:18px;height:18px;vertical-align:middle;background:currentColor;-webkit-mask:url(/vendor/lucide/ellipsis.svg) center/contain no-repeat;mask:url(/vendor/lucide/ellipsis.svg) center/contain no-repeat}
-.tree-chevron .glyph,.task-pin-icon .glyph{width:12px;height:12px;vertical-align:-1px}.center-tab-close .glyph,.attachment-list .glyph{width:13px;height:13px}
+.task-pin-icon .glyph{width:12px;height:12px;vertical-align:-1px}.center-tab-close .glyph,.attachment-list .glyph{width:13px;height:13px}
 .plan-list .glyph{width:13px;height:13px;vertical-align:-2px}.plan-list .completed .glyph{color:var(--success)}
 #send .glyph{width:18px;height:18px;stroke-width:2}.attach-button .glyph{width:17px;height:17px}

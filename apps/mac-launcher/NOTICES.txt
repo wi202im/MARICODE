@@ -47,6 +47,9 @@ Distribution inventory (paths below are relative to Contents/Resources)
   https://github.com/material-extensions/vscode-material-icon-theme
   Interface icons: a subset of Lucide 1.67.0 icon data (ISC),
   https://github.com/lucide-icons/lucide
+  Interface components: Web Awesome 3.14.0 free build (MIT), whose built-in
+  system icons are Font Awesome Free (icons CC BY 4.0, code MIT),
+  https://github.com/shoelace-style/webawesome
   Files and full license texts: source/pilots/hapi/client-probe/vendor/
   (LICENSES.txt). Upstream: https://github.com/markdown-it/markdown-it and
   https://github.com/highlightjs/highlight.js
