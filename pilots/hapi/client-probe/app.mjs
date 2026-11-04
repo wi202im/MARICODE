@@ -14,6 +14,7 @@ import {createCommandSuggest} from './composer-commands.mjs';
 import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {createBranchPin} from './branch-pin-ui.mjs';
 import {createFileTabs} from './file-viewer.mjs';
+import {createFileTree} from './file-tree.mjs';
 import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
@@ -78,6 +79,8 @@ const base=()=>`/api/sessions/${sessionId}`;
 // Pinned sessions: branchTurn marks a sent turn whose end (HAPI 'ready' event after seq) triggers the branch check.
 const branchPin=workspaceLayout&&$('branch-pin')?createBranchPin({api,section:$('branch-pin'),banner:$('branch-banner'),changed:()=>refreshCatalog().catch(()=>{}),shown:()=>renderProjects()}):null;let branchTurn=null;
 const fileTabs=workspaceLayout&&$('center-tabs')?createFileTabs({api,base,strip:$('center-tabs'),view:$('file-view'),host:document.querySelector('.conversation'),notice}):null;
+const fileTree=fileTabs?createFileTree({api,base,list:$('entries'),open:(path,size)=>openFile(path,size),error:e=>fileError(e),active:()=>fileTabs.active}):null;
+if(fileTree)$('up').hidden=true;
 const commandCardHost=document.createElement('div');commandCardHost.className='cli-command-cards';$('messages').after(commandCardHost);
 async function commandCapabilities(id=sessionId){if(!commandCardsEnabled||!id)return null;return api(`/api/sessions/${id}/command-cards`);}
 async function openCommandCard(name){
@@ -297,7 +300,7 @@ async function selectSession(id){
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
-  sessionId=id;branchTurn=null;fileTabs?.clear();branchPin?.load(id);$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
+  sessionId=id;branchTurn=null;fileTabs?.clear();fileTree?.clear();branchPin?.load(id);$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
   const permissionKey=`hapi-permission-pending:${id}`;
@@ -442,6 +445,7 @@ async function resumeForAction(status){
 function tab(files){if(workspaceLayout){workspacePanel(files?'files':'chat');if(files&&!fileLoaded)openPath(directory,'directory');return;}$('files').hidden=!files;$('chat').hidden=files;$('files-tab').setAttribute('aria-pressed',String(files));$('chat-tab').setAttribute('aria-pressed',String(!files));if(files&&!fileLoaded)openPath(directory,'directory');}
 if($('chat-tab'))$('chat-tab').onclick=()=>tab(false);$('files-tab').onclick=()=>tab(true);
 async function openPath(path,kind){
+  if(fileTree&&kind==='directory'){const serial=++fileSerial;lastFileRequest={path:'',kind};fileLoaded=true;fileFeedback('불러오는 중…');if(await fileTree.reload()&&serial===fileSerial)fileFeedback('');return;}
   const serial=++fileSerial,authEpoch=epoch;path=relativePath(path);lastFileRequest={path,kind};fileLoaded=true;fileFeedback('불러오는 중…');
   try{
     let d;
@@ -460,10 +464,11 @@ async function openPath(path,kind){
       const bytes=Uint8Array.from(atob(f.content),c=>c.charCodeAt(0));
       selectedFile=path;fileFeedback('');$('file-title').textContent=path;$('file-content').textContent=new TextDecoder().decode(bytes);notice('읽기 전용 파일 보기');
     }
-  }catch(e){if(serial===fileSerial&&authEpoch===epoch){fileFeedback(e.message.includes('(403)')?'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다.':e.message,true,e.reason==='RUNNER_OFFLINE');}}
+  }catch(e){if(serial===fileSerial&&authEpoch===epoch)fileError(e);}
 }
+const fileError=e=>fileFeedback(e.message.includes('(403)')?'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다.':e.message,true,e.reason==='RUNNER_OFFLINE');
 // Workspace layout opens files as center tabs; the narrow layout closes the inspector overlay to show them.
-function openFile(path,size){fileTabs.open(path,{size});if(compactSidebar.matches)workspacePanel('chat');}
+function openFile(path,size){fileTabs.open(path,{size});fileTree?.render();if(compactSidebar.matches)workspacePanel('chat');}
 const fileStatus=document.createElement('div');fileStatus.className='file-feedback';fileStatus.setAttribute('role','status');$('entries').before(fileStatus);
 function fileFeedback(message,retry=false,offline=false){
  fileStatus.replaceChildren();if(!message)return;const text=document.createElement('p');text.textContent=message;fileStatus.append(text);
@@ -471,7 +476,7 @@ function fileFeedback(message,retry=false,offline=false){
  if(offline){if(document.querySelector('a[href="/setup"]')){const setup=document.createElement('a');setup.href='/setup';setup.textContent='컴퓨터 설정에서 실행 환경 시작';fileStatus.append(setup);}else{const guide=document.createElement('p');guide.textContent='실행 서버에서 실행 환경을 시작한 뒤 다시 읽어 주세요.';fileStatus.append(guide);}}
 }
 $('up').onclick=()=>openPath(directory.split('/').slice(0,-1).join('/'),'directory');
-$('files-refresh').onclick=()=>openPath(selectedFile||directory,selectedFile?'file':'directory');
+$('files-refresh').onclick=()=>fileTree?openPath('','directory'):openPath(selectedFile||directory,selectedFile?'file':'directory');
 window.addEventListener('online',()=>{if(token&&!paused&&connectionState!=='denied')reconnect();});
 window.addEventListener('offline',()=>{if(token&&!paused){connected=false;showConnection('unavailable');streamController?.abort();render();}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&token&&!paused&&connectionState!=='denied')refresh().catch(e=>notice(e.message));});

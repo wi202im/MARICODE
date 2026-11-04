@@ -118,6 +118,8 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
     if(rawFile&&!req.headers.origin&&!u.search){await fileLinks.serve(req,res,rawFile[1]);return;}
     const grammar=/^\/vendor\/hljs-languages\/([a-z0-9-]{1,40})\.mjs$/.exec(u.pathname);
     if(grammar&&req.method==='GET'&&!u.search){try{const code=await readFile(new URL(`vendor/hljs-languages/${grammar[1]}.mjs`,import.meta.url));res.setHeader('Content-Type','text/javascript');res.end(code);}catch{res.writeHead(404).end();}return;}
+    const fileIcon=/^\/vendor\/file-icons\/([a-z0-9_-]{1,40})\.svg$/.exec(u.pathname);
+    if(fileIcon&&req.method==='GET'&&!u.search){try{const svg=await readFile(new URL(`vendor/file-icons/${fileIcon[1]}.svg`,import.meta.url));res.setHeader('Content-Type','image/svg+xml');res.setHeader('Cache-Control','max-age=86400');res.end(svg);}catch{res.writeHead(404).end();}return;}
     if(req.headers.origin&&!allowedOrigins.has(req.headers.origin)){res.writeHead(403).end();return;}
     if(req.method==='POST'&&(!allowedOrigins.has(req.headers.origin)||req.headers['content-type']!=='application/json')){res.writeHead(403).end();return;}
       // Public presentation assets contain no machine state or credentials.

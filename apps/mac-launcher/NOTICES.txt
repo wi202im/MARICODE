@@ -43,6 +43,8 @@ Distribution inventory (paths below are relative to Contents/Resources)
 - File viewer libraries, unmodified except file names and a removed source-map
   comment: markdown-it 15.0.3 (MIT, bundling entities BSD-2-Clause and mdurl
   MIT) and highlight.js 11.12.0 (BSD-3-Clause) with its github-dark style.
+  File tree icons: a subset of Material Icon Theme 5.40.0 SVGs (MIT),
+  https://github.com/material-extensions/vscode-material-icon-theme
   Files and full license texts: source/pilots/hapi/client-probe/vendor/
   (LICENSES.txt). Upstream: https://github.com/markdown-it/markdown-it and
   https://github.com/highlightjs/highlight.js

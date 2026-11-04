@@ -34,8 +34,8 @@ async function copySources(relative){
  for(const item of await readdir(source,{withFileTypes:true})){
   if(item.name.startsWith('.')||item.name==='node_modules'||item.name.endsWith('.test.mjs'))continue;
   if(item.isSymbolicLink())throw Error('Source symlink is not packaged');
-  if(item.isDirectory()){if(['connections','setup','workspace','design','secure-login','vendor','hljs-languages'].includes(item.name))await copySources(join(relative,item.name));}
-  else if(/\.(mjs|js|html|css|webmanifest|png)$/.test(item.name))await copyFile(join(source,item.name),join(target,item.name));
+  if(item.isDirectory()){if(['connections','setup','workspace','design','secure-login','vendor','hljs-languages','file-icons'].includes(item.name))await copySources(join(relative,item.name));}
+  else if(/\.(mjs|js|html|css|webmanifest|png|svg)$/.test(item.name))await copyFile(join(source,item.name),join(target,item.name));
  }
 }
 await copySources('pilots/hapi/client-probe');
