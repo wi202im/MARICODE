@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,rm,writeFile,symlink} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {execFileSync} from 'node:child_process';
 import {repoStates,pinMismatches,newBranches,pinFrom,validPin,validBranch} from './branch-pin.mjs';
+import {pinSummary} from './branch-rules.mjs';
 
 const g=(cwd,...args)=>execFileSync('git',args,{cwd,stdio:'pipe',env:{...process.env,GIT_AUTHOR_NAME:'t',GIT_AUTHOR_EMAIL:'t@t',GIT_COMMITTER_NAME:'t',GIT_COMMITTER_EMAIL:'t@t'}});
 async function repo(dir,branch){await mkdir(dir,{recursive:true});g(dir,'init','-q','-b',branch);await writeFile(join(dir,'a'),'a');g(dir,'add','a');g(dir,'commit','-qm','a');}
@@ -31,4 +32,9 @@ test('stored pins and branch names are validated',()=>{
  assert.equal(validPin({repos:{api:['feature/x'],'.':['main']}}),true);
  for(const bad of [null,[],{repos:[]},{repos:{'../x':['a']}},{repos:{api:['bad name']}},{repos:{api:'main'}},{repos:{}, extra:1}])assert.equal(validPin(bad),false);
  assert.equal(validBranch('feature/x-1'),true);for(const b of ['-x','a..b','a b','',null,'a:b'])assert.equal(validBranch(b),false);
+});
+test('sidebar summary lists shared branches once and otherwise per repository',()=>{
+ assert.equal(pinSummary({repos:{kona:['feature/a','feature/a-1'],rails:['feature/a-1','feature/a']}}),'feature/a, feature/a-1');
+ assert.equal(pinSummary({repos:{kona:['feature/a'],rails:['main'],'.':[]}}),'kona: feature/a · rails: main · 이 폴더: 없음');
+ assert.equal(pinSummary(null),'');
 });

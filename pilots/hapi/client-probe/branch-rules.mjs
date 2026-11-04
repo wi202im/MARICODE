@@ -16,3 +16,10 @@ export function validPin(pin){
  return !!pin&&typeof pin==='object'&&!Array.isArray(pin)&&Object.keys(pin).every(k=>k==='repos')&&pin.repos&&typeof pin.repos==='object'&&!Array.isArray(pin.repos)
   &&Object.entries(pin.repos).every(([repo,list])=>(repo==='.'||/^[^/\0.][^/\0]{0,200}$/.test(repo))&&Array.isArray(list)&&list.length<=100&&list.every(validBranch));
 }
+// One sidebar line: branches shared by every pinned repository are listed once, otherwise per repository.
+export function pinSummary(pin){
+ const entries=Object.entries(pin?.repos??{});if(!entries.length)return '';
+ const key=l=>JSON.stringify([...l].sort()),same=entries.every(([,l])=>key(l)===key(entries[0][1]));
+ if(same)return entries[0][1].join(', ')||'고정 브랜치 없음';
+ return entries.map(([repo,l])=>`${repo==='.'?'이 폴더':repo}: ${l.join(', ')||'없음'}`).join(' · ');
+}

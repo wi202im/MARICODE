@@ -410,7 +410,7 @@ test('branch pin is kept per registered session and checks the repositories dire
  await assert.rejects(service.branchPin('Bearer synthetic',{id:other,action:'enable'}));
  await assert.rejects(service.branchPin('Bearer synthetic',{id:sid,action:'add',repo:'api',branch:'main'}));
  let r=await service.branchPin('Bearer synthetic',{id:sid,action:'enable'});assert.deepEqual(r.pin,{repos:{api:['feature/x']}});assert.deepEqual(r.mismatches,[]);
- assert.equal((await service.workspace('Bearer synthetic'))[0].branchPin,true);
+ assert.deepEqual((await service.workspace('Bearer synthetic'))[0].branchPin,{repos:{api:['feature/x']}});
  g('checkout','-q','main');r=await service.branches('Bearer synthetic',sid);assert.deepEqual(r.mismatches,[{repo:'api',current:'main',allowed:['feature/x']}]);
  await assert.rejects(service.branchPin('Bearer synthetic',{id:sid,action:'add',repo:'api',branch:'nope'}));
  r=await service.branchPin('Bearer synthetic',{id:sid,action:'add',repo:'api',branch:'main'});assert.deepEqual(r.mismatches,[]);

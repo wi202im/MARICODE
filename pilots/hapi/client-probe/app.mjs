@@ -13,6 +13,7 @@ import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs'
 import {createCommandSuggest} from './composer-commands.mjs';
 import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {createBranchPin} from './branch-pin-ui.mjs';
+import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
@@ -603,7 +604,7 @@ function renderWorkspace(){
     for(const c of matches){
      const button=document.createElement('button');button.className='task';button.dataset.sessionId=c.config.id;button.title=c.engine+' · '+c.state+' · '+c.config.id;button.setAttribute('aria-current',String(c.selected));button.disabled=busy||taskCreating;
      const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' green':'');
-     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state+(c.config.branchPin?' · 브랜치 고정':'');text.append(title,state);button.append(dot,text);
+     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state;text.append(title,state);if(c.config.branchPin){const pin=document.createElement('small');pin.className='task-pin';pin.textContent='⎇ '+pinSummary(c.config.branchPin);pin.title='고정한 브랜치 · '+pin.textContent.slice(2);text.append(pin);}button.append(dot,text);
      button.onclick=()=>{workspaceDrawer(false);selectSession(c.config.id).catch(e=>notice(e.message));};const row=document.createElement('div');row.className='session-row';row.append(button);if(navigationEnabled)row.append(navigationMenu({kind:'session',id:c.config.id,name:c.title,path:w.path}));children.append(row);
     }
     if(!matches.length){const empty=document.createElement('p');empty.className='project-no-sessions';empty.textContent=query?'일치하는 세션 없음':w.cards.length?'보기 설정으로 세션이 숨겨져 있습니다':'＋로 대화를 추가하세요';children.append(empty);}

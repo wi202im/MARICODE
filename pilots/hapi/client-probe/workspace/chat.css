@@ -99,3 +99,4 @@
 .branch-banner-item,.branch-banner-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0}.branch-banner-item p{flex:1 1 100%}
 .branch-banner button{min-height:30px;padding:4px 12px;border:1px solid var(--border-strong);border-radius:6px}.branch-banner button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 .draft-pin{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:13px}.draft-pin small{flex-basis:100%;color:var(--muted);font-size:12px}
+.task small.task-pin{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}.hide-workspace-details .task small.task-pin{display:block}
