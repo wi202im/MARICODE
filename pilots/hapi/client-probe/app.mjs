@@ -125,7 +125,10 @@ function render(){
   $('title').textContent=session?.metadata?.name??'시험 세션';
   const waiting=Object.keys(session?.agentState?.requests??{}).length;
   $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 메시지를 보내면 같은 세션으로 이어집니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
-  $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||session?.thinking||waiting>0||!!actions?.pending;
+  $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||waiting>0||!!actions?.pending;
+  // While the engine works a sent message waits in HAPI's queue; stop asks the engine to end the current turn.
+  if($('stop')){$('stop').hidden=!(session?.active&&session.thinking);$('stop').disabled=stopping||!connected;}
+  if(session?.thinking&&$('session-state'))$('send').title='보내면 지금 작업이 끝난 뒤 전달됩니다';else $('send').title='보내기 (Enter) · 줄바꿈 (Shift+Enter)';
   $('retry-message').hidden=actions?.pending?.kind!=='send';
   $('retry-message').disabled=!!session?.resumeUnconfirmed||busy||!connected||!session?.active||session.thinking||waiting>0;
   $('retry-help').hidden=$('retry-message').hidden;
@@ -144,7 +147,7 @@ function render(){
   renderWorkflow();
   const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
   const canFork=workspaceLayout&&session?.metadata?.capabilities?.conversationHistory?.forkAtMessage===true&&session.active&&!session.thinking&&!busy&&!actions?.pending;
-  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null});finder?.refresh();
+  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null,queued:{ids:queuedIds,busy:queueBusy,steer:session?.metadata?.flavor==='codex',onCancel:cancelQueued,onSteer:steerQueued}});finder?.refresh();
   if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
    el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
@@ -221,6 +224,7 @@ async function refresh(){
   if(confirmedDraft(messages,actions.pending,$('prompt').value.trim())){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}
   if(workspaceLayout&&session?.id===sessionId&&alertSnapshots.size)alertSnapshots.set(sessionId,session);
   if(branchTurn?.id===sessionId&&messages.some(m=>m.seq>branchTurn.seq&&m.content?.content?.type==='event'&&m.content.content.data?.type==='ready')){branchTurn=null;branchPin?.afterTurn(sessionId);}
+  refreshQueue(mine);
   const previousPending=actions.pending,released=actions.reconcile(messages,session.active,session.resumeUnconfirmed);
   permissionActions?.reconcile(session?.agentState?.requests??{});
   if(released==='resume-not-started')notice('재개가 시작되지 않았습니다. AI 연결·로그인 상태와 원래 기록을 확인한 뒤 메시지를 다시 보내 주세요. 자동으로 다시 시도하지 않습니다.');
@@ -366,7 +370,7 @@ $('send-form').addEventListener('submit',async e=>{
      if(mine!==epoch)return;
      if(!resumed){notice('세션 재개를 아직 확인하지 못해 메시지는 보내지 않았습니다. 입력은 그대로 있습니다. 상태를 확인한 뒤 다시 보내 주세요.');return;}
     }
-    if(!session.active||session.thinking||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
+    if(!session.active||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
     const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;if(branchPin?.pinned)branchTurn={id:sessionId,seq:Math.max(0,...messages.map(m=>m.seq??0))};const result=actions.send(text,attachments);render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
   }catch(e){if(mine===epoch)notice(submitted&&!actions.pending?'서버 이력에서 전송을 확인했습니다.':e.message+' 전송은 자동 재시도하지 않습니다.');}finally{busy=false;render();}
 });
@@ -1266,6 +1270,33 @@ window.addEventListener('maricode-close-request',async event=>{
   finally{busy=false;render();cancel.disabled=false;dialog.removeEventListener('cancel',prevent);}
  };
 });
+// Messages sent while the engine worked wait in HAPI's queue until the turn ends; HAPI reports which are still waiting.
+let queuedIds=new Set(),queueBusy=new Set(),stopping=false;
+async function refreshQueue(serial){
+ const owner=sessionId,local=messages.filter(m=>m.content?.role==='user'&&typeof m.localId==='string').slice(-20);
+ if(!local.length||!session?.thinking&&!queuedIds.size){if(queuedIds.size){queuedIds=new Set();render();}return;}
+ try{const r=await api(base()+'/messages/queued-state',{method:'POST',body:{localIds:local.map(m=>m.localId)}});
+  if(serial!==refreshSerial||owner!==sessionId||!Array.isArray(r?.queuedLocalIds))return;
+  const next=new Set(local.filter(m=>r.queuedLocalIds.includes(m.localId)).map(m=>m.id));
+  if([...next].join()!==[...queuedIds].join()){queuedIds=next;render();}
+ }catch{}
+}
+async function queueAction(id,kind){
+ if(queueBusy.has(id))return;queueBusy.add(id);render();const owner=sessionId;
+ try{const r=await api(base()+'/messages/'+encodeURIComponent(id)+(kind==='steer'?'/steer':''),{method:kind==='steer'?'POST':'DELETE',...(kind==='steer'?{body:{}}:{})});
+  if(owner!==sessionId)return;
+  notice(r?.status==='cancelled'?'대기 중인 메시지를 취소했습니다.':r?.status==='steered'?'진행 중인 작업에 메시지를 반영했습니다.':r?.status==='invoked'?'이미 AI에 전달된 메시지라 취소하지 않았습니다.':`처리하지 못했습니다. ${r?.error??''} 상태를 확인해 주세요.`);
+ }catch(e){if(owner===sessionId)notice(e.message+' 자동으로 다시 시도하지 않습니다.');}
+ finally{queueBusy.delete(id);await refresh().catch(()=>{});render();}
+}
+const cancelQueued=id=>queueAction(id,'cancel'),steerQueued=id=>queueAction(id,'steer');
+async function stopTurn(){
+ if(stopping||!session?.thinking)return;stopping=true;render();const owner=sessionId;
+ try{await api(base()+'/abort',{method:'POST',body:{}});if(owner===sessionId)notice('중지를 요청했습니다. 이미 바뀐 파일은 되돌리지 않습니다.');}
+ catch(e){if(owner===sessionId)notice('중지 요청을 확인하지 못했습니다. '+e.message);}
+ finally{stopping=false;await refresh().catch(()=>{});render();}
+}
+if($('stop'))$('stop').onclick=stopTurn;
 function updateJumpLatest(){const s=$('conversation-history'),b=$('jump-latest');if(s&&b)b.hidden=!moreBelow(s);updateStuckPrompt();}
 // The request that scrolled past stays pinned (sticky CSS) in two lines; earlier pinned ones are hidden behind it.
 function updateStuckPrompt(){const s=$('conversation-history');if(!s)return;const top=s.getBoundingClientRect().top+1,pinned=[...s.querySelectorAll('.bubble.user:not(.child-message)')].filter(b=>b.getBoundingClientRect().top<=top);

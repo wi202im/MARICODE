@@ -36,8 +36,8 @@ function forkButton(localId,onFork){
  b.onclick=()=>{if(armedFork!==localId){armedFork=localId;clearTimeout(armedTimer);armedTimer=setTimeout(()=>{armedFork=null;},8000);b.textContent='새 대화로 분기 확인 · 원래 대화·파일은 그대로';return;}armedFork=null;onFork(localId);};
  return b;
 }
-export function renderConversation(container,messages,{engine,session,onFork}={}){
- const signature=JSON.stringify([session?.id,engine,messages,session?.agentState?.completedRequests,!!onFork,armedFork]);
+export function renderConversation(container,messages,{engine,session,onFork,queued}={}){
+ const signature=JSON.stringify([session?.id,engine,messages,session?.agentState?.completedRequests,!!onFork,armedFork,[...(queued?.ids??[])],[...(queued?.busy??[])]]);
  if(rendered.get(container)===signature)return;rendered.set(container,signature);
  const opened=new Set([...container.querySelectorAll('details[open]')].map(e=>e.dataset.key??e.dataset.callId));
  // Activity groups open on their own while a step runs and close when done, unless the person toggled them.
@@ -62,7 +62,11 @@ export function renderConversation(container,messages,{engine,session,onFork}={}
   el.append(label,row.view.role==='agent'?renderMarkdown(row.view.text):node('span','',row.view.text));
   if(Array.isArray(row.attachments))for(const a of row.attachments)el.append(node('span','sent-attachment',`▧ ${a.filename??'첨부파일'}${a.size?` · ${formatSize(a.size)}`:''}`));
   if(row.view.text)el.append(copyButton(row.view.text,row.view.role==='user'?'메시지 복사':'답변 복사'));
-  if(onFork&&row.view.role==='user'&&row.localId&&!row.parent)el.append(forkButton(row.localId,onFork));return el;
+  if(onFork&&row.view.role==='user'&&row.localId&&!row.parent&&!queued?.ids?.has(row.key))el.append(forkButton(row.localId,onFork));
+  if(row.view.role==='user'&&queued?.ids?.has(row.key)){el.classList.add('queued');const bar=node('div','queue-bar'),busy=queued.busy?.has(row.key);bar.append(node('span','queue-label','대기 중 · 지금 작업이 끝나면 전달됩니다'));
+   const cancel=node('button','','취소');cancel.type='button';cancel.disabled=busy;cancel.onclick=()=>queued.onCancel(row.key);bar.append(cancel);
+   if(queued.steer){const steer=node('button','','지금 반영');steer.type='button';steer.title='진행 중인 작업에 바로 전달합니다(Codex)';steer.disabled=busy;steer.onclick=()=>queued.onSteer(row.key);bar.append(steer);}el.append(bar);}
+  return el;
  });
  const done=Object.values(session?.agentState?.completedRequests??{}).sort((a,b)=>(a.completedAt??0)-(b.completedAt??0)).slice(-3);
  if(done.length){const receipt=node('details','approval-receipts');receipt.append(node('summary','',`최근 확인 내역 ${done.length}건`));for(const r of done)receipt.append(node('p','',`${r.status==='denied'?'거절':r.status==='canceled'?'취소':r.status==='resolved'?'답변 처리':'허용'} · ${r.tool}${r.decision==='approved_for_session'||r.allowTools?.length?' · 세션 범위':''}`));nodes.push(receipt);}

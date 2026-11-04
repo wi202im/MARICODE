@@ -531,3 +531,11 @@ test('every module the workspace page imports is served',async t=>{
  }
  assert.ok(seen.size>30);
 });
+test('stop and queued-message routes are limited to the selected session and exact shapes',()=>{
+ const b=`/api/sessions/${id}`;
+ assert.equal(allowedRoute('POST',url(b+'/abort'),id),true);
+ assert.equal(allowedRoute('DELETE',url(b+'/messages/msg_123-a'),id),true);
+ assert.equal(allowedRoute('POST',url(b+'/messages/msg_123-a/steer'),id),true);
+ assert.equal(allowedRoute('POST',url(b+'/messages/queued-state'),id),true);
+ for(const [m,p] of [['DELETE',b+'/messages/queued-state'],['GET',b+'/messages/x/steer'],['POST',b+'/messages/x'],['DELETE',b+'/messages/x/steer'],['DELETE',b+'/messages/x?y=1'],['DELETE','/api/sessions/other/messages/x'],['DELETE',b+'/messages/a/b']])assert.equal(allowedRoute(m,url(p),id),false,`${m} ${p}`);
+});

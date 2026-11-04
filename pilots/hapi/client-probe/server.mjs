@@ -51,7 +51,9 @@ export function allowedRoute(method,url,sessionId) {
     return true;
   }
   if(method==='POST'&&p.startsWith(base+'/permissions/')&&/^\/api\/sessions\/[^/]+\/permissions\/(?:[A-Za-z0-9_-]|%3[Aa]|:)+\/(approve|deny)$/.test(p))return true;
-  return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork'].some(x=>p===base+x);
+  // Queued (not yet delivered) messages: cancel, or steer into the running Codex turn. HAPI refuses delivered ones.
+  if(p!==base+'/messages/queued-state'&&/^\/messages\/[A-Za-z0-9_-]{1,80}(\/steer)?$/.test(p.slice(base.length))&&p.startsWith(base+'/messages/')&&!url.search)return p.endsWith('/steer')?method==='POST':method==='DELETE';
+  return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork','/abort'].some(x=>p===base+x);
 }
 export function createServer({cleanStart=false,appReset=null,pairing,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
   if(runnerConfig&&(runnerConfig.accountConfig!==accountConfig||new URL(runnerConfig.hubUrl).origin!==new URL(upstream).origin))throw Error('Runner must use the displayed account configuration and Hub');
@@ -123,6 +125,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
     if(fileIcon&&req.method==='GET'&&!u.search){try{const svg=await readFile(new URL(`vendor/${fileIcon[1]}/${fileIcon[2]}.svg`,import.meta.url));res.setHeader('Content-Type','image/svg+xml');res.setHeader('Cache-Control','max-age=86400');res.end(svg);}catch{res.writeHead(404).end();}return;}
     if(req.headers.origin&&!allowedOrigins.has(req.headers.origin)){res.writeHead(403).end();return;}
     if(req.method==='POST'&&(!allowedOrigins.has(req.headers.origin)||req.headers['content-type']!=='application/json')){res.writeHead(403).end();return;}
+    if(req.method==='DELETE'&&!allowedOrigins.has(req.headers.origin)){res.writeHead(403).end();return;}
       // Public presentation assets contain no machine state or credentials.
       const sharedStyles=new Map([['/theme.css','theme.css'],['/settings.css','settings.css']]);
       if(sharedStyles.has(u.pathname)){
