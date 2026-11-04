@@ -1,6 +1,6 @@
 # Maricode 인계
 
-상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다.
+상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다. 개선 방향과 검증 단계(L1~L4)는 [improvement-guide.md](improvement-guide.md).
 
 ## CLI 명령: 같은 세션 터미널 이어가기 — 2026-11-04 (미배포)
 
