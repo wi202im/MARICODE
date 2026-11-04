@@ -50,7 +50,7 @@ const connectionLabels={empty:'연결됨 · 작업 세션 없음','login-needed'
 const connectionBanner=document.createElement('section');connectionBanner.className='connection-banner';
 const serverLabel=document.createElement('span'),connectionLabel=document.createElement('strong'),reconnectButton=document.createElement('button');
 serverLabel.textContent=location.origin;connectionLabel.setAttribute('role','status');reconnectButton.textContent='연결 상태 다시 조회';reconnectButton.type='button';
-connectionBanner.append(serverLabel,connectionLabel,reconnectButton);if(workspaceLayout)document.querySelector('.connection-panel').append(connectionBanner);else document.body.prepend(connectionBanner);
+connectionBanner.append(serverLabel,connectionLabel,reconnectButton);if(!workspaceLayout)document.body.prepend(connectionBanner);
 function showConnection(state){connectionState=state;const dot=document.querySelector('.host .dot');if(dot){dot.dataset.state=state;dot.title=connectionLabels[state]??state;}connectionLabel.textContent=connectionLabels[state]??state;if($('connection')){$('connection').textContent=connectionLabel.textContent;$('connection').dataset.connectionState=state;}reconnectButton.disabled=!token||['restoring','connecting'].includes(state);}
 const pendingKey=()=>`hapi-d1-pending:${sessionId}`;
 const notice=text=>{$('notice').textContent=text;};
@@ -122,6 +122,7 @@ function render(){
   const waiting=Object.keys(session?.agentState?.requests??{}).length;
   const inTerminal=session?.active&&session.agentState?.controlledByUser===true;
   $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 메시지를 보내면 같은 세션으로 이어집니다':inTerminal?'터미널에서 사용 중 · 앱에서 보내면 세션이 앱으로 돌아옵니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
+  if($('menu-terminal')){$('menu-terminal').hidden=!sessionTerminalEnabled||!session;$('menu-terminal').disabled=terminalBusy||!connected;}
   if($('open-terminal')){$('terminal-controls').hidden=!sessionTerminalEnabled;$('open-terminal').disabled=terminalBusy||!connected||!session||inTerminal;$('terminal-state').textContent=inTerminal?'지금 터미널에서 이 세션을 쓰고 있습니다.':'';}
   $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||waiting>0||!!actions?.pending;
   // While the engine works a sent message waits in HAPI's queue; stop asks the engine to end the current turn.
@@ -340,7 +341,7 @@ $('older').onclick=async()=>{
     notice('이전 이력을 추가로 불러왔습니다.');
   }catch(e){if(mine===epoch)notice(e.message);}finally{if(mine===epoch){loadingHistory=false;render();}}
 };
-$('sync').onclick=()=>refresh().catch(e=>notice(e.message));
+$('sync').onclick=()=>Promise.resolve(connectionState==='live'?refresh():reconnect()).catch(e=>notice(e.message));
 $('stream-toggle').onclick=()=>{
   paused=!paused;epoch++;streamController?.abort();connected=false;
   $('stream-toggle').textContent=paused?'다시 연결':'실시간 연결 끊기';showConnection(paused?'paused':'connecting');render();
@@ -526,7 +527,7 @@ async function prepareRunnerHandoff(){
 $('new-handoff').onclick=()=>runnerHandoff&&!handoffEnabled?prepareRunnerHandoff():prepareNewHandoff();
 $('check-handoff').onclick=()=>prepareNewHandoff(true);
 
-const gitReview=workspaceLayout?createGitReview({element:$('git-review'),api,base,owner:()=>sessionId&&token?`${epoch}:${sessionId}`:null,untracked:()=>gitView.data?.state==='ready'?gitView.data.untracked:0}):null;
+const gitReview=workspaceLayout?createGitReview({element:$('git-review'),api,base,openDiff:change=>{fileTabs?.openDiff(change);if(compactSidebar.matches)workspacePanel('chat');},owner:()=>sessionId&&token?`${epoch}:${sessionId}`:null,untracked:()=>gitView.data?.state==='ready'?gitView.data.untracked:0}):null;
 let reviewOwner=null;
 function renderGit(){
  if(!workspaceLayout)return;
@@ -997,7 +998,7 @@ if(workspaceLayout){
  for(const id of ['task-mode','task-branch','task-worktree','task-worktree-name'])$(id).addEventListener(id==='task-worktree-name'?'input':'change',renderTaskCreation);
  $('draft-workspace-refresh').onclick=loadWorkspaceChoices;$('draft-account-check').onclick=refreshDraftAccount;
  $('task-agent').onchange=()=>{draftDefaultsSerial++;draftDefaultsLoading=false;draftInherited=null;$('draft-defaults').textContent='선택한 AI로 새 대화를 시작합니다.';renderTaskCreation();refreshDraftAccount();};
- $('draft-account-login').onclick=async()=>{const agent=$('task-agent').value;$('draft-account-login').disabled=true;try{await api('/api/accounts/'+agent+'/login',{method:'POST',body:{}});$('draft-account-state').textContent='공식 로그인 창에서 완료한 뒤 연결 다시 확인을 눌러 주세요.';}catch{$('draft-account-state').textContent='로그인 시작 상태를 확인하세요. 자동으로 다시 실행하지 않습니다.';}finally{$('draft-account-login').disabled=false;}};
+ $('draft-account-login').onclick=()=>openAccounts();
  for(const field of ['group','sort','ended','details','compact']){
   const el=$('display-'+field);if(el.type==='checkbox')el.checked=sidebarDisplay[field];else el.value=sidebarDisplay[field];
   el.onchange=()=>{sidebarDisplay=displayPreferences({...sidebarDisplay,[field]:el.type==='checkbox'?el.checked:el.value});try{localStorage.setItem('maricode-display-preferences',JSON.stringify(sidebarDisplay));}catch{}renderWorkspace();};
@@ -1101,7 +1102,9 @@ async function startAccountLogin(agent){
  catch{$('account-notice').textContent='로그인 시작 결과를 확인하지 못했습니다. Mac 화면과 연결 상태를 먼저 확인하세요. 자동으로 다시 실행하지 않습니다.';}
  finally{accountsBusy=false;}
 }
-if(workspaceLayout){$('accounts-tab').onclick=()=>{revealInPanel('accounts-panel');refreshAccounts();};$('refresh-accounts').onclick=refreshAccounts;}
+// AI accounts live in one dialog, opened from the sidebar, the palette and the new-conversation form.
+function openAccounts(){const d=$('accounts-dialog');if(!d)return;if(!d.open)d.showModal();refreshAccounts();}
+if(workspaceLayout){$('accounts-tab').onclick=openAccounts;$('open-accounts').onclick=openAccounts;$('accounts-close').onclick=()=>$('accounts-dialog').close();$('refresh-accounts').onclick=refreshAccounts;}
 
 if(workspaceLayout){
  const panel=$('composer-settings');
@@ -1164,7 +1167,7 @@ if(workspaceLayout){
  try{const agent=sessionStorage.getItem('maricode-new-session-agent');if(['codex','claude'].includes(agent))$('task-agent').value=agent;}catch{}
  if(bridge){$('add-project').hidden=false;$('add-project').onclick=()=>bridge.postMessage('add-project');
   $('prepare-task-agent').onclick=async()=>{const found=draftAccount?.found;if(found&&draftAccount?.provider?.state==='connection-required'){$('prepare-task-agent').disabled=true;try{await api('/api/account-profiles',{method:'POST',body:{action:'connect',agent:draftAccount.agent,source:found.source,confirm:true,create:!found.exists,mode:found.mode}});await refreshDraftAccount();}catch(e){draftAccount={...draftAccount,error:e.message||'연결 결과를 확인하지 못했습니다. 상태를 다시 확인하세요.'};renderDraftAccount();}return;}
-   if(draftAccount?.provider?.state==='connection-required'){revealInPanel('accounts-panel');refreshAccounts();return;}try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
+   if(draftAccount?.provider?.state==='connection-required'){openAccounts();return;}try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
  }
  window.addEventListener('maricode-projects-changed',async event=>{await loadTaskProjects();const added=projectCatalog.find(p=>p.path===event.detail?.path);if(added)await openNewWorkspace(added.key);else renderWorkspace();});
  $('empty-action').onclick=()=>openNewWorkspace();
@@ -1299,6 +1302,7 @@ async function stopTurn(){
 }
 if($('stop'))$('stop').onclick=stopTurn;
 if($('open-terminal'))$('open-terminal').onclick=()=>openSessionTerminal();
+if($('menu-terminal'))$('menu-terminal').onclick=()=>openSessionTerminal();
 // Menus close once an item is chosen, so the result they open is not hidden behind them.
 for(const menu of document.querySelectorAll('details.connection-menu'))menu.addEventListener('click',e=>{if(e.target.closest('button')&&!e.target.closest('summary'))menu.open=false;});
 function updateJumpLatest(){const s=$('conversation-history'),b=$('jump-latest');if(s&&b)b.hidden=!moreBelow(s);updateStuckPrompt();}

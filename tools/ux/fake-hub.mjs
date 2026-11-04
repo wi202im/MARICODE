@@ -55,6 +55,8 @@ export async function startFakeHub({project,port=0}){
    if(rest==='/messages/queued-state')return send({queuedLocalIds:[...queued],indeterminateLocalIds:[],invokedLocalMessages:[]});
    if(req.method==='DELETE'&&rest.startsWith('/messages/')){queued=new Set();return send({status:'cancelled',localId:'queued-1'});}
    if(rest==='/abort')return send({ok:true});
+   if(rest==='/git-diff-numstat')return send({success:true,exitCode:0,stdout:u.searchParams.get('staged')?'':'2\t1\tsrc/file-viewer.mjs\n'});
+   if(rest==='/git-diff-file')return send({success:true,exitCode:0,stdout:'diff --git a/src/file-viewer.mjs b/src/file-viewer.mjs\n@@ -1,2 +1,3 @@\n-const maxTabs=8;\n+// Center file tabs\n+const maxTabs=12;\n export function open(path){ return path; }\n'});
    if(rest==='/slash-commands')return send({success:true,commands:[{name:'compact',source:'builtin',description:'대화 요약'},{name:'config',source:'builtin',description:'설정'},{name:'mcp',source:'builtin',description:'MCP 관리'}]});
    if(rest==='/skills')return send({success:true,skills:[]});
    if(rest==='/files'){const q=(u.searchParams.get('query')??'').toLowerCase(),all=['src/app.mjs','src/file-viewer.mjs','docs/viewer.md','README.md','package.json'];

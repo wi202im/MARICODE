@@ -1,6 +1,7 @@
 import {numstatRows,diffLines} from './git-status.mjs';
 // Read-only change review over HAPI's git-diff-numstat / git-diff-file RPCs. Never stages, commits or checks out.
-export function createGitReview({element,api,base,owner,untracked}){
+// openDiff: show a file's diff as a center tab (the same place as the chat's change cards) instead of inside the panel.
+export function createGitReview({element,api,base,owner,untracked,openDiff=null}){
  const doc=element.ownerDocument,$=id=>doc.getElementById(id),node=(tag,cls,text)=>{const e=doc.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;};
  let loadedFor=null,serial=0;
  async function showDiff(file){
@@ -8,6 +9,7 @@ export function createGitReview({element,api,base,owner,untracked}){
   try{
    const r=await api(base()+'/git-diff-file?path='+encodeURIComponent(file.path)+(file.staged?'&staged=true':''));if(ticket!==serial)return;
    if(r.state!=='ready'){pre.replaceChildren(node('span','diff-meta','이 파일의 변경 내용을 가져오지 못했습니다.'));return;}
+   if(openDiff){pre.hidden=true;pre.replaceChildren();openDiff({path:file.path,key:'git:'+(file.staged?'staged:':'')+file.path,title:`${file.path.split('/').pop()} · Git`,diff:r.stdout||'@@ 표시할 변경이 없습니다 @@',label:`${file.path} · Git ${file.staged?'스테이징된':'작업 중'} 변경`});return;}
    const lines=diffLines(r.stdout);pre.replaceChildren(...(lines.length?lines.map(l=>node('span','diff-'+l.kind,l.text+'\n')):[node('span','diff-meta',file.binary?'바이너리 파일은 내용을 표시하지 않습니다.':'표시할 변경이 없습니다.')]));
   }catch{if(ticket===serial)pre.replaceChildren(node('span','diff-meta','변경 내용을 가져오지 못했습니다. 실행 중인 세션에서 다시 시도하세요.'));}
  }

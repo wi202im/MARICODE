@@ -98,3 +98,9 @@ textarea{font-size:13px}
 .revealed{animation:revealed 1.6s ease-out}@keyframes revealed{from{box-shadow:0 0 0 2px var(--focus);background:color-mix(in srgb,var(--accent) 12%,transparent)}to{box-shadow:0 0 0 2px transparent}}
 @media (prefers-reduced-motion:reduce){.revealed{animation:none;outline:1px solid var(--focus)}}
 .settings-more>summary{font-size:12px;color:var(--muted);cursor:pointer}.settings-more>*:not(summary){font-size:12px}
+/* AI accounts: one dialog reachable from anywhere. */
+.accounts-dialog{width:min(560px,calc(100vw - 32px));max-height:min(80vh,720px);padding:0;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface0);color:var(--foreground);box-shadow:0 0 8px 2px #0000005c}
+.accounts-dialog::backdrop{background:#0006}
+.accounts-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface0)}
+.accounts-dialog h2{font-size:13px;margin:0;font-weight:600}.accounts-dialog .account-panel{padding:4px 16px 16px;border:0;margin:0}
+.sidebar-bottom #open-accounts,.sidebar-bottom #pairing-open{width:28px;height:28px;min-height:28px;padding:5px;flex-shrink:0}

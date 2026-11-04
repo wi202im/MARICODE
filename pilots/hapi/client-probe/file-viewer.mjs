@@ -98,9 +98,9 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   show(t);notice('읽기 전용 파일 보기');return t;
  }
  // A change from the chat: the diff the AI's edit made, read-only, in its own tab beside the file itself.
- function openDiff({path,diff,label}){
-  const key='diff:'+path;let t=tabs.find(x=>x.path===key);
-  if(t){t.diff=diff;load(t);}else{t={path:key,title:`${name(path)} · 변경`,diff,label,mode:'view',pane:el('div',undefined,'file-pane')};tabs.push(t);if(tabs.length>maxTabs)closeTab(tabs.find(x=>x!==t));load(t);}
+ function openDiff({path,diff,label,key='diff:'+path,title=`${name(path)} · 변경`}){
+  let t=tabs.find(x=>x.path===key);
+  if(t){t.diff=diff;t.label=label;load(t);}else{t={path:key,title,diff,label,mode:'view',pane:el('div',undefined,'file-pane')};tabs.push(t);if(tabs.length>maxTabs)closeTab(tabs.find(x=>x!==t));load(t);}
   show(t);return t;
  }
  function clear(){for(const t of tabs)t.dispose?.();tabs=[];show(null);}
