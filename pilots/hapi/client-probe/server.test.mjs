@@ -435,28 +435,18 @@ test('pairing codes are issued only to the signed-in local app and redeem once f
  assert.equal((await post('/api/pair',{code},{origin:'https://untrusted.example'})).status,403);
 });
 
-test('official CLI launches only from authenticated same-origin local requests, never forwarded or arbitrary routes',async t=>{
- let starts=0;const authCheck=auth=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});};
- const runnerService={officialCliStatus:async auth=>{authCheck(auth);return {claude:{phase:'idle'}};},openOfficialCli:async(auth,input)=>{authCheck(auth);starts++;return {phase:'opening'};}};
+test('the session terminal opens only from authenticated same-origin local requests with a bounded body',async t=>{
+ let starts=0,body=null;const authCheck=auth=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});};
+ const runnerService={sessionTerminalStatus:async auth=>{authCheck(auth);return {phase:'idle'};},openSessionTerminal:async(auth,input)=>{authCheck(auth);starts++;body=input;return {phase:'opening',agent:'claude'};}};
  const server=createServer({upstream:'http://127.0.0.1:1',runnerService});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
- const url=`http://127.0.0.1:${server.address().port}`,post=(headers={},body={})=>fetch(url+'/api/official-cli',{method:'POST',headers:{origin:url,'content-type':'application/json',authorization:'Bearer fixture',...headers},body:JSON.stringify(body)});
- assert.equal((await fetch(url+'/api/official-cli')).status,401);
- assert.equal((await fetch(url+'/api/official-cli',{headers:{authorization:'Bearer fixture'}})).status,200);
+ const url=`http://127.0.0.1:${server.address().port}`,post=(headers={},payload={id})=>fetch(url+'/api/session-terminal',{method:'POST',headers:{origin:url,'content-type':'application/json',authorization:'Bearer fixture',...headers},body:JSON.stringify(payload)});
+ assert.equal((await fetch(url+'/api/session-terminal')).status,401);
+ assert.equal((await fetch(url+'/api/session-terminal',{headers:{authorization:'Bearer fixture'}})).status,200);
  for(const headers of [{'x-forwarded-for':'10.0.0.1'},{forwarded:'for=10.0.0.1'},{origin:'https://untrusted.example'},{authorization:'Bearer wrong'}])assert.notEqual((await post(headers)).status,200);
- assert.equal(starts,0);assert.equal((await post()).status,200);assert.equal(starts,1);
- assert.equal((await fetch(url+'/api/official-cli?command=mcp',{headers:{authorization:'Bearer fixture'}})).status,403);
-});
-
-test('command cards use authenticated local routes, bounded JSON and request-specific result lookup',async t=>{
- let starts=0;const id='10000000-0000-4000-8000-000000000001',request='20000000-0000-4000-8000-000000000002';
- const auth=a=>{if(a!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});};
- const runnerService={commandCardCapabilities:async(a,s)=>{auth(a);assert.equal(s,id);return {actions:['account']};},commandCardRun:async(a,s,b)=>{auth(a);starts++;return {state:'succeeded'};},commandCardResult:async(a,s,r)=>{auth(a);assert.equal(r,request);return {state:'succeeded'};}};
- const server=createServer({upstream:'http://127.0.0.1:1',runnerService});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});const url=`http://127.0.0.1:${server.address().port}`,path=`/api/sessions/${id}/command-cards`;
- const get=(suffix='',headers={})=>fetch(url+path+suffix,{headers:{authorization:'Bearer fixture',...headers}}),post=(headers={},body={})=>fetch(url+path,{method:'POST',headers:{origin:url,'content-type':'application/json',authorization:'Bearer fixture',...headers},body:JSON.stringify(body)});
- assert.equal((await get('',{authorization:''})).status,401);assert.equal((await get()).status,200);assert.equal((await get('/'+request)).status,200);
- for(const headers of [{origin:'https://untrusted.example'},{'x-forwarded-for':'10.0.0.1'},{'tailscale-user-login':'fixture'},{authorization:'Bearer wrong'}])assert.notEqual((await post(headers)).status,200);
- assert.equal((await get('?cwd=/other')).status,403);assert.equal((await post({},{data:'x'.repeat(5000)})).status,413);assert.equal(starts,0);assert.equal((await post()).status,200);assert.equal(starts,1);
- assert.equal((await fetch(url+'/command-cards-ui.mjs')).status,200);
+ assert.equal(starts,0);assert.equal((await post()).status,200);assert.equal(starts,1);assert.deepEqual(body,{id});
+ assert.equal((await post({},{id,pad:'x'.repeat(2000)})).status,413);
+ assert.equal((await fetch(url+'/api/session-terminal?id=x',{headers:{authorization:'Bearer fixture'}})).status,403);
+ assert.equal((await fetch(url+`/api/sessions/${id}/command-cards`,{headers:{authorization:'Bearer fixture'}})).status,403);
 });
 
 test('ended Claude exposes every access choice and real catalog labels, refusing apply until resumed',async t=>{

@@ -1,6 +1,4 @@
 import {cliProfileControls} from './cli-profile-ui.mjs';
-import {cardCommands,cardCommand,createCommandCard,reconnectCommandSession} from './command-cards-ui.mjs';
-import {officialCliControls} from './official-cli-ui.mjs';
 import {supportedChatCommands,chatCommandName,chatCommandSupported} from './command-support.mjs';
 import {bindComposerEnter} from './composer-input.mjs';
 import {createClaudeImportPanel,createImportedHistory} from './claude-import-ui.mjs';
@@ -43,7 +41,7 @@ let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JS
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
 let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null,pairingEnabled=false;
-let commandCardsEnabled=false;const localCommandCards=new Map();
+let sessionTerminalEnabled=false,terminalBusy=false;
 let commandSuggest=null,fileMentions=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
@@ -71,7 +69,7 @@ async function api(path,{method='GET',body,signal}={}){
   const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')||path.includes('/command-cards')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401&&path!=='/api/pair'){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.includes('/command-cards')||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/official-cli'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.startsWith('/api/branch')||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path==='/api/session-terminal'||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.startsWith('/api/branch')||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
@@ -81,28 +79,25 @@ const branchPin=workspaceLayout&&$('branch-pin')?createBranchPin({api,section:$(
 const fileTabs=workspaceLayout&&$('center-tabs')?createFileTabs({api,base,strip:$('center-tabs'),view:$('file-view'),host:document.querySelector('.conversation'),notice}):null;
 const fileTree=fileTabs?createFileTree({api,base,list:$('entries'),open:(path,size)=>openFile(path,size),error:e=>fileError(e),active:()=>fileTabs.active}):null;
 if(fileTree)$('up').hidden=true;
-const commandCardHost=document.createElement('div');commandCardHost.className='cli-command-cards';$('messages').after(commandCardHost);
-async function commandCapabilities(id=sessionId){if(!commandCardsEnabled||!id)return null;return api(`/api/sessions/${id}/command-cards`);}
-async function openCommandCard(name){
- const id=sessionId,mine=epoch,auth=token,cap=await commandCapabilities(id);
- if(mine!==epoch||!token||token!==auth)return false;
- if(!cardCommands(cap).some(c=>c.name===name))throw Error('이 세션·설치된 CLI에서는 해당 명령 카드를 사용할 수 없습니다.');
- const key=id+':'+name;let card=localCommandCards.get(key);
- if(card&&card.contextKey!==cap.contextKey){card.element.remove();localCommandCards.delete(key);card=null;}
- if(!card||!card.element.isConnected){
-  card=createCommandCard({id,name,cap,liveTools:()=>sessionId===id?session?.metadata?.tools:null,liveMessages:()=>sessionId===id?messages:null,api:async(path,options)=>{
-   if(options?.method==='POST'&&path.startsWith('/api/accounts/')){const latest=await commandCapabilities(id);if(token!==auth||sessionId!==id||latest?.contextKey!==cap.contextKey)throw Object.assign(Error('CLI 연결이 바뀌었습니다. 카드를 다시 여세요.'),{rejected:true});}
-   return api(path,options);
-  },accountSettings:()=>{workspacePanel('info');$('accounts-panel').open=true;
-   let back=$('chat-account-return');if(!back){back=document.createElement('button');back.id='chat-account-return';back.type='button';$('accounts-panel').append(back);}
-   back.textContent='설정 확인 후 대화로 돌아가기';back.onclick=async()=>{if(token===auth&&sessionId===id){workspacePanel('chat');try{await openCommandCard(name);}catch(e){notice(e.message);}$('prompt').focus();}};refreshAccounts();
-  },backToChat:()=>{workspacePanel('chat');card.hide();$('prompt').focus();},storage:sessionStorage,valid:()=>token===auth&&sessionId===id,reconnect:async()=>{
-   if(busy||id!==sessionId||token!==auth)throw Error('현재 작업을 마친 뒤 같은 세션에서 진행하세요.');
-   busy=true;render();const held=actions;
-   try{return await reconnectCommandSession({id,read:()=>({...session,id:sessionId,connected,pending:held!==actions||!!actions?.pending||!!permissionActions?.pending||!!settingsPending()}),refresh,confirm:()=>confirmArchive($('title').textContent,id),archive:expected=>held.archive(expected),resume:()=>held.resume()});}finally{busy=false;render();}
-  }});card.sessionId=id;card.contextKey=cap.contextKey;localCommandCards.set(key,card);commandCardHost.append(card.element);
- }
- card.show();card.element.scrollIntoView({block:'nearest'});await card.load();return true;
+// Commands the chat cannot carry run in the official CLI on the same session (HAPI `resume`): Claude moves there until
+// the app sends again; Codex shares the running session. The typed command is copied for pasting.
+async function openSessionTerminal(command=''){
+ if(terminalBusy||!sessionId||!sessionTerminalEnabled)return;
+ let copied=false;if(command)try{navigator.clipboard.writeText(command).catch(()=>{});copied=true;}catch{}
+ terminalBusy=true;render();const owner=sessionId;
+ try{const r=await api('/api/session-terminal',{method:'POST',body:{id:owner}});if(owner!==sessionId)return;
+  $('terminal-offer')?.remove();
+  notice(`터미널에서 같은 세션을 열었습니다.${copied?` ${command}를 복사해 두었으니 터미널에 붙여넣으세요.`:''} ${r?.agent==='codex'?'Codex는 앱과 함께 쓸 수 있습니다.':'앱에서 메시지를 보내면 세션이 앱으로 돌아옵니다.'}`);
+ }catch(e){if(owner===sessionId)notice(e.message+' 자동으로 다시 열지 않습니다.');}
+ finally{terminalBusy=false;render();}
+}
+function offerTerminal(command){
+ let box=$('terminal-offer');if(!box){box=document.createElement('div');box.id='terminal-offer';box.className='terminal-offer';box.setAttribute('role','status');$('composer-activity').before(box);}
+ const text=document.createElement('p'),open=document.createElement('button'),close=document.createElement('button');
+ text.textContent=`${command.split(/\s/)[0]}는 공식 CLI 화면이 필요한 명령입니다. 같은 세션을 터미널에서 열어 입력하세요. 대화는 이 앱에도 이어서 기록됩니다.`;
+ open.type=close.type='button';open.className='primary';open.textContent='터미널에서 이 세션 이어가기';open.onclick=()=>openSessionTerminal(command);close.textContent='닫기';close.onclick=()=>box.remove();
+ box.replaceChildren(text,open,close);open.disabled=!sessionTerminalEnabled||terminalBusy;
+ if(!sessionTerminalEnabled)text.textContent+=' 터미널은 서버 Mac의 앱 화면에서만 열 수 있습니다.';
 }
 
 // Programmatic value changes (clear after send, handoff prefill, draft restore) fire no input event.
@@ -125,7 +120,9 @@ function render(){
   $('handoff').disabled=!!session?.resumeUnconfirmed||busy||!connected||!session||session.thinking||!!actions?.pending;
   $('title').textContent=session?.metadata?.name??'시험 세션';
   const waiting=Object.keys(session?.agentState?.requests??{}).length;
-  $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 메시지를 보내면 같은 세션으로 이어집니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
+  const inTerminal=session?.active&&session.agentState?.controlledByUser===true;
+  $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 메시지를 보내면 같은 세션으로 이어집니다':inTerminal?'터미널에서 사용 중 · 앱에서 보내면 세션이 앱으로 돌아옵니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
+  if($('open-terminal')){$('terminal-controls').hidden=!sessionTerminalEnabled;$('open-terminal').disabled=terminalBusy||!connected||!session||inTerminal;$('terminal-state').textContent=inTerminal?'지금 터미널에서 이 세션을 쓰고 있습니다.':'';}
   $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||waiting>0||!!actions?.pending;
   // While the engine works a sent message waits in HAPI's queue; stop asks the engine to end the current turn.
   if($('stop')){$('stop').hidden=!(session?.active&&session.thinking);$('stop').disabled=stopping||!connected;}
@@ -264,7 +261,7 @@ async function stream(authEpoch){
   }
 }
 async function openWorkspace(){
- const auth=token;const config=await api('/config');commandCardsEnabled=config.commandCards===true;if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;pairingEnabled=config.pairing===true;if(workspaceLayout)$('pairing-open').hidden=!pairingEnabled;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
+ const auth=token;const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;pairingEnabled=config.pairing===true;if(workspaceLayout)$('pairing-open').hidden=!pairingEnabled;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
  $('session-select').replaceChildren(...trialSessions.map(s=>{const option=document.createElement('option');option.value=s.id;option.textContent=s.label;return option;}));
  if(!trialSessions.length){
   rememberChat();$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();
@@ -305,7 +302,7 @@ async function selectSession(id){
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();fileMentions?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
-  sessionId=id;branchTurn=null;fileTabs?.clear();fileTree?.clear();branchPin?.load(id);$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
+  sessionId=id;branchTurn=null;fileTabs?.clear();fileTree?.clear();branchPin?.load(id);$('terminal-offer')?.remove();if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
   const permissionKey=`hapi-permission-pending:${id}`;
@@ -321,7 +318,7 @@ async function selectSession(id){
 }
 $('session-select').onchange=()=>selectSession($('session-select').value).catch(e=>notice(e.message));
 function clearLogin(message,state='login-needed'){
-  commandCardsEnabled=false;localCommandCards.clear();commandCardHost.replaceChildren();attachmentComposer?.clearAll();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
+  sessionTerminalEnabled=false;$('terminal-offer')?.remove();attachmentComposer?.clearAll();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
   recovery?.stop();
   saveTabToken(sessionStorage,'',false);clearDeviceLogin(deviceStorage);deviceServerId='';
   catalogSerial++;sessionCards.clear();firstPrompts.clear();catalogChecked=null;cardSignature='';
@@ -354,14 +351,10 @@ $('send-form').addEventListener('submit',async e=>{
   const text=$('prompt').value.trim();if(!text&&!attachmentComposer?.count)return;
   const mine=epoch;let submitted=false;busy=true;render();
   try{
-    if(cardCommand(text)){
-      if(attachmentComposer?.count){notice('명령 카드는 첨부 없이 실행하세요. 작성 중인 입력은 보존했습니다.');return;}
-      if(await openCommandCard(cardCommand(text))&&mine===epoch&&$('prompt').value.trim()===text){$('prompt').value='';rememberChat();commandSuggest?.reset();}return;
-    }
     if(chatCommandName(text)){
-      let catalog;try{catalog=await api(base()+'/slash-commands');}catch{if(mine===epoch)notice('명령 지원 목록을 확인하지 못했습니다. 전송하지 않았습니다. 연결 상태를 확인하세요.');return;}
+      let catalog=null;try{catalog=await api(base()+'/slash-commands');}catch{}
       if(mine!==epoch)return;
-      if(!catalog?.success||!chatCommandSupported(session?.metadata?.flavor,text,catalog.commands)){notice('이 명령은 아직 Maricode 채팅에서 지원하지 않습니다. 전송하지 않았고 입력은 보존했습니다. 모델·액세스 변경은 입력창 옵션을 이용하세요.');return;}
+      if(!catalog?.success||!chatCommandSupported(session?.metadata?.flavor,text,catalog.commands)){offerTerminal(text);notice('채팅으로 보내지 않았습니다. 입력은 그대로 있습니다.');return;}
     }
     await refresh();if(mine!==epoch||!connected)return;
     if(branchPin&&(await branchPin.beforeSend(sessionId)!=='send'||mine!==epoch))return;
@@ -501,7 +494,7 @@ async function prepareNewHandoff(checkOnly=false){
   handoffState=result.state;
   if(result.state!=='created'){notice('생성 결과 ID를 아직 확인할 수 없습니다. 새 세션을 만들지 않았습니다.');return;}
   if(mine!==epoch)return;
-  const config=await api('/config');commandCardsEnabled=config.commandCards===true;if(mine!==epoch)return;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
+  const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;if(mine!==epoch)return;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
   $('session-select').replaceChildren(...trialSessions.map(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.label;return o;}));
   const target=result.session,text=buildHandoff(source,target,original,{hasOlder,limited});
   await selectSession(target.id);if(sessionId!==target.id||!token)return;
@@ -678,7 +671,7 @@ async function refreshCatalog(){
  if(!workspaceLayout||!token||catalogBusy)return;
  const mine=++catalogSerial,usedToken=token;catalogBusy=true;renderWorkspace();
  try{
-  const config=await api('/config');commandCardsEnabled=config.commandCards===true;
+  const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;
   const results=await Promise.allSettled(config.sessions.map(c=>api(`/api/sessions/${c.id}`)));
   if(mine!==catalogSerial||usedToken!==token)return;
   allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
@@ -1085,13 +1078,13 @@ async function refreshAccounts(){
  if(accountsBusy||!token)return;
  const auth=token;accountsBusy=true;$('refresh-accounts').disabled=true;$('account-notice').textContent='실행 머신의 로그인 상태를 확인 중입니다.';
  try{
-  const [data,profiles,cli,folders]=await Promise.all([api('/api/accounts'),api('/api/account-profiles').catch(()=>null),api('/api/official-cli').catch(()=>null),api('/api/projects').catch(()=>null)]);if(auth!==token)return;
+  const [data,profiles]=await Promise.all([api('/api/accounts'),api('/api/account-profiles').catch(()=>null)]);if(auth!==token)return;
   $('account-host').textContent=`확인 대상: ${data.host}`;
   const labels={'connection-required':'기존 CLI 설정 연결 필요',connected:'구독 로그인 확인', 'signed-out':'로그인 필요', 'not-installed':'설치 경로에서 CLI를 찾지 못함','other-auth':'다른 인증 방식 사용 중 · 자동 변경 안 함','not-configured':'아직 연결하지 않은 AI',unknown:'상태 확인 실패 · 기존 인증을 변경하지 않음'};
   $('account-list').replaceChildren(...data.providers.map(p=>{
    const card=document.createElement('article'),h=document.createElement('h3'),status=document.createElement('p'),button=document.createElement('button');h.textContent=p.agent==='claude'?'Claude Code':'Codex';status.textContent=labels[p.state]??labels.unknown;
    const note=document.createElement('small');note.textContent=p.loginPending?'로그인 창 실행/진행 중입니다. Mac에서 완료한 뒤 상태를 다시 확인하세요.':data.localLogin?'계정 식별 정보는 공식 CLI에서 확인하세요.':'새 로그인은 해당 서버 Mac에서 진행해 주세요.';
-   button.textContent='연결한 CLI로 공식 로그인';button.disabled=!data.localLogin||p.state!=='signed-out'||p.loginPending;button.onclick=()=>startAccountLogin(p.agent);card.append(h,status,note);const prof=profiles?.[p.agent];if(prof)card.append(accountProfileControls(p.agent,prof,status,data.localLogin));card.append(button);card.append(officialCliControls({agent:p.agent,profile:prof,local:data.localLogin,state:cli?.[p.agent],projects:folders?.projects??[],selected:selectedProject,api,valid:()=>auth===token&&!!token}));return card;
+   button.textContent='연결한 CLI로 공식 로그인';button.disabled=!data.localLogin||p.state!=='signed-out'||p.loginPending;button.onclick=()=>startAccountLogin(p.agent);card.append(h,status,note);const prof=profiles?.[p.agent];if(prof)card.append(accountProfileControls(p.agent,prof,status,data.localLogin));card.append(button);return card;
   }));$('account-notice').textContent='상태 확인 완료. 기존 로그인은 그대로 사용합니다.';
  }catch{if(auth===token)$('account-notice').textContent='계정 상태를 확인하지 못했습니다. 연결과 서버 설정을 확인해 주세요.';}
  finally{accountsBusy=false;$('refresh-accounts').disabled=false;}
@@ -1121,7 +1114,10 @@ if(workspaceLayout){
  $('close-settings').onclick=closeSettings;
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();workspacePanel('chat');workspaceDrawer(false);}});
  document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
- commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>sessionId&&(session?.active||commandCardsEnabled)?`${epoch}:${sessionId}`:null,fetch:async()=>{const agent=session?.metadata?.flavor;const [c,s,cap]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null),commandCapabilities().catch(()=>null)]);return {commands:[...cardCommands(cap),...supportedChatCommands(agent,c?.success?c.commands:[])],skills:s?.success?s.skills:[]};}}});
+ commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>sessionId&&session?.active?`${epoch}:${sessionId}`:null,fetch:async()=>{const agent=session?.metadata?.flavor;const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);const reported=c?.success?c.commands:[],chat=supportedChatCommands(agent,reported),inChat=new Set(chat.map(x=>x.name.toLowerCase()));
+  // Commands the chat cannot carry are still listed; sending one offers the terminal.
+  const terminal=sessionTerminalEnabled?reported.filter(x=>typeof x?.name==='string'&&/^[a-zA-Z][\w.:-]{0,127}$/.test(x.name)&&!inChat.has(x.name.toLowerCase())).map(x=>({...x,description:'터미널에서 실행 · '+(x.description??x.name)})):[];
+  return {commands:[...chat,...terminal],skills:s?.success?s.skills:[]};}}});
  fileMentions=fileTabs?createFileMentions({input:$('prompt'),list:$('command-suggestions'),search:async term=>{if(!sessionId)return [];const r=await api(base()+'/files?query='+encodeURIComponent(term)+'&limit=20');return r?.success?r.files:[];}}):null;
  bindComposerEnter({input:$('prompt'),form:$('send-form'),button:$('send')});
  finder=createFind({bar:$('find-bar'),input:$('find-input'),count:$('find-count'),scope:()=>$('messages')});$('find-close').onclick=()=>finder.close();
@@ -1134,6 +1130,7 @@ if(workspaceLayout){
   {group:'동작',label:'프로젝트 사이드바 보이기/숨기기',keywords:'sidebar',run:click('open-nav')},
   {group:'동작',label:'상세 패널 보이기/숨기기',keywords:'inspector 세션 정보',run:click('info-tab')},
   {group:'동작',label:'AI 계정·로그인 상태',keywords:'account login 계정',run:click('accounts-tab')},
+  ...(sessionTerminalEnabled&&sessionId?[{group:'동작',label:'터미널에서 이 세션 이어가기',keywords:'terminal cli 터미널 명령 slash',run:()=>openSessionTerminal()}]:[]),
   {group:'동작',label:'세션 목록 새로고침',keywords:'refresh',run:click('refresh-list')},
   ...(pairingEnabled?[{group:'동작',label:'다른 기기 연결 코드 만들기',keywords:'pair qr 연결 원격 remote',run:()=>openPairing()}]:[]),
   ...trialSessions.map(s=>({group:'대화',label:s.displayName??s.label,detail:[s.agent==='claude'?'Claude':s.agent==='codex'?'Codex':'',s.projectLabel].filter(Boolean).join(' · '),run:()=>selectSession(s.id)})),
@@ -1299,11 +1296,12 @@ async function stopTurn(){
  finally{stopping=false;await refresh().catch(()=>{});render();}
 }
 if($('stop'))$('stop').onclick=stopTurn;
+if($('open-terminal'))$('open-terminal').onclick=()=>openSessionTerminal();
 function updateJumpLatest(){const s=$('conversation-history'),b=$('jump-latest');if(s&&b)b.hidden=!moreBelow(s);updateStuckPrompt();}
 // The request that scrolled past stays pinned (sticky CSS) in two lines; earlier pinned ones are hidden behind it.
 function updateStuckPrompt(){const s=$('conversation-history');if(!s)return;const top=s.getBoundingClientRect().top+1,pinned=[...s.querySelectorAll('.bubble.user:not(.child-message)')].filter(b=>b.getBoundingClientRect().top<=top);
  for(const b of s.querySelectorAll('.bubble.user'))b.classList.remove('stuck','stuck-under');pinned.forEach((b,i)=>b.classList.add(i===pinned.length-1?'stuck':'stuck-under'));}
 if($('jump-latest')){const s=$('conversation-history');s.addEventListener('scroll',updateJumpLatest,{passive:true});
  // Cards and streamed replies grow the content without a scroll event.
- const grow=new ResizeObserver(updateJumpLatest);grow.observe($('messages'));grow.observe(commandCardHost);
+ const grow=new ResizeObserver(updateJumpLatest);grow.observe($('messages'));
  $('jump-latest').onclick=()=>s.scrollTo({top:s.scrollHeight,behavior:'smooth'});}

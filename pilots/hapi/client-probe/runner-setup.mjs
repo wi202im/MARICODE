@@ -10,8 +10,7 @@ import {launchRunner} from './runner-launch.mjs';
 import {claudeImports} from './claude-import.mjs';
 import {codexImports} from './codex-import.mjs';
 import {accountProfiles} from './account-profiles.mjs';
-import {createCommandCards,commandContextKey} from './command-cards.mjs';
-import {createOfficialCli,cliPending} from './official-cli.mjs';
+import {createSessionTerminal,terminalPending} from './session-terminal.mjs';
 import {discoverClaudeSource,discoverCliSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
 import {repoStates,pinMismatches,pinFrom,validBranch} from './branch-pin.mjs';
@@ -38,11 +37,13 @@ async function runnerHasActive(config){
  if(!r.ok)throw Error();const data=await r.json();if(!Array.isArray(data.sessions))throw Error();
  return data.sessions.some(s=>s.active&&s.metadata?.machineId===id);
 }
-export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRunner,connection=runnerConnected,hasActive=runnerHasActive,officialCli=createOfficialCli(config.accountConfig),commandCards=createCommandCards(config.accountConfig,config.directory+'.command-cards'),now=Date.now}={}){
+export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRunner,connection=runnerConnected,hasActive=runnerHasActive,sessionTerminal=null,now=Date.now}={}){
  const url=new URL(config.hubUrl);
  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('Local Hub required');
  if(['directory','accountConfig','binary','tokenFile'].some(k=>typeof config[k]!=='string'||!isAbsolute(config[k])))throw Error('Absolute launcher paths required');
  const c={...config,hubUrl:url.origin,taskDirectory:join(config.directory,'tasks')},slot=config.directory;let busy=false,phase=null,child=null,resumePending=null;
+ // Same session in the official terminal UI, with this Runner generation's environment and Hub.
+ const terminal=sessionTerminal??createSessionTerminal({directory:()=>slot+'.terminal',runner:()=>({prepared:c.directory,binary:c.binary,hubUrl:c.hubUrl,tokenFile:c.tokenFile})});
  async function generalDirectory(){return join(await realpath(dirname(slot)),basename(slot)+'.general','general-chat');}
  async function prepareGeneralDirectory(){
   const path=await generalDirectory();
@@ -287,20 +288,11 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     return {state:'registered',id};
    });
   },
-  async commandCardCapabilities(authorization,id){return exclusive(async()=>commandCards.capabilities(await commandScope(authorization,id)));},
-  async commandCardResult(authorization,id,requestId){return commandCards.result(await commandScope(authorization,id),requestId);},
-  async commandCardRun(authorization,id,input){
-   if(!input||typeof input.contextKey!=='string')throw Object.assign(Error('명령 카드를 다시 여세요.'),{rejected:true});
-   let admitted=false;try{return await exclusive(async()=>{const scope=await commandScope(authorization,id);if(input.contextKey!==commandContextKey(scope))throw Object.assign(Error('대상 계정·폴더가 바뀌었습니다. 명령 카드를 다시 여세요.'),{rejected:true});
-    if(['mcp-add','mcp-remove','mcp-login'].includes(input.action)&&cliPending(await officialCli.status(scope.agent)))throw Object.assign(Error('별도 공식 CLI 창을 종료한 뒤 설정을 변경하세요.'),{rejected:true});
-    const {contextKey,...request}=input;admitted=true;return commandCards.execute(scope,request);
-   });}catch(error){if(!admitted&&!error.rejected)throw Object.assign(Error('명령을 시작하지 않았습니다. 연결·계정·다른 설정 작업을 확인하세요.'),{rejected:true,status:error.status});throw error;}
-  },
-  async officialCliStatus(authorization){await authorize(authorization);return Object.fromEntries(await Promise.all(['claude','codex'].map(async agent=>[agent,await officialCli.status(agent)])));},
-  async openOfficialCli(authorization,input){
-   await authorize(authorization);
-   if(!input||Object.keys(input).some(k=>!['agent','accountId','project'].includes(k))||!['claude','codex'].includes(input.agent)||typeof input.project!=='string'||typeof input.accountId!=='string')throw Object.assign(Error('공식 CLI 실행 대상을 확인하세요.'),{rejected:true});
-   return exclusive(async()=>{const project=await selectedProject(authorization,input.project);return officialCli.start({agent:input.agent,accountId:input.accountId,cwd:project.path});});
+  async sessionTerminalStatus(authorization){await authorize(authorization);return terminal.status();},
+  // Opens the selected session of this Mac in the official CLI (all slash commands). Checks match the other session tools.
+  async openSessionTerminal(authorization,input){
+   if(!input||Object.keys(input).some(k=>k!=='id')||typeof input.id!=='string')throw Object.assign(Error('이어 갈 세션을 확인하세요.'),{rejected:true});
+   return exclusive(async()=>{const scope=await commandScope(authorization,input.id);await current();if(!c.directory.startsWith(slot+'.generation-'))throw Object.assign(Error('실행 환경이 준비되지 않았습니다. 메시지를 한 번 보내 실행 환경을 켠 뒤 다시 여세요.'),{rejected:true});return terminal.start({sessionId:input.id,agent:scope.agent,cwd:scope.cwd});});
   },
   async accountProfiles(authorization){await authorize(authorization);return accountProfiles(c.accountConfig).list();},
   async accountProfile(authorization,input){
@@ -317,8 +309,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    return exclusive(async()=>{
     const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
     try{const phase=JSON.parse(await readFile(join(cfg.directory,input.agent+'.login/state.json'),'utf8')).phase;if(phase!=='finished')throw Object.assign(Error('공식 로그인을 마친 뒤 CLI 연결을 변경하세요.'),{rejected:true});}catch(e){if(e.code!=='ENOENT')throw e;}
-    if(await commandCards.pending(input.agent))throw Object.assign(Error('앞선 MCP 설정 변경 결과가 미확인입니다. CLI 연결을 변경하지 않았습니다.'),{rejected:true});
-    if(cliPending(await officialCli.status(input.agent)))throw Object.assign(Error('공식 CLI 창을 exit로 종료한 뒤 CLI 연결을 변경하세요. 실행 결과가 미확인이면 터미널을 먼저 확인하세요.'),{rejected:true});
+    if(terminalPending(await terminal.status()))throw Object.assign(Error('터미널에서 연 세션을 /exit로 마친 뒤 CLI 연결을 변경하세요. 결과가 미확인이면 터미널을 먼저 확인하세요.'),{rejected:true});
     const before=await state();
     if(!['unprepared','prepared','exited','running'].includes(before)||before==='running'&&!child)throw Object.assign(Error('실행기 상태를 확인한 뒤 전환하세요. CLI 연결을 변경하지 않았습니다.'),{rejected:true});
     if(await unresolvedTasks()||(before==='running'?await hasActive(c):await activeAuthorizedSessions(authorization)))throw Object.assign(Error('실행 중인 대화나 확인되지 않은 생성 요청이 있어 CLI 연결을 변경하지 않았습니다. 실행을 종료한 뒤 다시 시도하세요.'),{rejected:true});
@@ -506,7 +497,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   start:()=>action('prepared','starting',async()=>{if((await snapshot()).configuration!=='matched')throw Error('Prepared configuration changed');await launchCurrent();}),
   stop:()=>exclusive(stopOwned),
   reprepare:()=>exclusive(prepareNext),
-  async close(){if(commandCards.running?.())throw Error('CLI 명령·인증이 진행 중입니다. 결과 확인 후 종료하세요.');if(child?.running)await api.stop();}
+  async close(){if(child?.running)await api.stop();}
  };
  return api;
 }

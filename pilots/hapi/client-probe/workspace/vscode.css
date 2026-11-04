@@ -89,3 +89,8 @@ textarea{font-size:13px}
 .diff-view{margin:0;padding:12px 16px;font:12px/1.6 var(--mono);white-space:pre;tab-size:4;min-width:fit-content}
 .diff-view>span{display:block;min-height:1.6em}.diff-view .diff-add{color:var(--success);background:#2ea0431f}.diff-view .diff-del{color:var(--danger);background:#f851491f}
 .diff-view .diff-hunk{color:var(--vscode-textLink-foreground)}.diff-view .diff-context{color:var(--foreground)}
+/* Commands the chat cannot carry: offer the same session in the official terminal UI. */
+.terminal-offer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:6px;background:var(--sidebar);font-size:12px}
+.terminal-offer p{flex:1 1 260px;margin:0;color:var(--muted)}.terminal-offer button{min-height:24px;padding:2px 10px;font-size:12px}
+.terminal-offer button:not(.primary){background:var(--vscode-button-secondaryBackground)}
+.terminal-controls p{font-size:12px;color:var(--muted);line-height:1.6}.terminal-controls button{background:var(--vscode-button-secondaryBackground);font-size:12px}
