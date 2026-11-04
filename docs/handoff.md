@@ -2,13 +2,6 @@
 
 상태는 이 파일, 요구사항은 [goals.md](goals.md), 이전 과정은 Git 로그를 따른다.
 
-## Web Awesome 디자인 시범(오른쪽 패널) — 2026-11-04 (미배포)
-
-- 사용자 결정: 앱 전체 디자인 통일 라이브러리로 Web Awesome 3.14.0 무료판(MIT, 웹 컴포넌트) 시범 적용. 범위는 오른쪽 패널: 패널 탭·닫기, 파일 패널 버튼과 파일 트리(`wa-tree`, 폴더는 처음 펼칠 때 지연 로딩), 세션 정보의 접기 영역 4개(`wa-details`)와 버튼, Git 새로고침. Git 요약 버튼과 동적으로 만드는 내용(브랜치 고정·계정 카드·인계)은 기존 요소 그대로.
-- 연결: `vendor/webawesome/`(배포용 빌드 전체, 약 3MB), `ui-kit.mjs`가 쓰는 컴포넌트만 불러오고 기본 아이콘 라이브러리를 Lucide 파일로 바꿔 Font Awesome CDN 요청을 막는다. 테마는 `workspace/ui-kit.css`가 기본 테마를 불러와 앱 색 토큰에 연결(`html.wa-dark.wa-brand-gray`). Web Awesome CSS는 cascade layer라 앱 기존 CSS가 우선한다.
-- 보안: 내장 시스템 아이콘이 `data:` 주소를 fetch해 CSP `connect-src`에 `data:`만 추가했다(네트워크 연결 없음). Font Awesome Free 아이콘(CC BY 4.0)은 NOTICES·LICENSES에 기록.
-- **된다 — 헤드리스 Chrome(격리 프로필, 소스 시험 서버 61290):** 컴포넌트 등록·shadow DOM·Lucide 아이콘 표시, CSP 위반 없음(기존 favicon 403만), 실제 마우스 클릭으로 폴더 지연 로딩·접기·파일 열기·링크→파일 열기. **된다 — 자동:** 423개. **확인 안 함:** Mac 앱(WebKit) 화면, 실제 세션 데이터.
-
 ## 화면 아이콘 Lucide 통일 — 2026-11-04 (미배포)
 
 - 사용자 결정: 작업 화면의 UI 아이콘을 Lucide 1.67.0(ISC)으로 통일. 파일 형식 아이콘은 Material Icon Theme 유지.

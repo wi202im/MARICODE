@@ -16,7 +16,6 @@ import {createBranchPin} from './branch-pin-ui.mjs';
 import {createFileTabs} from './file-viewer.mjs';
 import {createFileTree} from './file-tree.mjs';
 import {icon} from './vendor/lucide.mjs';
-import './ui-kit.mjs';
 import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';

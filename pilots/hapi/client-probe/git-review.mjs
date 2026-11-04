@@ -22,6 +22,6 @@ export function createGitReview({element,api,base,owner,untracked}){
    $('git-review-files').replaceChildren(...files.map(f=>{const li=node('li'),b=node('button','git-review-file');b.type='button';b.append(node('span','git-review-path',f.path),node('span','git-review-stat',f.binary?'바이너리':`+${f.added} −${f.removed}`),...(f.staged?[node('span','git-review-staged','스테이징')]:[]));b.onclick=()=>showDiff(f);li.append(b);return li;}));
   }catch{if(ticket===serial){loadedFor=null;$('git-review-status').textContent='변경 목록을 가져오지 못했습니다. 실행기 연결을 확인하세요.';}}
  }
- element.addEventListener('toggle',()=>load());element.addEventListener('wa-after-show',()=>load()); // native <details> or <wa-details>
+ element.addEventListener('toggle',()=>load());
  return {load,reset(){serial++;loadedFor=null;$('git-review-files').replaceChildren();$('git-review-diff').hidden=true;$('git-review-status').textContent='';if(element.open)load();}};
 }
