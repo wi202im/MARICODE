@@ -12,6 +12,7 @@ import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
 import {turnAlerts,alertText} from './turn-alerts.mjs';
+import {createBranchPin} from './branch-pin-ui.mjs';
 import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
@@ -67,11 +68,13 @@ async function api(path,{method='GET',body,signal}={}){
   const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')||path.includes('/command-cards')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401&&path!=='/api/pair'){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.includes('/command-cards')||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/official-cli'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path.includes('/command-cards')||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/official-cli'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.startsWith('/api/branch')||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
 const base=()=>`/api/sessions/${sessionId}`;
+// Pinned sessions: branchTurn marks a sent turn whose end (HAPI 'ready' event after seq) triggers the branch check.
+const branchPin=workspaceLayout&&$('branch-pin')?createBranchPin({api,section:$('branch-pin'),banner:$('branch-banner'),changed:()=>refreshCatalog().catch(()=>{})}):null;let branchTurn=null;
 const commandCardHost=document.createElement('div');commandCardHost.className='cli-command-cards';$('messages').after(commandCardHost);
 async function commandCapabilities(id=sessionId){if(!commandCardsEnabled||!id)return null;return api(`/api/sessions/${id}/command-cards`);}
 async function openCommandCard(name){
@@ -211,6 +214,7 @@ async function refresh(){
   if(!history.hasMore&&!firstPrompts.has(sessionId)){const first=messages.map(messageView).find(v=>v?.role==='user'&&v.text?.trim());if(first)firstPrompts.set(sessionId,first.text.trim().replace(/\s+/g,' ').slice(0,80));}
   if(confirmedDraft(messages,actions.pending,$('prompt').value.trim())){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}
   if(workspaceLayout&&session?.id===sessionId&&alertSnapshots.size)alertSnapshots.set(sessionId,session);
+  if(branchTurn?.id===sessionId&&messages.some(m=>m.seq>branchTurn.seq&&m.content?.content?.type==='event'&&m.content.content.data?.type==='ready')){branchTurn=null;branchPin?.afterTurn(sessionId);}
   const previousPending=actions.pending,released=actions.reconcile(messages,session.active,session.resumeUnconfirmed);
   permissionActions?.reconcile(session?.agentState?.requests??{});
   if(released==='resume-not-started')notice('재개가 시작되지 않았습니다. AI 연결·로그인 상태와 원래 기록을 확인한 뒤 메시지를 다시 보내 주세요. 자동으로 다시 시도하지 않습니다.');
@@ -290,7 +294,7 @@ async function selectSession(id){
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
-  sessionId=id;$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
+  sessionId=id;branchTurn=null;branchPin?.load(id);$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
   const permissionKey=`hapi-permission-pending:${id}`;
@@ -349,6 +353,7 @@ $('send-form').addEventListener('submit',async e=>{
       if(!catalog?.success||!chatCommandSupported(session?.metadata?.flavor,text,catalog.commands)){notice('이 명령은 아직 Maricode 채팅에서 지원하지 않습니다. 전송하지 않았고 입력은 보존했습니다. 모델·액세스 변경은 입력창 옵션을 이용하세요.');return;}
     }
     await refresh();if(mine!==epoch||!connected)return;
+    if(branchPin&&(await branchPin.beforeSend(sessionId)!=='send'||mine!==epoch))return;
     // An ended session resumes first; the message goes out only after the resume is confirmed (never resent blind).
     if(!session.active&&!actions.pending&&!session.resumeUnconfirmed){
      const resumed=await resumeForAction('같은 세션을 다시 열고 있습니다. 열리면 메시지를 보냅니다…');
@@ -356,7 +361,7 @@ $('send-form').addEventListener('submit',async e=>{
      if(!resumed){notice('세션 재개를 아직 확인하지 못해 메시지는 보내지 않았습니다. 입력은 그대로 있습니다. 상태를 확인한 뒤 다시 보내 주세요.');return;}
     }
     if(!session.active||session.thinking||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
-    const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;const result=actions.send(text,attachments);render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
+    const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;if(branchPin?.pinned)branchTurn={id:sessionId,seq:Math.max(0,...messages.map(m=>m.seq??0))};const result=actions.send(text,attachments);render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
   }catch(e){if(mine===epoch)notice(submitted&&!actions.pending?'서버 이력에서 전송을 확인했습니다.':e.message+' 전송은 자동 재시도하지 않습니다.');}finally{busy=false;render();}
 });
 $('retry-message').onclick=async()=>{
@@ -598,7 +603,7 @@ function renderWorkspace(){
     for(const c of matches){
      const button=document.createElement('button');button.className='task';button.dataset.sessionId=c.config.id;button.title=c.engine+' · '+c.state+' · '+c.config.id;button.setAttribute('aria-current',String(c.selected));button.disabled=busy||taskCreating;
      const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' green':'');
-     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state;text.append(title,state);button.append(dot,text);
+     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state+(c.config.branchPin?' · 브랜치 고정':'');text.append(title,state);button.append(dot,text);
      button.onclick=()=>{workspaceDrawer(false);selectSession(c.config.id).catch(e=>notice(e.message));};const row=document.createElement('div');row.className='session-row';row.append(button);if(navigationEnabled)row.append(navigationMenu({kind:'session',id:c.config.id,name:c.title,path:w.path}));children.append(row);
     }
     if(!matches.length){const empty=document.createElement('p');empty.className='project-no-sessions';empty.textContent=query?'일치하는 세션 없음':w.cards.length?'보기 설정으로 세션이 숨겨져 있습니다':'＋로 대화를 추가하세요';children.append(empty);}
@@ -893,7 +898,7 @@ async function createTask(checkOnly){
  if(!request){
   if($('create-task').disabled)return;
   request={requestId:crypto.randomUUID(),agent:$('task-agent').value,project:draftProject,...(draftSupportsGit?{workspace:draftWorkspace()}:{})};
-  try{sessionStorage.setItem(taskPendingKey,JSON.stringify(request));sessionStorage.setItem('maricode-task-defaults:'+request.requestId,JSON.stringify(draftInherited));}catch{draftMessage='요청을 보관하지 못해 시작하지 않았습니다.';renderTaskCreation();return;}
+  try{sessionStorage.setItem(taskPendingKey,JSON.stringify(request));sessionStorage.setItem('maricode-task-defaults:'+request.requestId,JSON.stringify(draftInherited));if($('task-branch-pin')?.checked&&!$('draft-project-fields').hidden)sessionStorage.setItem('maricode-task-pin:'+request.requestId,'1');}catch{draftMessage='요청을 보관하지 못해 시작하지 않았습니다.';renderTaskCreation();return;}
  }
  draftContinue=false;taskCreating=true;busy=true;$('prompt').disabled=true;$('logout').disabled=true;render();renderTaskCreation();
  try{
@@ -902,6 +907,7 @@ async function createTask(checkOnly){
   if(result.state!=='created')return;
   await openWorkspace();await selectSession(result.session.id);
   sessionStorage.removeItem(taskPendingKey);$('new-task-panel').hidden=true;workspaceDrawer(false);
+  if(sessionStorage.getItem('maricode-task-pin:'+request.requestId)){sessionStorage.removeItem('maricode-task-pin:'+request.requestId);if(!await branchPin?.enable(result.session.id))notice('세션은 만들었지만 브랜치를 고정하지 못했습니다. 세션 정보에서 다시 시도하세요.');}
   let inherited;try{inherited=JSON.parse(sessionStorage.getItem('maricode-task-defaults:'+request.requestId));sessionStorage.removeItem('maricode-task-defaults:'+request.requestId);}catch{}
   let settingsNote='';
   if(inherited?.agent===request.agent){

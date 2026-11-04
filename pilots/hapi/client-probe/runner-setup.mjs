@@ -14,6 +14,7 @@ import {createCommandCards,commandContextKey} from './command-cards.mjs';
 import {createOfficialCli,cliPending} from './official-cli.mjs';
 import {discoverClaudeSource,discoverCliSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
+import {repoStates,pinMismatches,pinFrom,validBranch} from './branch-pin.mjs';
 async function ownerAuthorization(config){
  const token=await readFile(config.tokenFile,'utf8');
  const auth=await fetch(config.hubUrl+'/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({accessToken:token}),redirect:'error',signal:AbortSignal.timeout(3000)});
@@ -328,6 +329,26 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     return result;
    });
   },
+  // Branch pin: the allowed branches per repository of a registered local session's folder.
+  async branches(authorization,id){
+   const s=(await api.workspace(authorization)).find(x=>x.id===id);if(!s)throw Error('이 컴퓨터의 등록된 세션을 선택하세요.');
+   const pin=(await projectRegistry(c.projectsPath).navigation()).sessions[id]?.branchPin??null,repos=await repoStates(s.project);
+   return {pin,repos,mismatches:pinMismatches(pin,repos)};
+  },
+  async branchPin(authorization,input){
+   if(!input||Object.keys(input).some(k=>!['id','action','repo','branch'].includes(k))||!['enable','disable','add','remove'].includes(input.action))throw Error('브랜치 고정 요청을 확인하세요.');
+   const now=await api.branches(authorization,input.id),repos=now.repos;let pin=now.pin?structuredClone(now.pin):null;
+   if(input.action==='enable'){if(!repos.some(r=>r.current))throw Error('세션 폴더와 바로 아래 폴더에서 브랜치에 있는 Git 저장소를 찾지 못했습니다.');pin=pinFrom(repos);}
+   else if(input.action==='disable')pin=null;
+   else{
+    if(!pin)throw Error('먼저 브랜치 고정을 켜세요.');
+    if(!validBranch(input.branch)||typeof input.repo!=='string')throw Error('브랜치를 확인하세요.');
+    if(input.action==='add'){const r=repos.find(x=>x.repo===input.repo);if(!r?.branches.includes(input.branch))throw Error('저장소에 없는 브랜치입니다.');pin.repos[input.repo]=[...new Set([...(pin.repos[input.repo]??[]),input.branch])];}
+    else pin.repos[input.repo]=(pin.repos[input.repo]??[]).filter(b=>b!==input.branch);
+   }
+   await projectRegistry(c.projectsPath).edit({kind:'session',id:input.id,action:'branch-pin',pin});
+   return api.branches(authorization,input.id);
+  },
   async navigation(authorization){
    const data=await authorize(authorization);if(!c.projectsPath)throw Error('목록 관리 미지원');
    const registry=projectRegistry(c.projectsPath),nav=await registry.navigation(),generalPath=await generalDirectory();
@@ -477,7 +498,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    const data=await r.json();if(!Array.isArray(data.sessions))throw Error('Workspace unavailable');
    const links=await handoffLinks().catch(()=>({}));
    return data.sessions.filter(s=>/^[a-f0-9-]{36}$/.test(s.id)&&s.metadata?.machineId===settings.machineId&&(allowed?allowed.some(p=>p.path===s.metadata?.path):s.metadata?.path===plan.cwd))
-    .map(s=>({id:s.id,...(typeof links[s.id]==='string'&&data.sessions.some(x=>x.id===links[s.id])?{parentId:links[s.id]}:{}),...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),agent:s.metadata?.flavor,updatedAt:s.updatedAt,createdAt:s.createdAt,label:sessionTitle({id:s.id},s),project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
+    .map(s=>({id:s.id,...(typeof links[s.id]==='string'&&data.sessions.some(x=>x.id===links[s.id])?{parentId:links[s.id]}:{}),...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),...(views[s.id]?.branchPin?{branchPin:true}:{}),agent:s.metadata?.flavor,updatedAt:s.updatedAt,createdAt:s.createdAt,label:sessionTitle({id:s.id},s),project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
   },
   prepare:()=>action('unprepared','preparing',async()=>{await prepare(c.accountConfig,c.directory);phase='prepared';}),
   start:()=>action('prepared','starting',async()=>{if((await snapshot()).configuration!=='matched')throw Error('Prepared configuration changed');await launchCurrent();}),

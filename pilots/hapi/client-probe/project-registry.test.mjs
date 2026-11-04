@@ -43,4 +43,9 @@ test('navigation edits retain identities and source files; unregister and restor
  for(const name of ['', 'a\nb', 'x'.repeat(121)])await assert.rejects(registry.edit({kind:'project',id:p.id,action:'rename',name}));
  await registry.edit({kind:'session',id:'11111111-1111-4111-8111-111111111111',action:'rename',name:'대화 A'});
  assert.equal((await registry.navigation()).sessions['11111111-1111-4111-8111-111111111111'].name,'대화 A');
+ const s='11111111-1111-4111-8111-111111111111',pin={repos:{api:['feature/x']}};
+ await registry.edit({kind:'session',id:s,action:'branch-pin',pin});assert.deepEqual((await registry.navigation()).sessions[s],{name:'대화 A',branchPin:pin});
+ await assert.rejects(registry.edit({kind:'session',id:s,action:'branch-pin',pin:{repos:{api:['bad name']}}}));
+ await assert.rejects(registry.edit({kind:'project',id:p.id,action:'branch-pin',pin}));
+ await registry.edit({kind:'session',id:s,action:'branch-pin',pin:null});assert.deepEqual((await registry.navigation()).sessions[s],{name:'대화 A'});
 });

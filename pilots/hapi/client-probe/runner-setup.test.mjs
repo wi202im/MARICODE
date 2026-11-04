@@ -394,3 +394,26 @@ test('removed projects list their sessions so they can be deleted without restor
  await service.manage('Bearer synthetic',{kind:'session',id:sid,action:'delete'});assert.deepEqual(deleted,['/api/sessions/'+sid]);
  assert.equal((await service.navigation('Bearer synthetic')).removed.some(r=>r.kind==='session'),false);
 });
+
+test('branch pin is kept per registered session and checks the repositories directly under its folder',async t=>{
+ const {createServer}=await import('node:http'),{projectRegistry}=await import('./project-registry.mjs'),{execFileSync}=await import('node:child_process');
+ const root=await mkdtemp(join(tmpdir(),'maricode-pin-'));const source=join(root,'source'),api=join(source,'api');await mkdir(api,{recursive:true});const directory=join(root,'runner');await mkdir(join(directory,'runner-home'),{recursive:true});
+ const g=(...a)=>execFileSync('git',a,{cwd:api,stdio:'pipe',env:{...process.env,GIT_AUTHOR_NAME:'t',GIT_AUTHOR_EMAIL:'t@t',GIT_COMMITTER_NAME:'t',GIT_COMMITTER_EMAIL:'t@t'}});
+ g('init','-q','-b','feature/x');await writeFile(join(api,'a'),'a');g('add','a');g('commit','-qm','a');g('branch','main');
+ const projectsPath=join(root,'projects'),project=await projectRegistry(projectsPath).add(source),accountConfig=join(root,'account');
+ await writeFile(accountConfig,JSON.stringify({cwd:project.path}));await writeFile(join(directory,'prepared.json'),JSON.stringify({cwd:project.path}));await writeFile(join(directory,'runner-home/settings.json'),JSON.stringify({machineId:'own'}));
+ const sid='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
+ const hub=createServer((req,res)=>{if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end();return;}res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessions:[{id:sid,metadata:{machineId:'own',path:project.path,flavor:'claude'}},{id:other,metadata:{machineId:'else',path:project.path,flavor:'claude'}}]}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ const service=createRunnerSetup({directory,accountConfig,projectsPath,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:`http://127.0.0.1:${hub.address().port}`});
+ await assert.rejects(service.branchPin('Bearer wrong',{id:sid,action:'enable'}),e=>e.status===401);
+ await assert.rejects(service.branchPin('Bearer synthetic',{id:other,action:'enable'}));
+ await assert.rejects(service.branchPin('Bearer synthetic',{id:sid,action:'add',repo:'api',branch:'main'}));
+ let r=await service.branchPin('Bearer synthetic',{id:sid,action:'enable'});assert.deepEqual(r.pin,{repos:{api:['feature/x']}});assert.deepEqual(r.mismatches,[]);
+ assert.equal((await service.workspace('Bearer synthetic'))[0].branchPin,true);
+ g('checkout','-q','main');r=await service.branches('Bearer synthetic',sid);assert.deepEqual(r.mismatches,[{repo:'api',current:'main',allowed:['feature/x']}]);
+ await assert.rejects(service.branchPin('Bearer synthetic',{id:sid,action:'add',repo:'api',branch:'nope'}));
+ r=await service.branchPin('Bearer synthetic',{id:sid,action:'add',repo:'api',branch:'main'});assert.deepEqual(r.mismatches,[]);
+ r=await service.branchPin('Bearer synthetic',{id:sid,action:'remove',repo:'api',branch:'feature/x'});assert.deepEqual(r.pin,{repos:{api:['main']}});
+ r=await service.branchPin('Bearer synthetic',{id:sid,action:'disable'});assert.equal(r.pin,null);assert.equal((await service.workspace('Bearer synthetic'))[0].branchPin,undefined);
+});
