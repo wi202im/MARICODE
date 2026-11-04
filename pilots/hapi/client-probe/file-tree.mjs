@@ -37,7 +37,9 @@ export function createFileTree({api,base,list,open,error=()=>{},active=()=>null,
   if(kind!=='file'&&node?.entries){if(node.open)it.setAttribute('open','');it.append(...node.entries.map(e=>item(e,`${path}/${e.name}`)));}
   return it;
  }
- function render(){const root=nodes.get('');list.replaceChildren(...(root?.entries??[]).map(e=>item(e,e.name)));}
+ // Rendering marks the open file selected; selection events from that are not a person choosing a file.
+ let rendering=false;
+ function render(){rendering=true;const root=nodes.get('');list.replaceChildren(...(root?.entries??[]).map(e=>item(e,e.name)));setTimeout(()=>{rendering=false;});}
  // A branch item opened or closed.
  async function toggled(it){
   const path=it.dataset?.file,opened=it.hasAttribute?.('open');if(!path||it.dataset.kind==='file')return;
@@ -50,7 +52,10 @@ export function createFileTree({api,base,list,open,error=()=>{},active=()=>null,
    error(err);}
  }
  if(Observer)new Observer(records=>{for(const r of records)if(r.target.tagName==='VSCODE-TREE-ITEM')toggled(r.target);}).observe(list,{subtree:true,attributes:true,attributeFilter:['open']});
- list.addEventListener('click',e=>{const it=e.target?.closest?.('vscode-tree-item');if(it?.dataset.kind==='file')open(it.dataset.file,it.dataset.size?Number(it.dataset.size):undefined);});
+ const openItem=it=>{if(it?.dataset?.kind==='file')open(it.dataset.file,it.dataset.size?Number(it.dataset.size):undefined);};
+ // vscode-tree reports a chosen item (mouse or keyboard) as vsc-tree-select; a plain click does not reliably reach the list.
+ list.addEventListener('vsc-tree-select',e=>{if(!rendering)openItem(Array.isArray(e.detail)?e.detail.at(-1):null);});
+ list.addEventListener('click',e=>openItem(e.target?.closest?.('vscode-tree-item')));
  async function reload(){
   const mine=++serial,opened=[...nodes].filter(([,n])=>n.open).map(([p])=>p);
   try{

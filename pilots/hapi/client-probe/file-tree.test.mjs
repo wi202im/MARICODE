@@ -1,6 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';
 import {createFileTree,iconName} from './file-tree.mjs';
+// vscode-tree's own selection event (mouse or keyboard), outside a render.
+const list_select=(s,name)=>s.list.handlers['vsc-tree-select']({detail:[s.row(name)]});
 
 function fakeDocument(){return {createTextNode:t=>({text:t,children:[]}),createElement(tag){const n={tag,children:[],attrs:{},dataset:{},
  append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(k,v){this.attrs[k]=v;},removeAttribute(k){delete this.attrs[k];},hasAttribute(k){return k in this.attrs;},
@@ -22,7 +24,7 @@ test('folders are branches that load when first opened; files open with their si
  assert.deepEqual(items(s.list).map(r=>[label(r),'branch' in r.attrs]),[['src',true],['kona',true],['notes',true],['README.md',false]]);
  assert.deepEqual(icons(s.row('src')),['icon-branch:folder-src.svg','icon-branch-opened:folder-src-open.svg']);assert.deepEqual(icons(s.row('README.md')),['icon-leaf:readme.svg']);
  await s.toggle('src');assert.ok('open' in s.row('src').attrs);assert.ok('selected' in s.row('a.mjs').attrs);
- s.click('a.mjs');s.click('README.md');s.click('src');assert.deepEqual(s.opened,[['src/a.mjs',3],['README.md',5]]);
+ await new Promise(r=>setTimeout(r));s.click('a.mjs');list_select(s,'README.md');s.click('src');assert.deepEqual(s.opened,[['src/a.mjs',3],['README.md',5]]);
  await s.toggle('kona');assert.ok(s.row('x.swift'));
  await s.toggle('notes');assert.deepEqual(s.opened.at(-1),['notes',4]);assert.equal(s.row('notes').dataset.kind,'file');assert.deepEqual(s.errors,[]);
  await s.toggle('src',false);s.t.render();assert.equal('open' in s.row('src').attrs,false);assert.equal(s.reads.filter(p=>p==='src').length,1);
@@ -41,4 +43,8 @@ test('every icon the tree can name is vendored',()=>{
  names.push(iconName('x','other'),iconName('x','other',true));
  for(const n of names)assert.ok(existsSync(new URL(`vendor/file-icons/${n}.svg`,import.meta.url)),n);
  assert.equal(iconName('.env.local','file'),'tune');assert.equal(iconName('w.unknown','file'),'file');
+});
+test('the selection a render makes does not open a file',async()=>{
+ const s=setup({'':[{name:'README.md',type:'file',size:5}]});await s.t.reload();list_select(s,'README.md');assert.deepEqual(s.opened,[]);
+ await new Promise(r=>setTimeout(r));list_select(s,'README.md');assert.deepEqual(s.opened,[['README.md',5]]);
 });

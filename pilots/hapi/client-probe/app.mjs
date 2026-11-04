@@ -145,7 +145,7 @@ function render(){
   renderWorkflow();
   const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
   const canFork=workspaceLayout&&session?.metadata?.capabilities?.conversationHistory?.forkAtMessage===true&&session.active&&!session.thinking&&!busy&&!actions?.pending;
-  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null,onDiff:fileTabs?change=>{fileTabs.openDiff(change);if(compactSidebar.matches)workspacePanel('chat');}:null,onGitReview:workspaceLayout?()=>{workspacePanel('info');const g=$('git-review');if(g){g.open=true;gitReview?.load?.(true);}}:null,queued:{ids:queuedIds,busy:queueBusy,steer:session?.metadata?.flavor==='codex',onCancel:cancelQueued,onSteer:steerQueued}});finder?.refresh();
+  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null,onDiff:fileTabs?change=>{fileTabs.openDiff(change);if(compactSidebar.matches)workspacePanel('chat');}:null,onGitReview:workspaceLayout?()=>{revealInPanel('git-review');gitReview?.load?.(true);}:null,queued:{ids:queuedIds,busy:queueBusy,steer:session?.metadata?.flavor==='codex',onCancel:cancelQueued,onSteer:steerQueued}});finder?.refresh();
   if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
    el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
@@ -685,6 +685,8 @@ async function refreshCatalog(){
  finally{catalogBusy=false;renderWorkspace();}
 }
 let workspaceView='chat',lastInspector='info';
+// A chat action that opens a part of the side panel brings that part into view and marks it briefly, so the result is seen.
+function revealInPanel(id){const el=$(id);if(!el)return;workspacePanel('info');if('open' in el)el.open=true;requestAnimationFrame(()=>{el.scrollIntoView({block:'start',behavior:'smooth'});el.classList.remove('revealed');void el.offsetWidth;el.classList.add('revealed');});}
 function workspacePanel(view){
  if(!workspaceLayout)return;
  workspaceView=view;if(view!=='chat')lastInspector=view;
@@ -710,7 +712,7 @@ function updateSidebarToggle(){
 }
 
 if(workspaceLayout){
- $('git-summary').onclick=()=>workspacePanel('info');$('git-refresh').onclick=()=>{loadGit(true);gitReview?.reset();};
+ $('git-summary').onclick=()=>revealInPanel('info-git');$('git-refresh').onclick=()=>{loadGit(true);gitReview?.reset();};
  $('session-info-tab').onclick=()=>workspacePanel('info');$('info-tab').onclick=()=>workspacePanel(workspaceView==='chat'?lastInspector:'chat');$('back-chat').onclick=()=>workspacePanel('chat');
  updateSidebarToggle();
  compactSidebar.addEventListener('change',()=>workspaceDrawer(false));
@@ -1099,7 +1101,7 @@ async function startAccountLogin(agent){
  catch{$('account-notice').textContent='로그인 시작 결과를 확인하지 못했습니다. Mac 화면과 연결 상태를 먼저 확인하세요. 자동으로 다시 실행하지 않습니다.';}
  finally{accountsBusy=false;}
 }
-if(workspaceLayout){$('accounts-tab').onclick=()=>{workspacePanel('info');$('accounts-panel').open=true;refreshAccounts();};$('refresh-accounts').onclick=refreshAccounts;}
+if(workspaceLayout){$('accounts-tab').onclick=()=>{revealInPanel('accounts-panel');refreshAccounts();};$('refresh-accounts').onclick=refreshAccounts;}
 
 if(workspaceLayout){
  const panel=$('composer-settings');
@@ -1162,7 +1164,7 @@ if(workspaceLayout){
  try{const agent=sessionStorage.getItem('maricode-new-session-agent');if(['codex','claude'].includes(agent))$('task-agent').value=agent;}catch{}
  if(bridge){$('add-project').hidden=false;$('add-project').onclick=()=>bridge.postMessage('add-project');
   $('prepare-task-agent').onclick=async()=>{const found=draftAccount?.found;if(found&&draftAccount?.provider?.state==='connection-required'){$('prepare-task-agent').disabled=true;try{await api('/api/account-profiles',{method:'POST',body:{action:'connect',agent:draftAccount.agent,source:found.source,confirm:true,create:!found.exists,mode:found.mode}});await refreshDraftAccount();}catch(e){draftAccount={...draftAccount,error:e.message||'연결 결과를 확인하지 못했습니다. 상태를 다시 확인하세요.'};renderDraftAccount();}return;}
-   if(draftAccount?.provider?.state==='connection-required'){workspacePanel('info');$('accounts-panel').open=true;refreshAccounts();return;}try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
+   if(draftAccount?.provider?.state==='connection-required'){revealInPanel('accounts-panel');refreshAccounts();return;}try{sessionStorage.setItem('maricode-new-session-agent',$('task-agent').value);}catch{}bridge.postMessage($('task-agent').value);};
  }
  window.addEventListener('maricode-projects-changed',async event=>{await loadTaskProjects();const added=projectCatalog.find(p=>p.path===event.detail?.path);if(added)await openNewWorkspace(added.key);else renderWorkspace();});
  $('empty-action').onclick=()=>openNewWorkspace();
@@ -1297,6 +1299,8 @@ async function stopTurn(){
 }
 if($('stop'))$('stop').onclick=stopTurn;
 if($('open-terminal'))$('open-terminal').onclick=()=>openSessionTerminal();
+// Menus close once an item is chosen, so the result they open is not hidden behind them.
+for(const menu of document.querySelectorAll('details.connection-menu'))menu.addEventListener('click',e=>{if(e.target.closest('button')&&!e.target.closest('summary'))menu.open=false;});
 function updateJumpLatest(){const s=$('conversation-history'),b=$('jump-latest');if(s&&b)b.hidden=!moreBelow(s);updateStuckPrompt();}
 // The request that scrolled past stays pinned (sticky CSS) in two lines; earlier pinned ones are hidden behind it.
 function updateStuckPrompt(){const s=$('conversation-history');if(!s)return;const top=s.getBoundingClientRect().top+1,pinned=[...s.querySelectorAll('.bubble.user:not(.child-message)')].filter(b=>b.getBoundingClientRect().top<=top);
