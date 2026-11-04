@@ -93,7 +93,7 @@
 .branch-repo>strong{display:block;font-size:12px}.branch-repo>span{color:var(--muted)}.branch-repo.off>span{color:var(--warning)}
 .branch-repo ul{list-style:none;margin:6px 0 0;padding:0}.branch-repo li{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px;font-family:var(--mono);overflow-wrap:anywhere}
 .branch-repo li button,.branch-add button,.branch-disable,.branch-pin>button{min-height:28px;padding:2px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:12px}
-.branch-add{display:flex;gap:6px;margin-top:6px}.branch-add select{flex:1;min-width:0}
+.branch-caption{display:block;margin-top:6px;color:var(--muted)}.branch-add{margin-top:6px}.branch-add summary{cursor:pointer;color:var(--muted);font-size:12px}.branch-add>div{display:flex;gap:6px;margin-top:6px}.branch-add select{flex:1;min-width:0}
 .branch-banner{margin:0 0 10px;padding:12px;border:1px solid var(--warning);border-radius:12px;background:var(--surface1);font-size:13px;overflow-wrap:anywhere}
 .branch-banner>strong{display:block;margin-bottom:6px}.branch-banner p{margin:4px 0}.branch-banner small{color:var(--muted)}
 .branch-banner-item,.branch-banner-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0}.branch-banner-item p{flex:1 1 100%}

@@ -34,10 +34,13 @@ export function createBranchPin({api,section,banner,document:doc=globalThis.docu
     const allowed=state.pin.repos[r.repo],ok=!!r.current&&allowed.includes(r.current),box=el('div',undefined,'branch-repo'+(ok?'':' off'));
     box.append(el('strong',repoName(r.repo)),el('span',`지금 ${r.current??'분리된 HEAD'}${ok?'':' · 고정 목록 밖'}`));
     const list=el('ul');for(const b of allowed){const li=el('li');li.append(el('span',b),button('빼기',()=>act({action:'remove',repo:r.repo,branch:b}),'branch-remove'));li.lastChild.setAttribute('aria-label',`${b} 빼기`);list.append(li);}
-    box.append(list);
+    box.append(el('small','고정한 브랜치','branch-caption'),list);
     const extra=r.branches.filter(b=>!allowed.includes(b));
-    if(extra.length){const pick=el('select');pick.setAttribute('aria-label',`${repoName(r.repo)}에 추가할 브랜치`);for(const b of extra){const o=el('option',b);o.value=b;pick.append(o);}if(r.current&&extra.includes(r.current))pick.value=r.current;pick.disabled=busy;
-     const row=el('div',undefined,'branch-add');row.append(pick,button('추가',()=>act({action:'add',repo:r.repo,branch:pick.value})));box.append(row);}
+    // Folded with an empty choice so other branches never read as already pinned; opens when the current branch is off the list.
+    if(extra.length){const more=el('details',undefined,'branch-add'),pick=el('select'),blank=el('option','추가할 브랜치 선택');blank.value='';pick.append(blank);pick.setAttribute('aria-label',`${repoName(r.repo)}에 추가할 브랜치`);
+     for(const b of extra){const o=el('option',b);o.value=b;pick.append(o);}pick.value=!ok&&r.current&&extra.includes(r.current)?r.current:'';pick.disabled=busy;more.open=!!pick.value;
+     const add=button('추가',()=>pick.value&&act({action:'add',repo:r.repo,branch:pick.value}));add.disabled=busy||!pick.value;pick.onchange=()=>{add.disabled=busy||!pick.value;};
+     const row=el('div');row.append(pick,add);more.append(el('summary','다른 브랜치 추가'),row);box.append(more);}
     rows.push(box);
    }
    const unpinned=repos.filter(r=>!state.pin.repos[r.repo]);

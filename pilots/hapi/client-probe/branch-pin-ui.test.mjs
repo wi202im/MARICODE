@@ -32,3 +32,12 @@ test('after a turn, a branch the turn created shows its base and is added only o
  assert.deepEqual(posts,[]);find(doc,'추가 안 함').onclick();assert.equal(banner.hidden,true);assert.deepEqual(posts,[]);
  await ui.afterTurn(sid);assert.equal(banner.hidden,true);
 });
+test('other branches sit folded behind an empty choice; the current off-list branch is offered first',async()=>{
+ const doc=fakeDocument(),section=doc.createElement('section');let current='feature/x';
+ const api=async()=>({pin:{repos:{api:['feature/x']}},repos:[{repo:'api',current,branches:['develop','feature/x','main']}],mismatches:[]});
+ const ui=createBranchPin({api,section,banner:doc.createElement('div'),document:doc});await ui.load(sid);
+ let pick=doc.nodes.findLast(n=>n.tag==='select'),more=doc.nodes.findLast(n=>n.tag==='details');
+ assert.equal(pick.value,'');assert.equal(more.open,false);assert.equal(find(doc,'추가').disabled,true);
+ current='main';await ui.load(sid);pick=doc.nodes.findLast(n=>n.tag==='select');more=doc.nodes.findLast(n=>n.tag==='details');
+ assert.equal(pick.value,'main');assert.equal(more.open,true);assert.equal(find(doc,'추가').disabled,false);
+});
