@@ -15,9 +15,11 @@ import {settingsView,settingChange} from './settings.mjs';
 import http from 'node:http';
 import {createTasks} from './tasks.mjs';
 import {projectFilePath} from './files.mjs';
+import {createFileLinks} from './file-stream.mjs';
 import {projectChoices,selectProject} from './projects.mjs';
 import {createHandoffs} from './handoff.mjs';
-import { readFile } from 'node:fs/promises';
+import { readFile,realpath } from 'node:fs/promises';
+import {join} from 'node:path';
 import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { relativePath } from './core.mjs';
@@ -43,8 +45,8 @@ export function allowedRoute(method,url,sessionId) {
   if(method==='GET'&&p===base+'/git-diff-numstat')return !url.search||url.search==='?staged=true';
   if(method==='GET'&&p===base+'/git-diff-file'){if([...url.searchParams.keys()].some(k=>!['path','staged'].includes(k))||!url.searchParams.get('path')||![null,'true'].includes(url.searchParams.get('staged')))return false;try{relativePath(url.searchParams.get('path'));return true;}catch{return false;}}
   if(['GET','POST'].includes(method)&&p===base+'/settings'&&!url.search)return true;
-  if(method==='GET'&&['/messages','/directory','/file'].some(x=>p===base+x)) {
-    if(p.endsWith('/file')||p.endsWith('/directory')){try{relativePath(url.searchParams.get('path')??'');}catch{return false;}}
+  if(method==='GET'&&['/messages','/directory','/file','/file-link'].some(x=>p===base+x)) {
+    if(p.endsWith('/file')||p.endsWith('/file-link')||p.endsWith('/directory')){try{relativePath(url.searchParams.get('path')??'');}catch{return false;}}
     return true;
   }
   if(method==='POST'&&p.startsWith(base+'/permissions/')&&/^\/api\/sessions\/[^/]+\/permissions\/(?:[A-Za-z0-9_-]|%3[Aa]|:)+\/(approve|deny)$/.test(p))return true;
@@ -56,7 +58,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
   const environment=environmentPath?createEnvironment(environmentPath):null;
   const clients=new Set(clientOrigins.map(serverAddress));
   const setupNonce=randomBytes(32).toString('hex'),remoteStreams=new Set();
-  const uploads=new Map();
+  const uploads=new Map(),fileLinks=createFileLinks();
   const target=new URL(upstream),decisions=new Set(),archives=new Set(),sessionMutations=new Set(),settingLocks=new Set(),handoffs=handoffTarget?createHandoffs(handoffTarget):null;
   if(!['127.0.0.1','localhost'].includes(target.hostname)||target.protocol!=='http:')throw Error('Loopback Hub required');
   if(taskTarget&&(!handoffTarget||taskTarget.machineId!==handoffTarget.machineId))throw Error('Task target must use the configured machine');
@@ -64,7 +66,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
   const taskConfig=taskTarget??handoffTarget;
   const tasks=taskTarget?createTasks(taskTarget):trialTasks;
   const projectHandoffs=taskTarget?createHandoffs({...taskTarget,directory:taskTarget.directory+'/handoffs'}):null;
-  const assets=new Map([['/manifest.webmanifest','manifest.webmanifest'],['/icon-192.png','icon-192.png'],['/icon-512.png','icon-512.png'],['/install','install.html'],['/','index.html'],['/workspace','workspace/index.html'],['/workspace/','workspace/index.html'],['/workspace/style.css','workspace/style.css'],['/workspace/chat.css','workspace/chat.css'],['/workspace.mjs','workspace.mjs'],['/git-status.mjs','git-status.mjs'],['/workspace-entry.mjs','workspace-entry.mjs'],['/design','design/index.html'],['/design/','design/index.html'],['/design/style.css','design/style.css'],['/design/app.js','design/app.js'],['/questions.mjs','questions.mjs'],['/question-form.mjs','question-form.mjs'],['/chat-render.mjs','chat-render.mjs'],['/chat-presentation.mjs','chat-presentation.mjs'],['/settings.mjs','settings.mjs'],['/git-review.mjs','git-review.mjs'],['/composer-commands.mjs','composer-commands.mjs'],['/official-cli-ui.mjs','official-cli-ui.mjs'],['/cli-profile-ui.mjs','cli-profile-ui.mjs'],['/command-support.mjs','command-support.mjs'],['/command-cards-ui.mjs','command-cards-ui.mjs'],['/account-card-ui.mjs','account-card-ui.mjs'],['/turn-alerts.mjs','turn-alerts.mjs'],['/branch-pin-ui.mjs','branch-pin-ui.mjs'],['/branch-rules.mjs','branch-rules.mjs'],['/palette.mjs','palette.mjs'],['/attachments.mjs','attachments.mjs'],['/attachment-composer.mjs','attachment-composer.mjs'],['/app.mjs','app.mjs'],['/composer-input.mjs','composer-input.mjs'],['/claude-import-ui.mjs','claude-import-ui.mjs'],['/markdown.mjs','markdown.mjs'],['/device-login.mjs','device-login.mjs'],['/core.mjs','core.mjs'],['/quit-flow.mjs','quit-flow.mjs'],['/reconnect.mjs','reconnect.mjs'],['/workflow.mjs','workflow.mjs'],['/history.mjs','history.mjs'],['/style.css','style.css']]);
+  const assets=new Map([['/manifest.webmanifest','manifest.webmanifest'],['/icon-192.png','icon-192.png'],['/icon-512.png','icon-512.png'],['/install','install.html'],['/','index.html'],['/workspace','workspace/index.html'],['/workspace/','workspace/index.html'],['/workspace/style.css','workspace/style.css'],['/workspace/chat.css','workspace/chat.css'],['/workspace.mjs','workspace.mjs'],['/git-status.mjs','git-status.mjs'],['/workspace-entry.mjs','workspace-entry.mjs'],['/design','design/index.html'],['/design/','design/index.html'],['/design/style.css','design/style.css'],['/design/app.js','design/app.js'],['/questions.mjs','questions.mjs'],['/question-form.mjs','question-form.mjs'],['/chat-render.mjs','chat-render.mjs'],['/chat-presentation.mjs','chat-presentation.mjs'],['/settings.mjs','settings.mjs'],['/git-review.mjs','git-review.mjs'],['/composer-commands.mjs','composer-commands.mjs'],['/official-cli-ui.mjs','official-cli-ui.mjs'],['/cli-profile-ui.mjs','cli-profile-ui.mjs'],['/command-support.mjs','command-support.mjs'],['/command-cards-ui.mjs','command-cards-ui.mjs'],['/account-card-ui.mjs','account-card-ui.mjs'],['/turn-alerts.mjs','turn-alerts.mjs'],['/branch-pin-ui.mjs','branch-pin-ui.mjs'],['/branch-rules.mjs','branch-rules.mjs'],['/file-kinds.mjs','file-kinds.mjs'],['/file-viewer.mjs','file-viewer.mjs'],['/vendor/markdown-it.mjs','vendor/markdown-it.mjs'],['/vendor/highlight.mjs','vendor/highlight.mjs'],['/vendor/hljs-github-dark.css','vendor/hljs-github-dark.css'],['/palette.mjs','palette.mjs'],['/attachments.mjs','attachments.mjs'],['/attachment-composer.mjs','attachment-composer.mjs'],['/app.mjs','app.mjs'],['/composer-input.mjs','composer-input.mjs'],['/claude-import-ui.mjs','claude-import-ui.mjs'],['/markdown.mjs','markdown.mjs'],['/device-login.mjs','device-login.mjs'],['/core.mjs','core.mjs'],['/quit-flow.mjs','quit-flow.mjs'],['/reconnect.mjs','reconnect.mjs'],['/workflow.mjs','workflow.mjs'],['/history.mjs','history.mjs'],['/style.css','style.css']]);
   const server=http.createServer(async(req,res)=>{
     const host=req.headers.host;
     const allowedOrigins=new Set(origins);
@@ -110,6 +112,11 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
       }catch{res.writeHead(403,{'Content-Type':'text/plain; charset=utf-8'}).end('연결이 만료됐거나 이미 사용되었습니다. Mac 앱에서 작업 화면 연결을 다시 누르세요.');}
       return;
     }
+    // Media links carry their own one-file capability (see file-stream.mjs); media elements send no token.
+    const rawFile=/^\/file-raw\/([0-9a-f]{64})$/.exec(u.pathname);
+    if(rawFile&&!req.headers.origin&&!u.search){await fileLinks.serve(req,res,rawFile[1]);return;}
+    const grammar=/^\/vendor\/hljs-languages\/([a-z0-9-]{1,40})\.mjs$/.exec(u.pathname);
+    if(grammar&&req.method==='GET'&&!u.search){try{const code=await readFile(new URL(`vendor/hljs-languages/${grammar[1]}.mjs`,import.meta.url));res.setHeader('Content-Type','text/javascript');res.end(code);}catch{res.writeHead(404).end();}return;}
     if(req.headers.origin&&!allowedOrigins.has(req.headers.origin)){res.writeHead(403).end();return;}
     if(req.method==='POST'&&(!allowedOrigins.has(req.headers.origin)||req.headers['content-type']!=='application/json')){res.writeHead(403).end();return;}
       // Public presentation assets contain no machine state or credentials.
@@ -282,7 +289,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
         }catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,reason:error.reason,error:error.userMessage??'가져오기 결과를 확인하지 못했습니다. 원본은 변경하지 않았습니다. 결과 확인 후 폴더·기록 변경 여부와 실행기 상태를 확인하세요.'}));}return;
       }
       if(runnerWorkspace){
-        if(!runnerService.target&&/^\/api\/sessions\/[^/]+\/(file|directory)$/.test(u.pathname)){res.writeHead(403).end();return;}
+        if(!runnerService.target&&/^\/api\/sessions\/[^/]+\/(file|file-link|directory)$/.test(u.pathname)){res.writeHead(403).end();return;}
         available=[];
         if(u.pathname==='/config'||u.pathname.startsWith('/api/sessions/')||u.pathname==='/api/events'){
           if(!req.headers.authorization?.startsWith('Bearer ')){res.writeHead(401).end();return;}
@@ -549,7 +556,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
         decisions.add(key); // Do not replay even if the upstream acknowledgement is lost.
         body=JSON.stringify(decision);
       }
-      if(req.method==='GET'&&/\/api\/sessions\/[^/]+\/(file|directory)$/.test(u.pathname)&&(handoffTarget||(runnerWorkspace&&runnerService.target))){
+      if(req.method==='GET'&&/\/api\/sessions\/[^/]+\/(file|file-link|directory)$/.test(u.pathname)&&(handoffTarget||(runnerWorkspace&&runnerService.target))){
         let fileTarget;try{if(runnerWorkspace&&runnerService.status&&!(await runnerService.status()).workspaceAvailable)throw Object.assign(Error('Runner offline'),{status:409});fileTarget=runnerWorkspace?await runnerService.target(req.headers.authorization):handoffTarget;}catch(error){res.writeHead(error.status===401?401:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'RUNNER_OFFLINE',error:'이 컴퓨터의 실행 환경에 연결되지 않았습니다. 컴퓨터 설정에서 실행 환경을 시작한 뒤 다시 읽어 주세요. 대화와 파일은 그대로 남아 있습니다.'}));return;}
         const id=u.pathname.split('/')[3];
         const check=await fetch(new URL(`/api/sessions/${id}`,target),{headers,signal:controller.signal,redirect:'error'});
@@ -558,6 +565,12 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
         if(m?.machineId!==fileTarget.machineId||m?.path!==(available.find(s=>s.id===id)?.project??fileTarget.project)){res.writeHead(403).end();return;}
         try{u.searchParams.set('path',await projectFilePath(m.path,u.searchParams.get('path')??''));}
         catch{res.writeHead(403,{'Content-Type':'application/json'}).end(JSON.stringify({error:'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다.'}));return;}
+        if(u.pathname.endsWith('/file-link')){
+          // The Runner of this file route is this Mac, so the checked path is read from this disk.
+          try{const url=await fileLinks.issue(join(await realpath(m.path),u.searchParams.get('path')));res.setHeader('Content-Type','application/json');res.end(JSON.stringify({url}));}
+          catch(error){res.writeHead(error.status===415?415:403,{'Content-Type':'application/json'}).end(JSON.stringify({error:error.status===415?'이 형식은 바로 재생할 수 없습니다.':'파일을 열 수 없습니다.'}));}
+          return;
+        }
       }
       let resumeSource;
       if(runnerWorkspace&&runnerService.ready&&runnerService.projects&&req.method==='POST'&&u.pathname.endsWith('/resume')){

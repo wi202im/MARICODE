@@ -13,6 +13,7 @@ import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs'
 import {createCommandSuggest} from './composer-commands.mjs';
 import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {createBranchPin} from './branch-pin-ui.mjs';
+import {createFileTabs} from './file-viewer.mjs';
 import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
@@ -76,6 +77,7 @@ const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-
 const base=()=>`/api/sessions/${sessionId}`;
 // Pinned sessions: branchTurn marks a sent turn whose end (HAPI 'ready' event after seq) triggers the branch check.
 const branchPin=workspaceLayout&&$('branch-pin')?createBranchPin({api,section:$('branch-pin'),banner:$('branch-banner'),changed:()=>refreshCatalog().catch(()=>{}),shown:()=>renderProjects()}):null;let branchTurn=null;
+const fileTabs=workspaceLayout&&$('center-tabs')?createFileTabs({api,base,strip:$('center-tabs'),view:$('file-view'),host:document.querySelector('.conversation'),notice}):null;
 const commandCardHost=document.createElement('div');commandCardHost.className='cli-command-cards';$('messages').after(commandCardHost);
 async function commandCapabilities(id=sessionId){if(!commandCardsEnabled||!id)return null;return api(`/api/sessions/${id}/command-cards`);}
 async function openCommandCard(name){
@@ -295,7 +297,7 @@ async function selectSession(id){
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
-  sessionId=id;branchTurn=null;branchPin?.load(id);$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
+  sessionId=id;branchTurn=null;fileTabs?.clear();branchPin?.load(id);$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
   const permissionKey=`hapi-permission-pending:${id}`;
@@ -317,7 +319,7 @@ function clearLogin(message,state='login-needed'){
   catalogSerial++;sessionCards.clear();firstPrompts.clear();catalogChecked=null;cardSignature='';
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;token='';session=null;messages=[];connected=false;permissionActions=null;
   if(workspaceLayout){$('account-list').replaceChildren();$('account-host').textContent='연결 상태를 조회해 주세요.';$('account-notice').textContent='';}
-  $('workspace').hidden=true;$('login').hidden=false;$('messages').replaceChildren();$('file-content').textContent='';$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();showConnection(state);render();notice(message);
+  $('workspace').hidden=true;$('login').hidden=false;fileTabs?.clear();$('messages').replaceChildren();$('file-content').textContent='';$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();showConnection(state);render();notice(message);
 }
 $('logout').onclick=()=>clearLogin('로그아웃했습니다. 보관한 인증 토큰을 삭제했습니다. 불확실한 전송의 식별자는 재로그인 후 확인합니다.');
 $('older').onclick=async()=>{
@@ -447,10 +449,11 @@ async function openPath(path,kind){
     if(serial!==fileSerial||authEpoch!==epoch)return;
     if(d?.success){
       directory=path;selectedFile='';$('file-title').textContent='';$('file-content').textContent='';fileFeedback('');$('path').textContent=path||'프로젝트 폴더';$('up').disabled=!path;
-      const nodes=d.entries.map(entry=>{const li=document.createElement('li'),btn=document.createElement('button');btn.textContent=entry.name;btn.dataset.kind=entry.type;btn.title=entry.type==='directory'?'폴더':entry.type==='file'?'파일':'링크·기타';btn.onclick=()=>openPath([path,entry.name].filter(Boolean).join('/'),entry.type);li.append(btn);return li;});
+      const nodes=d.entries.map(entry=>{const li=document.createElement('li'),btn=document.createElement('button');btn.textContent=entry.name;btn.dataset.kind=entry.type;btn.title=entry.type==='directory'?'폴더':entry.type==='file'?'파일':'링크·기타';btn.onclick=()=>{const p=[path,entry.name].filter(Boolean).join('/');if(fileTabs&&entry.type==='file')openFile(p,entry.size);else openPath(p,entry.type);};li.append(btn);return li;});
       $('entries').replaceChildren(...nodes);notice('폴더 목록을 서버에서 읽었습니다.');
     }else{
       if(kind==='directory')throw Error('폴더를 열 수 없습니다.');
+      if(fileTabs){fileFeedback('');openFile(path);return;}
       const f=await api(base()+'/file?path='+encodeURIComponent(path));
       if(serial!==fileSerial||authEpoch!==epoch)return;
       if(!f.success||typeof f.content!=='string')throw Error('파일을 열 수 없습니다.');
@@ -459,6 +462,8 @@ async function openPath(path,kind){
     }
   }catch(e){if(serial===fileSerial&&authEpoch===epoch){fileFeedback(e.message.includes('(403)')?'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다.':e.message,true,e.reason==='RUNNER_OFFLINE');}}
 }
+// Workspace layout opens files as center tabs; the narrow layout closes the inspector overlay to show them.
+function openFile(path,size){fileTabs.open(path,{size});if(compactSidebar.matches)workspacePanel('chat');}
 const fileStatus=document.createElement('div');fileStatus.className='file-feedback';fileStatus.setAttribute('role','status');$('entries').before(fileStatus);
 function fileFeedback(message,retry=false,offline=false){
  fileStatus.replaceChildren();if(!message)return;const text=document.createElement('p');text.textContent=message;fileStatus.append(text);

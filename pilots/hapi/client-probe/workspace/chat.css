@@ -101,3 +101,29 @@
 .draft-pin{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:13px}.draft-pin small{flex-basis:100%;color:var(--muted);font-size:12px}
 .task-pin-icon{margin-right:5px;color:var(--muted);font-weight:400}.task-pin-icon.off,.task small.task-pin.off{color:var(--warning)}.task small.task-pin{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}.hide-workspace-details .task small.task-pin{display:block}
 #new-task-panel .draft-pin input[type=checkbox]{width:16px;height:16px;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--accent)}
+/* Center file tabs: chat stays the first tab; files open read-only beside it. */
+.center-tabs{display:flex;gap:2px;padding:4px 12px 0;border-bottom:1px solid var(--border);overflow-x:auto;flex:none;scrollbar-width:none}
+.center-tabs button{min-height:30px;padding:4px 10px;font-size:12px;border-radius:6px 6px 0 0;background:none;color:var(--muted);border:0;white-space:nowrap}
+.center-tabs button[aria-selected=true]{color:var(--foreground);background:var(--surface1)}
+.center-tab{display:flex;align-items:center;max-width:220px}.center-tab>button:first-child{overflow:hidden;text-overflow:ellipsis;padding-right:4px}
+.center-tab.active{background:var(--surface1);border-radius:6px 6px 0 0}.center-tab .center-tab-close{padding:4px 8px 4px 2px;font-size:14px}.center-tab .center-tab-close:hover{color:var(--foreground)}
+.file-tab-active>#chat{display:none!important}.creating-workspace #center-tabs,.creating-workspace #file-view{display:none!important}
+.file-view{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}.file-pane{flex:1;min-height:0;display:flex;flex-direction:column}
+.file-pane-head{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px}
+.file-pane-head strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px var(--mono);font-weight:500}.file-pane-head small{color:var(--muted)}
+.file-pane-head button{min-height:26px;padding:3px 10px;font-size:12px}
+.file-pane-body{flex:1;min-height:0;overflow:auto}.file-pane-body>img{display:block;max-width:100%;margin:16px auto}
+.file-pane-body>video{display:block;width:100%;max-height:100%;background:#000}.file-pane-body>audio{display:block;width:calc(100% - 32px);margin:24px 16px}
+.file-pane-body>iframe{display:block;width:100%;height:100%;border:0;background:#fff}
+.file-view-note{padding:24px;color:var(--muted)}.file-view-note.error{color:var(--danger)}
+.code-view{display:flex;min-width:fit-content;font:12px/1.7 var(--mono);tab-size:4}.code-view pre{margin:0;padding:12px 0}
+.code-gutter{position:sticky;left:0;padding:12px 12px 12px 16px!important;text-align:right;color:var(--dim);background:var(--surface0);user-select:none;border-right:1px solid var(--border)}
+.code-view pre:last-child{padding:12px 16px;flex:1}.code-view code.hljs{background:none;padding:0;font:inherit;overflow:visible}
+.markdown-view{max-width:var(--content-width);margin:0 auto;padding:24px 32px 48px;font-size:15px;line-height:1.75;overflow-wrap:anywhere}
+.markdown-view h1,.markdown-view h2{border-bottom:1px solid var(--border);padding-bottom:6px}.markdown-view h1{font-size:1.7em;margin:8px 0 16px}.markdown-view h2{font-size:1.35em;margin:28px 0 14px}.markdown-view h3{font-size:1.15em;margin:22px 0 10px}
+.markdown-view a{color:#c4c4ff;cursor:pointer}.markdown-view img{max-width:100%}
+.markdown-view code{font:.87em var(--mono);padding:2px 5px;border-radius:4px;background:var(--surface2)}.markdown-view pre{background:var(--sidebar);border:1px solid var(--border-strong);border-radius:8px;padding:14px 16px;overflow:auto}.markdown-view pre code{padding:0;background:none}
+.markdown-view blockquote{border-left:3px solid var(--border-strong);color:var(--muted);margin:16px 0;padding:0 16px}
+.markdown-view table{border-collapse:collapse;display:block;overflow:auto;margin:16px 0}.markdown-view th,.markdown-view td{border:1px solid var(--border-strong);padding:6px 12px}.markdown-view th{background:var(--surface1)}
+.markdown-view hr{border:0;border-top:1px solid var(--border)}
+@media(max-width:760px){.markdown-view{padding:16px}.file-pane-head{padding:8px 12px}}

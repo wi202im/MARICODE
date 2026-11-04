@@ -488,3 +488,21 @@ test('local account diagnosis authenticates independently of a broken runner and
  const r=await get({authorization:'Bearer fixture'});assert.equal(r.status,200);const body=await r.json();assert.deepEqual(body.runner,{phase:'unknown',hub:'disconnected',agents:['claude']});assert.ok(!JSON.stringify(body).includes('private'));assert.equal(body.providers[0].state,'connected');
  const remote=await(await get({authorization:'Bearer fixture','x-forwarded-for':'100.64.0.1'})).json();assert.equal(remote.runner,undefined);
 });
+test('an authorised file read mints a media link that streams the checked file with ranges and nothing else',async t=>{
+ const {mkdtemp,writeFile,rm,realpath}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path');
+ const project=await realpath(await mkdtemp(join(tmpdir(),'media-api-')));await writeFile(join(project,'clip.mp4'),'0123456789');await writeFile(join(project,'notes.txt'),'x');
+ const upstream=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end('{}');return;}res.end(JSON.stringify({session:{active:true,metadata:{machineId:'machine',path:project,flavor:'claude'}}}));});
+ await new Promise(r=>upstream.listen(0,'127.0.0.1',r));
+ const server=createServer({upstream:`http://127.0.0.1:${upstream.address().port}`,sessionId:id,handoffTarget:{directory:join(project,'.records'),machineId:'machine',project}});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(async()=>{server.closeAllConnections();server.close();upstream.closeAllConnections();upstream.close();await rm(project,{recursive:true,force:true});});
+ const origin=`http://127.0.0.1:${server.address().port}`,link=(path,auth='synthetic')=>fetch(origin+`/api/sessions/${id}/file-link?path=${encodeURIComponent(path)}`,{headers:{Authorization:`Bearer ${auth}`}});
+ assert.equal((await link('clip.mp4','')).status,401);
+ assert.equal((await link('../etc/passwd')).status,403);
+ assert.equal((await link('notes.txt')).status,415);
+ const {url}=await (await link('clip.mp4')).json();assert.match(url,/^\/file-raw\/[0-9a-f]{64}$/);
+ const part=await fetch(origin+url,{headers:{Range:'bytes=3-5'}});assert.equal(part.status,206);assert.equal(await part.text(),'345');
+ assert.equal((await fetch(origin+url,{headers:{Origin:'https://elsewhere.test'}})).status,403);
+ assert.equal((await fetch(origin+'/vendor/hljs-languages/swift.mjs')).headers.get('content-type'),'text/javascript');
+ assert.notEqual((await fetch(origin+'/vendor/hljs-languages/..%2Fhighlight.mjs')).status,200);
+});
