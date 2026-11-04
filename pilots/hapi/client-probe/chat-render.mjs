@@ -36,7 +36,7 @@ function forkButton(localId,onFork){
  b.onclick=()=>{if(armedFork!==localId){armedFork=localId;clearTimeout(armedTimer);armedTimer=setTimeout(()=>{armedFork=null;},8000);b.textContent='새 대화로 분기 확인 · 원래 대화·파일은 그대로';return;}armedFork=null;onFork(localId);};
  return b;
 }
-export function renderConversation(container,messages,{engine,session,onFork,queued}={}){
+export function renderConversation(container,messages,{engine,session,onFork,queued,onDiff,onGitReview}={}){
  const signature=JSON.stringify([session?.id,engine,messages,session?.agentState?.completedRequests,!!onFork,armedFork,[...(queued?.ids??[])],[...(queued?.busy??[])]]);
  if(rendered.get(container)===signature)return;rendered.set(container,signature);
  const opened=new Set([...container.querySelectorAll('details[open]')].map(e=>e.dataset.key??e.dataset.callId));
@@ -47,6 +47,15 @@ export function renderConversation(container,messages,{engine,session,onFork,que
   if(row.kind==='command'){const box=node('section','cli-output'+(row.error?' error':''));box.append(node('small','',row.error?'Claude Code 명령 오류':'Claude Code 명령 결과'),node('pre','',row.text),copyButton(row.text,'명령 결과 복사'));return box;}
   if(row.kind==='duration')return node('p','turn-duration',row.text);
   if(row.kind==='notice'){return node('p','session-notice'+(row.error?' error':''),row.text);}
+  if(row.kind==='changes'){
+   const box=node('section','changes-card'),head=node('header'),added=row.files.reduce((n,f)=>n+f.added,0),removed=row.files.reduce((n,f)=>n+f.removed,0);
+   head.append(icon('diff'),node('strong','',`변경된 파일 ${row.files.length}개`),node('span','diff-add',`+${added}`),node('span','diff-del',`−${removed}`));
+   if(onGitReview){const git=node('button','changes-git','Git 전체 변경');git.type='button';git.title='터미널 명령으로 바뀐 파일까지 Git 기준으로 봅니다';git.onclick=onGitReview;head.append(git);}
+   const list=node('ul');for(const f of row.files){const li=node('li'),b=node('button','changes-file'),path=rel(f.path,session?.metadata?.path),slash=path.lastIndexOf('/');b.type='button';b.title=`${path} 변경 내용 보기`;
+    b.append(node('span','changes-name',path.slice(slash+1)),node('span','changes-dir',slash>0?path.slice(0,slash):''),node('span','changes-kind',f.kind==='add'?'새 파일':f.kind==='delete'?'삭제':f.kind==='write'?'새로 쓰기':''),node('span','diff-add',`+${f.added}`),node('span','diff-del',`−${f.removed}`));
+    b.disabled=!onDiff;b.onclick=()=>onDiff?.({path,diff:f.diff,label:`${path} · 이번 턴의 변경`});li.append(b);list.append(li);}
+   box.append(head,list,node('small','changes-note','AI 수정 도구 기준입니다. 터미널 명령으로 바꾼 파일은 Git 전체 변경에서 확인하세요.'));return box;
+  }
   if(row.kind==='reasoning'){const box=node('details','reasoning-block');box.dataset.key=row.key;box.open=opened.has(row.key);const s=node('summary');s.append(icon('lightbulb'),node('span','reasoning-title','생각'),node('span','reasoning-preview',row.text.split('\n').find(l=>l.trim())?.replace(/[*#`_]/g,'').trim()??''));box.append(s,renderMarkdown(row.text));return box;}
   if(row.kind==='activity'){
    const group=node('details','activity-group');group.dataset.key=row.key;

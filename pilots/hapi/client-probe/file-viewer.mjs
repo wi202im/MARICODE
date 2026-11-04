@@ -1,4 +1,5 @@
 import {icon} from './icons.mjs';
+import {diffLines} from './git-status.mjs';
 import {fileKind,mediaType,highlightLanguage,highlightLimit,textReadLimit} from './file-kinds.mjs';
 // Center file tabs: chat stays the first tab, files open beside it read-only.
 // Text comes through the Hub file read; media through a short-lived link streamed by this server.
@@ -27,9 +28,9 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   const chat=el('button','대화','center-tab-main');chat.type='button';chat.setAttribute('role','tab');chat.setAttribute('aria-selected',String(!active));chat.onclick=()=>show(null);
   const items=[chat];
   for(const t of tabs){
-   const item=el('div',undefined,'center-tab'+(t===active?' active':'')),open=el('button',name(t.path)),close=el('button',undefined,'center-tab-close');close.append(icon('close',doc));
+   const item=el('div',undefined,'center-tab'+(t===active?' active':'')),open=el('button',t.title??name(t.path)),close=el('button',undefined,'center-tab-close');close.append(icon('close',doc));
    open.type=close.type='button';open.title=t.path;open.setAttribute('role','tab');open.setAttribute('aria-selected',String(t===active));open.onclick=()=>show(t);
-   close.setAttribute('aria-label',`${name(t.path)} 닫기`);close.onclick=()=>closeTab(t);item.append(open,close);items.push(item);
+   close.setAttribute('aria-label',`${t.title??name(t.path)} 닫기`);close.onclick=()=>closeTab(t);item.append(open,close);items.push(item);
   }
   strip.replaceChildren(...items);
  }
@@ -65,6 +66,7 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
  }
  const mediaLink=path=>api(base()+'/file-link?path='+encodeURIComponent(path)).then(r=>r.url);
  async function body(t){
+  if(t.diff!==undefined){const pre=el('pre',undefined,'diff-view');for(const l of diffLines(t.diff))pre.append(el('span',l.text,'diff-'+l.kind));return pre;}
   const kind=fileKind(t.path);
   if(['image','video','audio','pdf'].includes(kind)){
    const url=await mediaLink(t.path);
@@ -82,8 +84,8 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
  }
  async function load(t){
   const mine=++serial;t.loading=mine;
-  const head=el('div',undefined,'file-pane-head'),title=el('strong',t.path),meta=el('small',t.size?formatBytes(t.size):'');title.title=t.path;head.append(title,meta);
-  if(fileKind(t.path)==='markdown'){const mode=el('button',t.mode==='source'?'보기':'원본');mode.type='button';mode.onclick=()=>{t.mode=t.mode==='source'?'view':'source';load(t);};head.append(mode);}
+  const head=el('div',undefined,'file-pane-head'),title=el('strong',t.label??t.path),meta=el('small',t.size?formatBytes(t.size):'');title.title=t.path;head.append(title,meta);
+  if(t.diff===undefined&&fileKind(t.path)==='markdown'){const mode=el('button',t.mode==='source'?'보기':'원본');mode.type='button';mode.onclick=()=>{t.mode=t.mode==='source'?'view':'source';load(t);};head.append(mode);}
   const reload=el('button','새로고침');reload.type='button';reload.onclick=()=>load(t);head.append(reload);
   const content=el('div',undefined,'file-pane-body');content.append(el('p','불러오는 중…','file-view-note'));
   t.pane.replaceChildren(head,content);
@@ -95,7 +97,13 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   if(!t){t={path,size,mode:'view',pane:el('div',undefined,'file-pane')};tabs.push(t);if(tabs.length>maxTabs)closeTab(tabs.find(x=>x!==t));load(t);}
   show(t);notice('읽기 전용 파일 보기');return t;
  }
+ // A change from the chat: the diff the AI's edit made, read-only, in its own tab beside the file itself.
+ function openDiff({path,diff,label}){
+  const key='diff:'+path;let t=tabs.find(x=>x.path===key);
+  if(t){t.diff=diff;load(t);}else{t={path:key,title:`${name(path)} · 변경`,diff,label,mode:'view',pane:el('div',undefined,'file-pane')};tabs.push(t);if(tabs.length>maxTabs)closeTab(tabs.find(x=>x!==t));load(t);}
+  show(t);return t;
+ }
  function clear(){for(const t of tabs)t.dispose?.();tabs=[];show(null);}
  renderStrip();
- return {open,clear,show,get active(){return active?.path??null;},get paths(){return tabs.map(t=>t.path);}};
+ return {open,openDiff,clear,show,get active(){return active?.path??null;},get paths(){return tabs.map(t=>t.path);}};
 }

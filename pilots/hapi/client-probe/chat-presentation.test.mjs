@@ -76,3 +76,18 @@ test('model reasoning becomes its own row, merged when consecutive; empty or red
  const rows=chatTimeline([codex('**계획** 세우기','a'),codex('검사 실행','b'),claude([{type:'thinking',thinking:'확인'},{type:'text',text:'완료했습니다'}],'c')]);
  assert.deepEqual(rows.map(r=>[r.kind,r.text??r.view?.text]),[['reasoning','**계획** 세우기\n\n검사 실행\n\n확인'],['message','완료했습니다']]);
 });
+test('a finished turn lists the files its edits changed, with line counts and a diff per file',async()=>{
+ const {lineDiff,editChanges}=await import('./chat-presentation.mjs');
+ assert.deepEqual(lineDiff('a\nb\nc','a\nB\nc\nd'),[' a','-b','+B',' c','+d']);
+ const use=(id,name,input)=>({id:'u'+id,content:{role:'agent',content:{type:'output',data:{type:'assistant',message:{content:[{type:'tool_use',id,name,input}]}}}}});
+ const done=(id,err=false)=>({id:'r'+id,content:{role:'agent',content:{type:'output',data:{type:'user',message:{content:[{type:'tool_result',tool_use_id:id,content:'ok',is_error:err}]}}}}});
+ const ready=id=>({id,content:{role:'agent',content:{type:'event',data:{type:'ready'}}}});
+ const user=(id,text)=>({id,content:{role:'user',content:{type:'text',text}}});
+ const rows=chatTimeline([user('q1','고쳐줘'),use('e1','Edit',{file_path:'/p/a.mjs',old_string:'x=1',new_string:'x=2'}),done('e1'),use('e2','Edit',{file_path:'/p/a.mjs',old_string:'y',new_string:'y\nz'}),done('e2'),
+  use('e3','Write',{file_path:'/p/new.md',content:'# 제목\n본문'}),done('e3'),use('e4','Edit',{file_path:'/p/fail.mjs',old_string:'a',new_string:'b'}),done('e4',true),ready('d1'),user('q2','다음')]);
+ const card=rows.find(r=>r.kind==='changes');
+ assert.deepEqual(card.files.map(f=>[f.path,f.kind,f.added,f.removed]),[['/p/a.mjs','update',2,1],['/p/new.md','write',2,0]]);
+ assert.match(card.files[0].diff,/-x=1\n\+x=2/);
+ assert.equal(rows.filter(r=>r.kind==='changes').length,1);assert.equal(rows.at(-1).kind,'message');
+ assert.deepEqual(editChanges({name:'CodexPatch',state:'result',input:{changes:{'src/b.ts':{type:'update',unified_diff:'@@ -1 +1 @@\n-a\n+b'},'n.txt':{type:'add',content:'hi'}}}}).map(f=>[f.path,f.kind,f.added,f.removed]),[['src/b.ts','update',1,1],['n.txt','add',1,0]]);
+});

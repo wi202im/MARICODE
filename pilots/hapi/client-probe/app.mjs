@@ -147,7 +147,7 @@ function render(){
   renderWorkflow();
   const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
   const canFork=workspaceLayout&&session?.metadata?.capabilities?.conversationHistory?.forkAtMessage===true&&session.active&&!session.thinking&&!busy&&!actions?.pending;
-  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null,queued:{ids:queuedIds,busy:queueBusy,steer:session?.metadata?.flavor==='codex',onCancel:cancelQueued,onSteer:steerQueued}});finder?.refresh();
+  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null,onDiff:fileTabs?change=>{fileTabs.openDiff(change);if(compactSidebar.matches)workspacePanel('chat');}:null,onGitReview:workspaceLayout?()=>{workspacePanel('info');const g=$('git-review');if(g){g.open=true;gitReview?.load?.(true);}}:null,queued:{ids:queuedIds,busy:queueBusy,steer:session?.metadata?.flavor==='codex',onCancel:cancelQueued,onSteer:steerQueued}});finder?.refresh();
   if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
    el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);

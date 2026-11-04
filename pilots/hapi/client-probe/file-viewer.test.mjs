@@ -56,3 +56,11 @@ test('the vendored markdown-it escapes raw HTML and drops script links; highligh
  const hljs=(await import('./vendor/highlight.mjs')).default;assert.ok(hljs.getLanguage('javascript'));assert.ok(!hljs.getLanguage('dockerfile'));
  hljs.registerLanguage('dockerfile',(await import('./vendor/hljs-languages/dockerfile.mjs')).default);assert.match(hljs.highlight('FROM node',{language:'dockerfile'}).value,/hljs-keyword/);
 });
+test('a change from the chat opens as its own read-only diff tab beside the file',async()=>{
+ const s=setup({});
+ s.tabs.openDiff({path:'src/a.mjs',diff:'@@ 변경 @@\n-x=1\n+x=2',label:'src/a.mjs · 이번 턴의 변경'});await settle();
+ assert.deepEqual(s.tabs.paths,['diff:src/a.mjs']);assert.equal(s.calls.length,0);
+ assert.deepEqual(s.strip.children.map(n=>n.textContent??n.children[0].textContent),['대화','a.mjs · 변경']);
+ assert.deepEqual(s.inView(n=>n.className==='diff-view').children.map(c=>[c.className,c.textContent]),[['diff-hunk','@@ 변경 @@'],['diff-del','-x=1'],['diff-add','+x=2']]);
+ s.tabs.openDiff({path:'src/a.mjs',diff:'@@ 변경 @@\n+y',label:'x'});await settle();assert.equal(s.tabs.paths.length,1);
+});
