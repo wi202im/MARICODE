@@ -15,7 +15,8 @@ import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {createBranchPin} from './branch-pin-ui.mjs';
 import {createFileTabs} from './file-viewer.mjs';
 import {createFileTree} from './file-tree.mjs';
-import {icon} from './vendor/lucide.mjs';
+import {icon} from './icons.mjs';
+import './vendor/vscode-elements/bundled.js';
 import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
@@ -31,7 +32,7 @@ import {archiveSnapshot,archiveMatches,createActions,messageView,relativePath,cr
 const deviceStorage=(()=>{try{return window.localStorage;}catch{return null;}})();
 const $=id=>document.getElementById(id);
 const navigationBranch=()=>icon('git-branch');
-const navigationIcon=name=>icon({plus:'plus',folder:'folder',workspace:'layers',down:'chevron-down',right:'chevron-right',more:'ellipsis'}[name]);
+const navigationIcon=name=>icon({plus:'add',folder:'folder',workspace:'git-branch',down:'chevron-down',right:'chevron-right',more:'ellipsis'}[name]);
 const workspaceLayout=document.body.dataset.layout==='workspace';
 const chatDrafts=createChatDrafts(),questionDrafts=new Map();let permissionRenderKey='';
 function rememberChat(){chatDrafts.save(sessionId,{text:$('prompt').value,note:$('handoff-note').textContent});}
@@ -639,7 +640,7 @@ function showTurnAlerts(list){
  const box=$('turn-alerts');if(!box||!list.length)return;
  for(const a of list){
   const label=trialSessions.find(s=>s.id===a.id)?.label??'대화',item=document.createElement('div'),text=document.createElement('span'),open=document.createElement('button'),close=document.createElement('button');
-  item.className='turn-alert '+a.kind;text.textContent=`${alertText[a.kind]} · ${label}`;text.title=text.textContent;open.type=close.type='button';open.textContent='열기';close.append(icon('x'));close.setAttribute('aria-label','알림 닫기');
+  item.className='turn-alert '+a.kind;text.textContent=`${alertText[a.kind]} · ${label}`;text.title=text.textContent;open.type=close.type='button';open.textContent='열기';close.append(icon('close'));close.setAttribute('aria-label','알림 닫기');
   const dismiss=()=>item.remove();open.onclick=()=>{dismiss();selectSession(a.id);};close.onclick=dismiss;setTimeout(dismiss,30000);
   item.append(text,open,close);box.append(item);while(box.children.length>4)box.firstElementChild.remove();
  }

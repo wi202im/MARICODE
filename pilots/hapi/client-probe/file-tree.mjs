@@ -1,4 +1,3 @@
-import {icon} from './vendor/lucide.mjs';
 // Project file tree for the right panel: folders expand in place, files open as center tabs.
 // Icons are Material Icon Theme SVGs in vendor/file-icons (a subset; anything else uses the generic icon).
 const folders=new Set(['src','docs','test','node','git','public','images','components','lib','scripts','config','dist','github','resource','app','ios','android']);
@@ -21,31 +20,37 @@ export function iconName(name,type,open=false){
  if(lower==='.env'||lower.startsWith('.env.'))return 'tune';
  return byName[lower]??(dot>0?byExt[lower.slice(dot+1)]:undefined)??'file';
 }
-export function createFileTree({api,base,list,open,error=()=>{},active=()=>null,document:doc=globalThis.document}){
- // path -> {entries|null, open}; '' is the project folder. 'other' entries are links: tried as a folder first.
- let nodes=new Map(),serial=0;
+// Renders <vscode-tree-item>s into a <vscode-tree>. Folders are branches; an unread folder loads when it
+// first opens (watched through its reflected `open` attribute, so mouse and keyboard both work).
+export function createFileTree({api,base,list,open,error=()=>{},active=()=>null,document:doc=globalThis.document,Observer=globalThis.MutationObserver}){
+ // path -> {entries, open}; '' is the project folder. kinds holds links found to be files.
+ let nodes=new Map(),kinds=new Map(),serial=0;
  const el=(tag,cls)=>{const n=doc.createElement(tag);if(cls)n.className=cls;return n;};
  async function read(path){const d=await api(base()+'/directory?path='+encodeURIComponent(path));if(!d?.success)throw Object.assign(Error('폴더를 열 수 없습니다.'),{notFolder:true});return d.entries;}
- function row(entry,path,depth){
-  const node=nodes.get(path);
-  const li=el('li'),btn=el('button','tree-row'),chevron=el('span','tree-chevron'),pic=el('img','tree-icon'),label=el('span','tree-name');
-  btn.type='button';btn.style.paddingLeft=`${8+depth*14}px`;btn.dataset.kind=entry.type;btn.title=path;label.textContent=entry.name;
-  pic.src=`/vendor/file-icons/${iconName(entry.name,entry.type,!!node?.open)}.svg`;pic.alt='';pic.setAttribute('aria-hidden','true');
-  if(entry.type==='file'){chevron.classList?.add('none');if(active()===path)btn.classList?.add('active');}
-  else{chevron.append(icon(node?.open?'chevron-down':'chevron-right',doc));btn.setAttribute('aria-expanded',String(!!node?.open));}
-  btn.append(chevron,pic,label);li.append(btn);
-  btn.onclick=()=>entry.type==='file'?open(path,entry.size):toggle(path,entry);
-  if(node?.open&&node.entries){const ul=el('ul');ul.append(...node.entries.map(e=>row(e,path?`${path}/${e.name}`:e.name,depth+1)));li.append(ul);}
-  return li;
+ const iconImg=(name,kind,opened,slot)=>{const pic=el('img','tree-icon');pic.src=`/vendor/file-icons/${iconName(name,kind,opened)}.svg`;pic.alt='';pic.setAttribute('aria-hidden','true');pic.setAttribute('slot',slot);return pic;};
+ function item(entry,path){
+  const kind=kinds.get(path)??entry.type,node=nodes.get(path),it=el('vscode-tree-item');
+  it.dataset.file=path;it.dataset.kind=kind;it.dataset.name=entry.name;if(entry.size!==undefined)it.dataset.size=String(entry.size);it.title=path;
+  if(kind==='file'){it.append(iconImg(entry.name,kind,false,'icon-leaf'));if(active()===path)it.setAttribute('selected','');}
+  else{it.setAttribute('branch','');it.append(iconImg(entry.name,kind,false,'icon-branch'),iconImg(entry.name,kind,true,'icon-branch-opened'));}
+  it.append(doc.createTextNode(entry.name));
+  if(kind!=='file'&&node?.entries){if(node.open)it.setAttribute('open','');it.append(...node.entries.map(e=>item(e,`${path}/${e.name}`)));}
+  return it;
  }
- function render(){const root=nodes.get('');list.replaceChildren(...(root?.entries??[]).map(e=>row(e,e.name,0)));}
- async function toggle(path,entry){
-  const node=nodes.get(path);
-  if(node?.open){node.open=false;render();return;}
+ function render(){const root=nodes.get('');list.replaceChildren(...(root?.entries??[]).map(e=>item(e,e.name)));}
+ // A branch item opened or closed.
+ async function toggled(it){
+  const path=it.dataset?.file,opened=it.hasAttribute?.('open');if(!path||it.dataset.kind==='file')return;
+  const node=nodes.get(path);if(node){node.open=opened;return;}
+  if(!opened)return;
   const mine=serial;
-  try{const entries=node?.entries??await read(path);if(mine!==serial)return;nodes.set(path,{entries,open:true});render();}
-  catch(e){if(mine!==serial)return;if(entry.type==='other'&&e.notFolder){open(path,entry.size);return;}error(e);}
+  try{const entries=await read(path);if(mine!==serial)return;nodes.set(path,{entries,open:true});render();}
+  catch(err){if(mine!==serial)return;it.removeAttribute('open');
+   if(it.dataset.kind==='other'&&err.notFolder){kinds.set(path,'file');render();open(path,it.dataset.size?Number(it.dataset.size):undefined);return;}
+   error(err);}
  }
+ if(Observer)new Observer(records=>{for(const r of records)if(r.target.tagName==='VSCODE-TREE-ITEM')toggled(r.target);}).observe(list,{subtree:true,attributes:true,attributeFilter:['open']});
+ list.addEventListener('click',e=>{const it=e.target?.closest?.('vscode-tree-item');if(it?.dataset.kind==='file')open(it.dataset.file,it.dataset.size?Number(it.dataset.size):undefined);});
  async function reload(){
   const mine=++serial,opened=[...nodes].filter(([,n])=>n.open).map(([p])=>p);
   try{
@@ -58,7 +63,6 @@ export function createFileTree({api,base,list,open,error=()=>{},active=()=>null,
    if(mine!==serial)return false;nodes=fresh;render();return true;
   }catch(e){if(mine===serial){list.replaceChildren();error(e);}return false;}
  }
- function clear(){serial++;nodes=new Map();list.replaceChildren();}
- function collapse(){for(const [p,n] of nodes)if(p)n.open=false;render();}
- return {reload,clear,collapse,render,get loaded(){return nodes.has('');}};
+ function clear(){serial++;nodes=new Map();kinds=new Map();list.replaceChildren();}
+ return {reload,clear,render,toggled,get loaded(){return nodes.has('');}};
 }

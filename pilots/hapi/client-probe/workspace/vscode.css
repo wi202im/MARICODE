@@ -1,0 +1,34 @@
+/* VS Code Dark Modern look (2026-11-04 user decision). VSCode Elements draws the tree and collapsible
+   sections; these rules bring the app's own native controls to the same look. Loaded after the other styles. */
+body{font-size:13px}
+/* Controls: square-ish corners, VS Code hover/focus. */
+button{border-radius:2px}
+button:hover:not(:disabled),summary:hover{background:var(--hover)}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:1px solid var(--focus);outline-offset:-1px}
+.primary:hover:not(:disabled),#send:hover:not(:disabled),#create-task:hover:not(:disabled){background:var(--accent-hover)}
+input,select,textarea{background:var(--surface2);border-color:var(--border-strong);border-radius:2px}
+input:focus,select:focus,textarea:focus{border-color:var(--focus);outline:none}
+input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
+/* Lists: VS Code selection colour and blue focus bar. */
+.task{border-radius:0}.task:hover:not(:disabled){background:var(--hover)}
+.task[aria-current=true],.project-sessions .task[aria-current=true]{background:var(--selection);box-shadow:none}
+.task[aria-current=true] strong{color:#ffffff}.task[aria-current=true] small{color:#c8c8c8}
+/* Side panel titles: upper-case panel tabs with an accent underline. */
+.inspector-tabs button{border-radius:0;text-transform:uppercase;font-size:11px;letter-spacing:.04em;border-bottom:1px solid transparent}
+.inspector-tabs button[aria-pressed=true]{background:none;color:var(--vscode-panelTitle-activeForeground);border-bottom-color:var(--vscode-panelTitle-activeBorder)}
+/* Center tabs: editor tabs with an accent top line on the active tab. */
+.center-tabs{background:var(--sidebar);padding:0;gap:0;border-bottom:1px solid var(--border)}
+.center-tabs button,.center-tab{border-radius:0}
+.center-tabs>button,.center-tab{border-right:1px solid var(--border);min-height:35px}
+.center-tabs button[aria-selected=true],.center-tab.active{background:var(--surface0);color:#ffffff;box-shadow:inset 0 1px 0 var(--accent)}
+.center-tab.active>button{background:none}
+/* VSCode Elements inside the side panel. */
+#entries{--vscode-font-size:13px;margin:0 -8px}
+#entries .tree-icon{width:16px;height:16px}
+.inspector vscode-collapsible{display:block;margin:8px 0;padding:0}
+.inspector vscode-collapsible>*{margin-left:20px}
+vscode-collapsible.account-panel{border:0;border-radius:0;padding:0}
+#tool-panel{margin:0}
+.inspector,.inspector-statusbar{background:var(--sidebar)}
+#entries .tree-icon{display:block;margin-top:3px}
+.file-navigation button{background:var(--vscode-button-secondaryBackground);border:0}

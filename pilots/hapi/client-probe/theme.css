@@ -1,6 +1,17 @@
-/* Paseo zinc theme/type/density adapted for MARICODE.
+/* VS Code Dark Modern colours (2026-11-04 user decision), keeping the Paseo-derived token names and density.
+ * Originally: Paseo zinc theme/type/density adapted for MARICODE.
  * Copyright (c) 2025-present Mohamed Boudra, Apache-2.0.
  * Reference commit 86c60d367c9dcc2edbfee29a06ee49ab6b77f28f.
  * Modified: higher secondary-text contrast; CSS semantic names and layout tokens.
  * Full license: apps/mac-launcher/Paseo-LICENSE.txt. */
-:root{color-scheme:dark;--surface0:#18181b;--surface1:#1f1f22;--surface2:#27272a;--surface3:#3f3f46;--sidebar:#131316;--foreground:#f4f4f5;--muted:#a1a1aa;--dim:#8b8b94;--border:#27272a;--border-strong:#3f3f46;--accent:#e4e4e7;--accent-fg:#18181b;--success:#6cb17b;--warning:#c09664;--danger:#d8847b;--content-width:820px;--sidebar-width:250px;--inspector-width:350px;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+:root{color-scheme:dark;--surface0:#1f1f1f;--surface1:#2a2a2a;--surface2:#313131;--surface3:#3c3c3c;--sidebar:#181818;--foreground:#cccccc;--muted:#9d9d9d;--dim:#868686;--border:#2b2b2b;--border-strong:#3c3c3c;--accent:#0078d4;--accent-fg:#ffffff;--accent-hover:#026ec1;--selection:#04395e;--hover:#2a2d2e;--focus:#0078d4;--success:#89d185;--warning:#cca700;--danger:#f85149;--content-width:820px;--sidebar-width:250px;--inspector-width:350px;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ /* VS Code Dark Modern names read by VSCode Elements components. */
+ --vscode-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--vscode-font-size:13px;--vscode-font-weight:normal;--vscode-editor-font-family:var(--mono);
+ --vscode-foreground:var(--foreground);--vscode-descriptionForeground:var(--muted);--vscode-icon-foreground:var(--foreground);--vscode-focusBorder:var(--focus);--vscode-widget-border:var(--border);
+ --vscode-sideBar-background:var(--sidebar);--vscode-sideBarSectionHeader-background:var(--sidebar);--vscode-sideBarSectionHeader-border:var(--border);--vscode-sideBarTitle-foreground:#bbbbbb;--vscode-editor-background:var(--surface0);
+ --vscode-button-background:var(--accent);--vscode-button-foreground:var(--accent-fg);--vscode-button-hoverBackground:var(--accent-hover);--vscode-button-border:#ffffff12;--vscode-button-secondaryBackground:var(--surface2);--vscode-button-secondaryForeground:var(--foreground);--vscode-button-secondaryHoverBackground:var(--surface3);
+ --vscode-input-background:var(--surface2);--vscode-input-foreground:var(--foreground);--vscode-input-border:var(--border-strong);--vscode-input-placeholderForeground:#989898;--vscode-settings-textInputBackground:var(--surface2);--vscode-settings-textInputBorder:var(--border-strong);
+ --vscode-dropdown-background:var(--surface2);--vscode-dropdown-border:var(--border-strong);--vscode-dropdown-foreground:var(--foreground);--vscode-dropdown-listBackground:var(--surface0);
+ --vscode-list-activeSelectionBackground:var(--selection);--vscode-list-activeSelectionForeground:#ffffff;--vscode-list-inactiveSelectionBackground:#37373d;--vscode-list-hoverBackground:var(--hover);--vscode-list-focusOutline:var(--focus);--vscode-tree-indentGuidesStroke:#585858;--vscode-tree-inactiveIndentGuidesStroke:#58585866;
+ --vscode-panelTitle-activeBorder:var(--accent);--vscode-panelTitle-activeForeground:#e7e7e7;--vscode-panelTitle-inactiveForeground:var(--muted);--vscode-panel-background:var(--sidebar);--vscode-panel-border:var(--border);
+ --vscode-badge-background:#616161;--vscode-badge-foreground:#f8f8f8;--vscode-activityBarBadge-background:var(--accent);--vscode-activityBarBadge-foreground:#ffffff;--vscode-scrollbarSlider-background:#79797966;--vscode-textLink-foreground:#4daafc;--vscode-textCodeBlock-background:var(--border)}

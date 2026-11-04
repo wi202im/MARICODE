@@ -1,9 +1,9 @@
-import {icon} from './vendor/lucide.mjs';
+import {icon} from './icons.mjs';
 import {selectedFiles,validateFiles,fileBase64,attachmentMetadata,formatSize} from './attachments.mjs';
 export function createAttachmentComposer({form,prompt,context,upload,changed,notice}){
  const drafts=new Map(),list=document.createElement('div'),picker=document.createElement('input'),button=document.createElement('button');let renderedKey='';
  list.className='attachment-list';list.setAttribute('aria-label','전송할 첨부파일');picker.type='file';picker.multiple=true;picker.hidden=true;
- button.type='button';button.className='attach-button';button.append(icon('paperclip',document));button.title='파일 첨부 · 이미지/파일 붙여넣기 · 끌어놓기';button.setAttribute('aria-label','파일 첨부');
+ button.type='button';button.className='attach-button';button.append(icon('attach',document));button.title='파일 첨부 · 이미지/파일 붙여넣기 · 끌어놓기';button.setAttribute('aria-label','파일 첨부');
  form.prepend(list,picker);form.querySelector('.composer-footer').prepend(button);prompt.required=false;
  const entries=()=>drafts.get(context().id)??[];
  const blocked=()=>{const c=context();return !c.id||!c.connected||!c.active||c.busy||c.pending;};
@@ -27,7 +27,7 @@ export function createAttachmentComposer({form,prompt,context,upload,changed,not
    if(entry.preview){const image=document.createElement('img');image.src=entry.preview;image.alt=entry.name;card.append(image);}
    const label=document.createElement('span'),name=document.createElement('strong'),state=document.createElement('small');name.textContent=entry.name;
    state.textContent=`${formatSize(entry.size)} · ${{local:'전송 시 업로드',uploading:'업로드 중',ready:'업로드 완료',unknown:'결과 미확인 · 재전송 안 함'}[entry.state]}`;label.append(name,state);card.append(label);
-   const remove=document.createElement('button');remove.type='button';remove.append(icon('x',document));remove.id='attachment-remove-'+entry.id;remove.setAttribute('aria-label',`${entry.name} 첨부 제거 (${index+1}/${selected.length})`);remove.disabled=disabled;
+   const remove=document.createElement('button');remove.type='button';remove.append(icon('close',document));remove.id='attachment-remove-'+entry.id;remove.setAttribute('aria-label',`${entry.name} 첨부 제거 (${index+1}/${selected.length})`);remove.disabled=disabled;
    remove.onclick=()=>{if(context().id!==owner||context().busy||context().pending)return;if(entry.preview)URL.revokeObjectURL(entry.preview);drafts.set(owner,entries().filter(e=>e!==entry));changed();};card.append(remove);list.append(card);
   }
  }

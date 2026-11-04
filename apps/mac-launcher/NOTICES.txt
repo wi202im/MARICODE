@@ -45,8 +45,10 @@ Distribution inventory (paths below are relative to Contents/Resources)
   MIT) and highlight.js 11.12.0 (BSD-3-Clause) with its github-dark style.
   File tree icons: a subset of Material Icon Theme 5.40.0 SVGs (MIT),
   https://github.com/material-extensions/vscode-material-icon-theme
-  Interface icons: a subset of Lucide 1.67.0 icon data (ISC),
-  https://github.com/lucide-icons/lucide
+  Interface components: VSCode Elements 2.5.1 (MIT, bundling Lit 3, BSD-3-Clause),
+  https://github.com/vscode-elements/elements
+  Interface icons: @vscode/codicons 0.0.46 font (CC BY 4.0; code MIT),
+  https://github.com/microsoft/vscode-codicons
   Files and full license texts: source/pilots/hapi/client-probe/vendor/
   (LICENSES.txt). Upstream: https://github.com/markdown-it/markdown-it and
   https://github.com/highlightjs/highlight.js
