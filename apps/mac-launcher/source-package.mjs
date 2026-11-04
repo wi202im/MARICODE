@@ -14,7 +14,7 @@ export async function packageProductSource(resources,output,version='1.0.0'){
   for(const item of await readdir(path,{withFileTypes:true})){
    if(item.isSymbolicLink()||item.name.startsWith('.')||item.name==='node_modules')throw Error('Unexpected source entry');
    if(item.isDirectory())await inspect(join(path,item.name));
-   else if(!item.isFile()||(!/\.(mjs|js|swift|html|css|png|svg|webmanifest|md|txt)$/.test(item.name)&&item.name!=='LICENSE'))throw Error('Unexpected source file');
+   else if(!item.isFile()||(!/\.(mjs|js|swift|html|css|png|svg|ttf|webmanifest|md|txt)$/.test(item.name)&&item.name!=='LICENSE'))throw Error('Unexpected source file');
   }
  }
  const roots=['apps/mac-launcher','pilots/hapi/client-probe'];for(const path of roots)await inspect(join(source,path));
