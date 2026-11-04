@@ -2,7 +2,7 @@ import {newBranches} from './branch-rules.mjs';
 // Branch pin UI: the session-info section, the pre-send warning and the after-turn card.
 // The app only reads branches and edits the pin list; it never switches, creates or deletes branches.
 const repoName=r=>r==='.'?'이 폴더':r;
-export function createBranchPin({api,section,banner,document:doc=globalThis.document,changed=()=>{}}){
+export function createBranchPin({api,section,banner,document:doc=globalThis.document,changed=()=>{},shown=()=>{}}){
  let id=null,state=null,busy=false,before=null,serial=0,answer=null;
  const el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
  const button=(text,onclick,cls)=>{const b=el('button',text,cls);b.type='button';b.onclick=onclick;b.disabled=busy;return b;};
@@ -18,7 +18,9 @@ export function createBranchPin({api,section,banner,document:doc=globalThis.docu
   catch(e){if(target===id)state={...state,error:e.message};return null;}
   finally{busy=false;render();}
  }
+ let lastOff=null;
  function render(){
+  const off=!!state?.mismatches?.length;if(off!==lastOff){lastOff=off;shown();}
   if(!section)return;
   const head=el('h3','브랜치 고정');
   if(!id){section.replaceChildren(head,el('p','세션을 선택하세요.'));return;}
@@ -60,6 +62,8 @@ export function createBranchPin({api,section,banner,document:doc=globalThis.docu
  return {
   load,render,
   get pinned(){return !!state?.pin;},
+  get sessionId(){return id;},
+  get offBranch(){return !!state?.mismatches?.length;},
   // Before sending: 'send' | 'cancel'. A pinned session off its branches asks first; unpinned or unreadable sends.
   async beforeSend(sessionId){
    const r=await load(sessionId);if(!r?.pin)return 'send';

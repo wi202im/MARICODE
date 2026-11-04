@@ -75,7 +75,7 @@ async function api(path,{method='GET',body,signal}={}){
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
 const base=()=>`/api/sessions/${sessionId}`;
 // Pinned sessions: branchTurn marks a sent turn whose end (HAPI 'ready' event after seq) triggers the branch check.
-const branchPin=workspaceLayout&&$('branch-pin')?createBranchPin({api,section:$('branch-pin'),banner:$('branch-banner'),changed:()=>refreshCatalog().catch(()=>{})}):null;let branchTurn=null;
+const branchPin=workspaceLayout&&$('branch-pin')?createBranchPin({api,section:$('branch-pin'),banner:$('branch-banner'),changed:()=>refreshCatalog().catch(()=>{}),shown:()=>renderProjects()}):null;let branchTurn=null;
 const commandCardHost=document.createElement('div');commandCardHost.className='cli-command-cards';$('messages').after(commandCardHost);
 async function commandCapabilities(id=sessionId){if(!commandCardsEnabled||!id)return null;return api(`/api/sessions/${id}/command-cards`);}
 async function openCommandCard(name){
@@ -604,7 +604,10 @@ function renderWorkspace(){
     for(const c of matches){
      const button=document.createElement('button');button.className='task';button.dataset.sessionId=c.config.id;button.title=c.engine+' · '+c.state+' · '+c.config.id;button.setAttribute('aria-current',String(c.selected));button.disabled=busy||taskCreating;
      const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' green':'');
-     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state;text.append(title,state);if(c.config.branchPin){const pin=document.createElement('small');pin.className='task-pin';pin.textContent='⎇ '+pinSummary(c.config.branchPin);pin.title='고정한 브랜치 · '+pin.textContent.slice(2);text.append(pin);}button.append(dot,text);
+     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state;text.append(title,state);
+     // Pinned: an icon on every row (branches in its tooltip); only the open session spells them out. Orange = the open session is off its branches.
+     if(c.config.branchPin){const summary=pinSummary(c.config.branchPin),off=c.selected&&branchPin?.sessionId===c.config.id&&branchPin.offBranch,icon=document.createElement('span');icon.className='task-pin-icon'+(off?' off':'');icon.textContent='⎇';icon.title=(off?'고정 목록 밖 브랜치에 있습니다 · ':'고정한 브랜치 · ')+summary;icon.setAttribute('aria-label',icon.title);title.prepend(icon);
+      if(c.selected){const pin=document.createElement('small');pin.className='task-pin'+(off?' off':'');pin.textContent=summary;pin.title=icon.title;text.append(pin);}}button.append(dot,text);
      button.onclick=()=>{workspaceDrawer(false);selectSession(c.config.id).catch(e=>notice(e.message));};const row=document.createElement('div');row.className='session-row';row.append(button);if(navigationEnabled)row.append(navigationMenu({kind:'session',id:c.config.id,name:c.title,path:w.path}));children.append(row);
     }
     if(!matches.length){const empty=document.createElement('p');empty.className='project-no-sessions';empty.textContent=query?'일치하는 세션 없음':w.cards.length?'보기 설정으로 세션이 숨겨져 있습니다':'＋로 대화를 추가하세요';children.append(empty);}
