@@ -539,3 +539,9 @@ test('stop and queued-message routes are limited to the selected session and exa
  assert.equal(allowedRoute('POST',url(b+'/messages/queued-state'),id),true);
  for(const [m,p] of [['DELETE',b+'/messages/queued-state'],['GET',b+'/messages/x/steer'],['POST',b+'/messages/x'],['DELETE',b+'/messages/x/steer'],['DELETE',b+'/messages/x?y=1'],['DELETE','/api/sessions/other/messages/x'],['DELETE',b+'/messages/a/b']])assert.equal(allowedRoute(m,url(p),id),false,`${m} ${p}`);
 });
+test('file search for @-mentions accepts only a short query and limit',()=>{
+ const b=`/api/sessions/${id}/files`;
+ assert.equal(allowedRoute('GET',url(b+'?query=src%2Fapp&limit=20'),id),true);
+ for(const p of [b+'?path=/etc',b+'?query='+'x'.repeat(201),b+'?limit=9999',b+'?limit=-1'])assert.equal(allowedRoute('GET',url(p),id),false,p);
+ assert.equal(allowedRoute('POST',url(b),id),false);
+});

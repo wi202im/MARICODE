@@ -18,6 +18,7 @@ export function createCommandSuggest({input,list,load}){
  function choose(item){input.value=item.text+' ';input.dispatchEvent(new Event('input',{bubbles:true}));close();input.focus();}
  function render(){
   if(!items.length){close();return;}
+  list.dataset.owner='command';
   list.replaceChildren(...items.map((item,i)=>{const b=doc.createElement('button');b.type='button';b.id='command-option-'+i;b.className='command-option'+(i===active?' active':'');b.setAttribute('role','option');b.setAttribute('aria-selected',String(i===active));
    const name=doc.createElement('span');name.className='command-name';name.textContent=item.text;b.append(name);
    if(item.description){const d=doc.createElement('span');d.className='command-description';d.textContent=item.description;b.append(d);}

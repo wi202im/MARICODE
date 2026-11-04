@@ -11,6 +11,7 @@ import {createAttachmentComposer} from './attachment-composer.mjs';
 import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
+import {createFileMentions} from './file-mentions.mjs';
 import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {createBranchPin} from './branch-pin-ui.mjs';
 import {createFileTabs} from './file-viewer.mjs';
@@ -43,7 +44,7 @@ let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigatio
 let gitView={owner:'',data:null,loading:false,checked:0};
 let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null,pairingEnabled=false;
 let commandCardsEnabled=false;const localCommandCards=new Map();
-let commandSuggest=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
+let commandSuggest=null,fileMentions=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
 let recovery=null,workspaceOpened=false,connectionState='login-needed';
@@ -302,7 +303,7 @@ async function selectSession(id){
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
   try{sessionStorage.setItem('hapi-trial-selected-session',id);}catch{}
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
-  settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();
+  settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();fileMentions?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
   sessionId=id;branchTurn=null;fileTabs?.clear();fileTree?.clear();branchPin?.load(id);$('chat-account-return')?.remove();for(const card of localCommandCards.values()){if(card.sessionId===id)card.show();else card.hide();}if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
@@ -1121,6 +1122,7 @@ if(workspaceLayout){
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();workspacePanel('chat');workspaceDrawer(false);}});
  document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
  commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>sessionId&&(session?.active||commandCardsEnabled)?`${epoch}:${sessionId}`:null,fetch:async()=>{const agent=session?.metadata?.flavor;const [c,s,cap]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null),commandCapabilities().catch(()=>null)]);return {commands:[...cardCommands(cap),...supportedChatCommands(agent,c?.success?c.commands:[])],skills:s?.success?s.skills:[]};}}});
+ fileMentions=fileTabs?createFileMentions({input:$('prompt'),list:$('command-suggestions'),search:async term=>{if(!sessionId)return [];const r=await api(base()+'/files?query='+encodeURIComponent(term)+'&limit=20');return r?.success?r.files:[];}}):null;
  bindComposerEnter({input:$('prompt'),form:$('send-form'),button:$('send')});
  finder=createFind({bar:$('find-bar'),input:$('find-input'),count:$('find-count'),scope:()=>$('messages')});$('find-close').onclick=()=>finder.close();
  const shortcuts=[['⌘K','명령 팔레트'],['⌘F','대화에서 찾기'],['Enter','메시지 보내기'],['Shift+Enter','줄바꿈'],['Esc','패널·팝업 닫기']];
