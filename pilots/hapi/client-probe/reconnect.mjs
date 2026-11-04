@@ -13,3 +13,7 @@ export function createReadRecovery({read,onState,schedule=(fn,ms)=>setTimeout(fn
  }
  return {start,stop(){generation++;running=false;finished=true;if(timer!==null)cancel(timer);timer=null;}};
 }
+// The Mac app hands out a fresh login when the page reloads /workspace; once a minute at most, so a bad login cannot loop.
+export function desktopRelogin(storage,now=Date.now()){
+ try{if(now-(Number(storage.getItem('maricode-desktop-relogin'))||0)<60000)return false;storage.setItem('maricode-desktop-relogin',String(now));return true;}catch{return false;}
+}

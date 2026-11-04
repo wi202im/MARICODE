@@ -22,7 +22,7 @@ import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './set
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
-import {createReadRecovery,connectionFailure} from './reconnect.mjs';
+import {createReadRecovery,connectionFailure,desktopRelogin} from './reconnect.mjs';
 import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace} from './workspace.mjs';
 import {createHistory} from './history.mjs';
 import {createGitReview} from './git-review.mjs';
@@ -45,7 +45,7 @@ let sessionTerminalEnabled=false,terminalBusy=false;
 let commandSuggest=null,fileMentions=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
-let recovery=null,workspaceOpened=false,connectionState='login-needed';
+let desktopLogin=false,recovery=null,workspaceOpened=false,connectionState='login-needed';
 const connectionLabels={empty:'연결됨 · 작업 세션 없음','login-needed':'로그인 필요',restoring:'저장된 연결 복원 중',connecting:'서버 상태·이력 확인 중',live:'실시간 연결됨',unavailable:'서버 연결 실패 · 조회 재시도 중',expired:'인증 만료 · 다시 로그인 필요',outdated:'화면 업데이트 필요 · 입력을 보관한 뒤 새로고침',denied:'접근 불가 · 권한 또는 세션 확인 필요',paused:'연결 시험 중지'};
 const connectionBanner=document.createElement('section');connectionBanner.className='connection-banner';
 const serverLabel=document.createElement('span'),connectionLabel=document.createElement('strong'),reconnectButton=document.createElement('button');
@@ -304,7 +304,7 @@ async function selectSession(id){
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();fileMentions?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
   sessionId=id;branchTurn=null;fileTabs?.clear();fileTree?.clear();branchPin?.load(id);$('terminal-offer')?.remove();if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
-  const draft=chatDrafts.read(id);$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
+  let draft=chatDrafts.read(id);try{const kept=JSON.parse(sessionStorage.getItem('maricode-desktop-draft')||'null');if(kept?.id===id){sessionStorage.removeItem('maricode-desktop-draft');draft={text:kept.text??'',note:kept.note??''};}}catch{}$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
   const permissionKey=`hapi-permission-pending:${id}`;
   permissionActions=createPermissionActions({pending:sessionStorage.getItem(permissionKey),save:p=>{if(p)sessionStorage.setItem(permissionKey,p);else sessionStorage.removeItem(permissionKey);},post:(requestId,action,body)=>api(`/api/sessions/${id}/permissions/${encodeURIComponent(requestId)}/${action}`,{method:'POST',body})});
@@ -319,6 +319,8 @@ async function selectSession(id){
 }
 $('session-select').onchange=()=>selectSession($('session-select').value).catch(e=>notice(e.message));
 function clearLogin(message,state='login-needed'){
+ // Mac app: an expired login (4h) gets a fresh one from the app instead of the login screen; the unsent draft is kept.
+ if(state==='expired'&&desktopLogin&&desktopRelogin(sessionStorage)){rememberChat();const d=chatDrafts.read(sessionId);try{if(sessionId&&(d.text||d.note))sessionStorage.setItem('maricode-desktop-draft',JSON.stringify({id:sessionId,...d}));}catch{}recovery?.stop();epoch++;streamController?.abort();token='';notice('로그인이 만료되어 다시 연결합니다.');location.replace('/workspace');return;}
   sessionTerminalEnabled=false;$('terminal-offer')?.remove();attachmentComposer?.clearAll();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
   recovery?.stop();
   saveTabToken(sessionStorage,'',false);clearDeviceLogin(deviceStorage);deviceServerId='';
@@ -744,7 +746,7 @@ reconnectButton.onclick=reconnect;
 async function restoreLogin(){
  const attempt=epoch;
  const localCredential=document.getElementById('desktop-credential');
- let localToken='';if(localCredential){try{localToken=JSON.parse(localCredential.textContent);}catch{}localCredential.remove();window.history.replaceState(null,'','/workspace');}
+ let localToken='';if(localCredential){desktopLogin=true;try{localToken=JSON.parse(localCredential.textContent);}catch{}localCredential.remove();window.history.replaceState(null,'','/workspace');}
  let device;
  try{if(!localToken)device=await restoreDeviceLogin(deviceStorage,fetch);}catch(e){showConnection('login-needed');notice(e.message);return;}
  if(attempt!==epoch)return;
