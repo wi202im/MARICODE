@@ -446,6 +446,8 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    });
   },
   async target(auth){await current();return createRunnerWorkspace(c).target(auth);},
+  // This Mac's Runner identity from its own files; valid while the Runner is stopped.
+  async localMachine(){await current();const id=await machineId(c);if(typeof id!=='string'||!id)throw Error('No local machine');return id;},
   async task(raw,authorization,check=false){
    if(!raw?.workspace&&!raw?.handoffFrom)return exclusive(()=>createRunnerWorkspace(c).task(raw,authorization,check));
    await authorize(authorization);const input=workspaceRequest(raw);

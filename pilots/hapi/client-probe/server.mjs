@@ -16,6 +16,7 @@ import http from 'node:http';
 import {createTasks} from './tasks.mjs';
 import {projectFilePath} from './files.mjs';
 import {createFileLinks} from './file-stream.mjs';
+import {listDirectory,readProjectFile} from './local-files.mjs';
 import {projectChoices,selectProject} from './projects.mjs';
 import {createHandoffs} from './handoff.mjs';
 import { readFile,realpath } from 'node:fs/promises';
@@ -557,7 +558,8 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
         body=JSON.stringify(decision);
       }
       if(req.method==='GET'&&/\/api\/sessions\/[^/]+\/(file|file-link|directory)$/.test(u.pathname)&&(handoffTarget||(runnerWorkspace&&runnerService.target))){
-        let fileTarget;try{if(runnerWorkspace&&runnerService.status&&!(await runnerService.status()).workspaceAvailable)throw Object.assign(Error('Runner offline'),{status:409});fileTarget=runnerWorkspace?await runnerService.target(req.headers.authorization):handoffTarget;}catch(error){res.writeHead(error.status===401?401:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'RUNNER_OFFLINE',error:'이 컴퓨터의 실행 환경에 연결되지 않았습니다. 컴퓨터 설정에서 실행 환경을 시작한 뒤 다시 읽어 주세요. 대화와 파일은 그대로 남아 있습니다.'}));return;}
+        // A stopped Runner cannot list files; this Mac's own sessions are then read from disk with the same checks.
+        let fileTarget,localRead=false;try{if(runnerWorkspace&&runnerService.status&&!(await runnerService.status()).workspaceAvailable){if(!runnerService.localMachine)throw Object.assign(Error('Runner offline'),{status:409});fileTarget={machineId:await runnerService.localMachine()};localRead=true;}else fileTarget=runnerWorkspace?await runnerService.target(req.headers.authorization):handoffTarget;}catch(error){res.writeHead(error.status===401?401:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'RUNNER_OFFLINE',error:'이 컴퓨터의 실행 환경에 연결되지 않았습니다. 컴퓨터 설정에서 실행 환경을 시작한 뒤 다시 읽어 주세요. 대화와 파일은 그대로 남아 있습니다.'}));return;}
         const id=u.pathname.split('/')[3];
         const check=await fetch(new URL(`/api/sessions/${id}`,target),{headers,signal:controller.signal,redirect:'error'});
         if(!check.ok){res.writeHead(check.status).end();return;}
@@ -569,6 +571,11 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
           // The Runner of this file route is this Mac, so the checked path is read from this disk.
           try{const url=await fileLinks.issue(join(await realpath(m.path),u.searchParams.get('path')));res.setHeader('Content-Type','application/json');res.end(JSON.stringify({url}));}
           catch(error){res.writeHead(error.status===415?415:403,{'Content-Type':'application/json'}).end(JSON.stringify({error:error.status===415?'이 형식은 바로 재생할 수 없습니다.':'파일을 열 수 없습니다.'}));}
+          return;
+        }
+        if(localRead){
+          try{const root=await realpath(m.path),rel=u.searchParams.get('path');res.setHeader('Content-Type','application/json');res.end(JSON.stringify(u.pathname.endsWith('/directory')?await listDirectory(root,rel):await readProjectFile(root,rel)));}
+          catch{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:false,error:'파일을 읽지 못했습니다.'}));}
           return;
         }
       }

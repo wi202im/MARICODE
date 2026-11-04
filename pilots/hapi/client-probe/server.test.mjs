@@ -506,3 +506,16 @@ test('an authorised file read mints a media link that streams the checked file w
  assert.equal((await fetch(origin+'/vendor/hljs-languages/swift.mjs')).headers.get('content-type'),'text/javascript');
  assert.notEqual((await fetch(origin+'/vendor/hljs-languages/..%2Fhighlight.mjs')).status,200);
 });
+test('with the Runner stopped, this Mac reads its own session folder from disk; other machines stay blocked',async t=>{
+ const {mkdtemp,writeFile,mkdir,rm,realpath}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path');
+ const project=await realpath(await mkdtemp(join(tmpdir(),'local-read-')));await mkdir(join(project,'src'));await writeFile(join(project,'src/a.txt'),'hi');
+ let machine='mac';const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({session:{active:false,metadata:{machineId:machine,path:project,flavor:'claude'}}}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));
+ const proxy=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,runnerService:{workspace:async()=>[{id,project}],status:async()=>({workspaceAvailable:false}),localMachine:async()=>'mac',target:async()=>{throw Error('must not be used');}}});
+ await new Promise(r=>proxy.listen(0,'127.0.0.1',r));t.after(async()=>{for(const s of [hub,proxy]){s.closeAllConnections();s.close();}await rm(project,{recursive:true,force:true});});
+ const get=p=>fetch(`http://127.0.0.1:${proxy.address().port}/api/sessions/${id}/${p}`,{headers:{Authorization:'Bearer synthetic'}});
+ assert.deepEqual((await (await get('directory?path=')).json()).entries.map(e=>[e.name,e.type]),[['src','directory']]);
+ const f=await (await get('file?path=src%2Fa.txt')).json();assert.equal(Buffer.from(f.content,'base64').toString(),'hi');assert.equal(f.size,2);
+ assert.equal((await get('file?path=..%2F..%2Fetc%2Fhosts')).status,403);
+ machine='other';assert.equal((await get('directory?path=')).status,403);
+});
