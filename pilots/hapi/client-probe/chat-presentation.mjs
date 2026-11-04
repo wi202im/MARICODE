@@ -45,6 +45,13 @@ function commandOutput(message){
  const rendered=chosen.map(p=>clean(p[2]).trim()).filter(Boolean).join(output.length?'\n':' ');
  return rendered?{text:rendered,error:output.some(p=>p[1]==='local-command-stderr')}:null;
 }
+// Model reasoning HAPI forwards: Claude `thinking` blocks and Codex `reasoning` messages. Empty (redacted) thinking is skipped.
+export function reasoningText(message){
+ const c=message?.content?.content,d=c?.data;
+ if(c?.type==='codex'&&d?.type==='reasoning'&&typeof d.message==='string')return d.message.trim()||null;
+ if(c?.type==='output'&&d?.type==='assistant'&&Array.isArray(d.message?.content))return d.message.content.filter(b=>b?.type==='thinking'&&typeof b.thinking==='string').map(b=>b.thinking.trim()).filter(Boolean).join('\n\n')||null;
+ return null;
+}
 // Keep activity at the original call position, even when its result arrives
 // after other messages. Never infer child-agent completion from spawn success.
 export function chatTimeline(messages){
@@ -54,6 +61,7 @@ export function chatTimeline(messages){
   const ids=[];
   if(d?.type==='tool-call'||d?.type==='tool-call-result')ids.push({id:d.callId,result:d.type==='tool-call-result'});
   if(m.content?.content?.type==='output'&&Array.isArray(d?.message?.content))for(const b of d.message.content){if(b.type==='tool_use')ids.push({id:b.id});if(b.type==='tool_result')ids.push({id:b.tool_use_id,result:true});}
+  const thought=reasoningText(m);if(thought){const last=rows.at(-1);if(last?.kind==='reasoning'&&last.parent===parent)last.text+='\n\n'+thought;else rows.push({kind:'reasoning',key:'reason-'+(m.id??m.seq),parent,at:m.createdAt,text:thought});}
   const command=commandOutput(m);if(command)rows.push({kind:'command',key:m.id??m.seq,parent,at:m.createdAt,...command});
   const view=command?null:messageView(m);if(view)rows.push({kind:'message',key:m.id??m.seq,localId:typeof m.localId==='string'?m.localId:null,view,parent,at:m.createdAt,attachments:m.content?.content?.attachments??m.content?.meta?.attachments??[]});
   for(const ref of ids){

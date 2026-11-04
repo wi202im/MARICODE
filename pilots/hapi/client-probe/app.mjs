@@ -1266,7 +1266,10 @@ window.addEventListener('maricode-close-request',async event=>{
   finally{busy=false;render();cancel.disabled=false;dialog.removeEventListener('cancel',prevent);}
  };
 });
-function updateJumpLatest(){const s=$('conversation-history'),b=$('jump-latest');if(s&&b)b.hidden=!moreBelow(s);}
+function updateJumpLatest(){const s=$('conversation-history'),b=$('jump-latest');if(s&&b)b.hidden=!moreBelow(s);updateStuckPrompt();}
+// The request that scrolled past stays pinned (sticky CSS) in two lines; earlier pinned ones are hidden behind it.
+function updateStuckPrompt(){const s=$('conversation-history');if(!s)return;const top=s.getBoundingClientRect().top+1,pinned=[...s.querySelectorAll('.bubble.user:not(.child-message)')].filter(b=>b.getBoundingClientRect().top<=top);
+ for(const b of s.querySelectorAll('.bubble.user'))b.classList.remove('stuck','stuck-under');pinned.forEach((b,i)=>b.classList.add(i===pinned.length-1?'stuck':'stuck-under'));}
 if($('jump-latest')){const s=$('conversation-history');s.addEventListener('scroll',updateJumpLatest,{passive:true});
  // Cards and streamed replies grow the content without a scroll event.
  const grow=new ResizeObserver(updateJumpLatest);grow.observe($('messages'));grow.observe(commandCardHost);

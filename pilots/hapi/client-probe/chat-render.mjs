@@ -40,15 +40,21 @@ export function renderConversation(container,messages,{engine,session,onFork}={}
  const signature=JSON.stringify([session?.id,engine,messages,session?.agentState?.completedRequests,!!onFork,armedFork]);
  if(rendered.get(container)===signature)return;rendered.set(container,signature);
  const opened=new Set([...container.querySelectorAll('details[open]')].map(e=>e.dataset.key??e.dataset.callId));
+ // Activity groups open on their own while a step runs and close when done, unless the person toggled them.
+ const manual=new Map([...container.querySelectorAll('details.activity-group[data-manual]')].map(e=>[e.dataset.key,e.open]));
+ const rel=(text,root)=>root&&text.startsWith(root+'/')?text.slice(root.length+1):text;
  const nodes=chatTimeline(messages).map(row=>{
   if(row.kind==='command'){const box=node('section','cli-output'+(row.error?' error':''));box.append(node('small','',row.error?'Claude Code 명령 오류':'Claude Code 명령 결과'),node('pre','',row.text),copyButton(row.text,'명령 결과 복사'));return box;}
   if(row.kind==='duration')return node('p','turn-duration',row.text);
   if(row.kind==='notice'){return node('p','session-notice'+(row.error?' error':''),row.text);}
+  if(row.kind==='reasoning'){const box=node('details','reasoning-block');box.dataset.key=row.key;box.open=opened.has(row.key);const s=node('summary');s.append(icon('lightbulb'),node('span','reasoning-title','생각'),node('span','reasoning-preview',row.text.split('\n').find(l=>l.trim())?.replace(/[*#`_]/g,'').trim()??''));box.append(s,renderMarkdown(row.text));return box;}
   if(row.kind==='activity'){
-   const group=node('details','activity-group');group.dataset.key=row.key;group.open=opened.has(row.key);
-   const failed=row.tools.filter(t=>t.state==='error').length,waiting=row.tools.filter(t=>t.state==='waiting').length;
-   const labels=[...new Set(row.tools.map(t=>describeTool(t).label))];
-   const heading=node('summary');heading.append(node('span','activity-dot '+(waiting?'waiting':failed?'error':'result')),node('span','',`${row.parent?'하위 작업 · ':''}${labels.join(' · ')} ${row.tools.length}건`),node('span','activity-summary',waiting?`${waiting}건 결과 대기`:failed?`${failed}건 실패`:'결과 수신'));group.append(heading);
+   const group=node('details','activity-group');group.dataset.key=row.key;
+   const failed=row.tools.filter(t=>t.state==='error').length,waiting=row.tools.filter(t=>t.state==='waiting').length,running=row.tools.findLast(t=>t.state==='waiting');
+   if(manual.has(row.key)){group.dataset.manual='';group.open=manual.get(row.key);}else group.open=waiting>0;
+   const labels=[...new Set(row.tools.map(t=>describeTool(t).label))],now=running&&describeTool(running);
+   const title=running?`${now.label} · ${rel(now.summary,session?.metadata?.path)} 진행 중…`:`${labels.join(' · ')} ${row.tools.length}건 완료`;
+   const heading=node('summary');heading.onclick=()=>{group.dataset.manual='';};heading.append(node('span','activity-dot '+(waiting?'waiting':failed?'error':'result')),node('span','activity-title',`${row.parent?'하위 작업 · ':''}${title}`),node('span','activity-summary',waiting?`${row.tools.length-waiting}/${row.tools.length}단계`:failed?`${failed}건 실패`:''));group.append(heading);
    for(const tool of row.tools)group.append(renderTool(tool,opened.has(tool.id),session?.metadata?.path));return group;
   }
   const el=node('div',`bubble ${row.view.role}${row.parent?' child-message':''}`),label=node('small','message-byline',row.view.role==='user'?'나':row.parent?'하위 에이전트':engine??'에이전트');

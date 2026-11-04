@@ -58,3 +58,16 @@ textarea{font-size:13px}
 .palette-option:hover{background:var(--hover)}.palette-option.active{background:var(--selection);color:#ffffff}
 .palette-option kbd{border-radius:3px;background:#8080802b;border-color:#33333399;border-bottom-color:#44444499}
 .palette-foot{padding:4px 10px}
+/* Chat transcript, VS Code chat style: requests are full-width blocks that pin to the top while their answer scrolls. */
+.bubble.user{margin:24px 0 14px;margin-inline-start:0;width:auto;max-width:none;background:var(--surface1);border:1px solid var(--border);padding:8px 12px;position:sticky;top:0;z-index:3}
+.bubble.user>small{display:flex}
+.bubble.user.stuck{box-shadow:0 6px 8px -6px #000c}.bubble.user.stuck>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bubble.user.stuck>.copy-button,.bubble.user.stuck>.sent-attachment{display:none}.bubble.user.stuck-under{visibility:hidden}
+/* Reasoning: a collapsed "생각" line with a one-line preview. */
+.reasoning-block{margin:10px 0;color:var(--muted);font-size:13px}
+.reasoning-block>summary{display:flex;align-items:center;gap:6px;cursor:pointer;list-style:none;min-width:0}.reasoning-block>summary::-webkit-details-marker{display:none}
+.reasoning-block>summary::before{content:none!important}
+.reasoning-title{flex:none;font-weight:500}.reasoning-preview{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
+.reasoning-block[open] .reasoning-preview{display:none}
+.reasoning-block>.markdown{margin:6px 0 0 20px;padding-left:10px;border-left:2px solid var(--border-strong);color:var(--muted)}
+.activity-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -67,3 +67,12 @@ test('CLI-tagged echo is distinguished from assistant prose quoting the same syn
  const quote={content:{role:'agent',content:{type:'output',data:{type:'assistant',message:{content:'<local-command-stdout>quoted syntax</local-command-stdout>'}}}}};
  assert.equal(chatTimeline([quote])[0].kind,'message');
 });
+test('model reasoning becomes its own row, merged when consecutive; empty or redacted thinking is dropped',async()=>{
+ const {reasoningText}=await import('./chat-presentation.mjs');
+ const claude=(blocks,id)=>({id,content:{role:'agent',content:{type:'output',data:{type:'assistant',message:{content:blocks}}}}});
+ const codex=(text,id)=>({id,content:{role:'agent',content:{type:'codex',data:{type:'reasoning',message:text}}}});
+ assert.equal(reasoningText(claude([{type:'thinking',thinking:'  파일 구조를 먼저 본다 '},{type:'text',text:'답'}])),'파일 구조를 먼저 본다');
+ assert.equal(reasoningText(claude([{type:'thinking',thinking:'',signature:'x'}])),null);
+ const rows=chatTimeline([codex('**계획** 세우기','a'),codex('검사 실행','b'),claude([{type:'thinking',thinking:'확인'},{type:'text',text:'완료했습니다'}],'c')]);
+ assert.deepEqual(rows.map(r=>[r.kind,r.text??r.view?.text]),[['reasoning','**계획** 세우기\n\n검사 실행\n\n확인'],['message','완료했습니다']]);
+});
