@@ -2,9 +2,9 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Maricode 1.1.0 is available.** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.1.0/MARICODE-1.1.0-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.1.0). HAPI 0.33.3 and Node are included.
+**Maricode 1.1.1** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.1.1/MARICODE-1.1.1-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.1.1). HAPI 0.33.3 and Node are included.
 
-**1.1.0 clean-start update:** On first launch, previous Maricode app settings, project registrations and app conversations are removed once. External project files and Claude/Codex CLI settings and original sessions are preserved. Quit the previous app before replacing it; select roles and reconnect your existing CLI afterwards. Subsequent launches preserve new data.
+**1.1.1 update:** Preserves settings, project registrations and conversations created in 1.1.0. This version does not run the 1.1.0 full reset. Finish active work and quit the previous app before replacing it.
 
 
 App, menu and Dock names use **Maricode**; the native title bar displays the installed version. HAPI corresponding source is provided as a separate release attachment, with licenses and notices retained inside the app.
@@ -53,7 +53,7 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 
 ## Verification and limitations
 
-- Version 1.1.0 passes 380 automated checks. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
+- Version 1.1.1 includes updated automated and synthetic UI checks; see the release notes for results. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
 - Local CLI chat cards support Claude/Codex MCP listing and HTTP add/remove, plugin listing, account status, and Codex diagnostics. Isolated real CLI checks passed; current card rendering and live HAPI reconnect with MCP tools remain unverified.
 - No Intel Mac build or App Store release. The app downloads a verified DMG; replacing the installed app is manual and preserves the external data directory.
 - Accounts are registered by name, but each AI has only one active account at a time. Switching is blocked during active or unconfirmed work. Different subscription accounts and Claude account switching have not been fully tested.
