@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createFileTabs,resolveRelative} from './file-viewer.mjs';
 
-function fakeDocument(){const nodes=[];return {nodes,createElement(tag){const n={tag,children:[],hidden:false,attrs:{},classes:new Set(),
+function fakeDocument(){const nodes=[];return {nodes,createElementNS(ns,tag){return this.createElement(tag);},createElement(tag){const n={tag,children:[],hidden:false,attrs:{},classes:new Set(),
  classList:{toggle(c,on){on?n.classes.add(c):n.classes.delete(c);}},
  append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(k,v){this.attrs[k]=v;},getAttribute(k){return this.attrs[k];},removeAttribute(k){delete this.attrs[k];if(k==='src')delete this.src;},
  querySelectorAll(){return [];}};nodes.push(n);return n;}};}

@@ -1,3 +1,4 @@
+import {icon} from './vendor/lucide.mjs';
 import {fileKind,mediaType,highlightLanguage,highlightLimit,textReadLimit} from './file-kinds.mjs';
 // Center file tabs: chat stays the first tab, files open beside it read-only.
 // Text comes through the Hub file read; media through a short-lived link streamed by this server.
@@ -26,7 +27,7 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   const chat=el('button','대화','center-tab-main');chat.type='button';chat.setAttribute('role','tab');chat.setAttribute('aria-selected',String(!active));chat.onclick=()=>show(null);
   const items=[chat];
   for(const t of tabs){
-   const item=el('div',undefined,'center-tab'+(t===active?' active':'')),open=el('button',name(t.path)),close=el('button','×','center-tab-close');
+   const item=el('div',undefined,'center-tab'+(t===active?' active':'')),open=el('button',name(t.path)),close=el('button',undefined,'center-tab-close');close.append(icon('x',doc));
    open.type=close.type='button';open.title=t.path;open.setAttribute('role','tab');open.setAttribute('aria-selected',String(t===active));open.onclick=()=>show(t);
    close.setAttribute('aria-label',`${name(t.path)} 닫기`);close.onclick=()=>closeTab(t);item.append(open,close);items.push(item);
   }

@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';
 import {createFileTree,iconName} from './file-tree.mjs';
 
-function fakeDocument(){return {createElement(tag){const n={tag,children:[],attrs:{},style:{},dataset:{},classes:new Set(),
+function fakeDocument(){return {createElementNS(ns,tag){return this.createElement(tag);},createElement(tag){const n={tag,children:[],attrs:{},style:{},dataset:{},classes:new Set(),
  classList:{add(c){n.classes.add(c);}},append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(k,v){this.attrs[k]=v;}};return n;}};}
 const rows=n=>[...(n.tag==='button'&&n.className==='tree-row'?[n]:[]),...n.children.flatMap(rows)];
 const label=r=>r.children[2].textContent,icon=r=>r.children[1].src.split('/').pop();

@@ -15,6 +15,7 @@ import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {createBranchPin} from './branch-pin-ui.mjs';
 import {createFileTabs} from './file-viewer.mjs';
 import {createFileTree} from './file-tree.mjs';
+import {icon} from './vendor/lucide.mjs';
 import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
@@ -29,11 +30,8 @@ import {toolViews,requestSnapshot,createPermissionActions,permissionChoices} fro
 import {archiveSnapshot,archiveMatches,createActions,messageView,relativePath,createSSEDecoder,buildHandoff,confirmedDraft,handoffExcerpt,readTabToken,saveTabToken} from './core.mjs';
 const deviceStorage=(()=>{try{return window.localStorage;}catch{return null;}})();
 const $=id=>document.getElementById(id);
-function navigationIcon(name){
- const paths={plus:'M12 5v14M5 12h14',folder:'M3 7V5h6l3 3h9v12H3Z',workspace:'M4 4h16v16H4ZM4 9h16M9 9v11',down:'m6 9 6 6 6-6',right:'m9 6 6 6-6 6',more:'M5 12h.01M12 12h.01M19 12h.01'};
- const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('class','glyph');svg.setAttribute('aria-hidden','true');
- const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',paths[name]);svg.append(path);return svg;
-}
+const navigationBranch=()=>icon('git-branch');
+const navigationIcon=name=>icon({plus:'plus',folder:'folder',workspace:'layers',down:'chevron-down',right:'chevron-right',more:'ellipsis'}[name]);
 const workspaceLayout=document.body.dataset.layout==='workspace';
 const chatDrafts=createChatDrafts(),questionDrafts=new Map();let permissionRenderKey='';
 function rememberChat(){chatDrafts.save(sessionId,{text:$('prompt').value,note:$('handoff-note').textContent});}
@@ -616,11 +614,11 @@ function renderWorkspace(){
      const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' green':'');
      const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state;text.append(title,state);
      // Pinned: an icon on every row (branches in its tooltip); only the open session spells them out. Orange = the open session is off its branches.
-     if(c.config.branchPin){const summary=pinSummary(c.config.branchPin),off=c.selected&&branchPin?.sessionId===c.config.id&&branchPin.offBranch,icon=document.createElement('span');icon.className='task-pin-icon'+(off?' off':'');icon.textContent='⎇';icon.title=(off?'고정 목록 밖 브랜치에 있습니다 · ':'고정한 브랜치 · ')+summary;icon.setAttribute('aria-label',icon.title);title.prepend(icon);
+     if(c.config.branchPin){const summary=pinSummary(c.config.branchPin),off=c.selected&&branchPin?.sessionId===c.config.id&&branchPin.offBranch,icon=document.createElement('span');icon.className='task-pin-icon'+(off?' off':'');icon.append(navigationBranch());icon.title=(off?'고정 목록 밖 브랜치에 있습니다 · ':'고정한 브랜치 · ')+summary;icon.setAttribute('aria-label',icon.title);title.prepend(icon);
       if(c.selected){const pin=document.createElement('small');pin.className='task-pin'+(off?' off':'');pin.textContent=summary;pin.title=icon.title;text.append(pin);}}button.append(dot,text);
      button.onclick=()=>{workspaceDrawer(false);selectSession(c.config.id).catch(e=>notice(e.message));};const row=document.createElement('div');row.className='session-row';row.append(button);if(navigationEnabled)row.append(navigationMenu({kind:'session',id:c.config.id,name:c.title,path:w.path}));children.append(row);
     }
-    if(!matches.length){const empty=document.createElement('p');empty.className='project-no-sessions';empty.textContent=query?'일치하는 세션 없음':w.cards.length?'보기 설정으로 세션이 숨겨져 있습니다':'＋로 대화를 추가하세요';children.append(empty);}
+    if(!matches.length){const empty=document.createElement('p');empty.className='project-no-sessions';empty.textContent=query?'일치하는 세션 없음':w.cards.length?'보기 설정으로 세션이 숨겨져 있습니다':'＋ 버튼으로 대화를 추가하세요';children.append(empty);}
     workspaceNodes.push(section);
    }
    if(!workspaceNodes.length)continue;
@@ -641,7 +639,7 @@ function showTurnAlerts(list){
  const box=$('turn-alerts');if(!box||!list.length)return;
  for(const a of list){
   const label=trialSessions.find(s=>s.id===a.id)?.label??'대화',item=document.createElement('div'),text=document.createElement('span'),open=document.createElement('button'),close=document.createElement('button');
-  item.className='turn-alert '+a.kind;text.textContent=`${alertText[a.kind]} · ${label}`;text.title=text.textContent;open.type=close.type='button';open.textContent='열기';close.textContent='×';close.setAttribute('aria-label','알림 닫기');
+  item.className='turn-alert '+a.kind;text.textContent=`${alertText[a.kind]} · ${label}`;text.title=text.textContent;open.type=close.type='button';open.textContent='열기';close.append(icon('x'));close.setAttribute('aria-label','알림 닫기');
   const dismiss=()=>item.remove();open.onclick=()=>{dismiss();selectSession(a.id);};close.onclick=dismiss;setTimeout(dismiss,30000);
   item.append(text,open,close);box.append(item);while(box.children.length>4)box.firstElementChild.remove();
  }

@@ -1,3 +1,4 @@
+import {icon} from './vendor/lucide.mjs';
 import {chatTimeline,describeTool,editPreview,formatDuration} from './chat-presentation.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {formatSize} from './attachments.mjs';
@@ -20,7 +21,7 @@ export function renderTool(tool,open=false,root=null){
  if(tool.parent)detail.append(node('p','nested-label','하위 에이전트의 작업'));
  const plan=tool.input?.todos??tool.input?.plan;
  if(v.plan&&Array.isArray(plan)){
-  const list=node('ul','plan-list');for(const p of plan){const item=node('li',p.status,`${p.status==='completed'?'✓':p.status==='in_progress'?'◉':'○'} ${p.content??p.step??''}`);list.append(item);}detail.append(list);
+  const list=node('ul','plan-list');for(const p of plan){const item=node('li',p.status,` ${p.content??p.step??''}`);item.prepend(icon(p.status==='completed'?'circle-check':p.status==='in_progress'?'circle-dot':'circle'));list.append(item);}detail.append(list);
  }
  const edit=v.edit?renderEdit(tool.input):null;if(edit)detail.append(edit);
  const raw=node('details','activity-raw');raw.append(node('summary','','입력·결과 원문'),node('pre','',`입력\n${readable(tool.input).slice(0,12000)}\n\n결과\n${tool.state==='waiting'?'아직 결과가 전달되지 않았습니다.':readable(tool.output).slice(0,16000)}`));detail.append(raw);

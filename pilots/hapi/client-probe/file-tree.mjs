@@ -1,3 +1,4 @@
+import {icon} from './vendor/lucide.mjs';
 // Project file tree for the right panel: folders expand in place, files open as center tabs.
 // Icons are Material Icon Theme SVGs in vendor/file-icons (a subset; anything else uses the generic icon).
 const folders=new Set(['src','docs','test','node','git','public','images','components','lib','scripts','config','dist','github','resource','app','ios','android']);
@@ -27,12 +28,12 @@ export function createFileTree({api,base,list,open,error=()=>{},active=()=>null,
  async function read(path){const d=await api(base()+'/directory?path='+encodeURIComponent(path));if(!d?.success)throw Object.assign(Error('폴더를 열 수 없습니다.'),{notFolder:true});return d.entries;}
  function row(entry,path,depth){
   const node=nodes.get(path);
-  const li=el('li'),btn=el('button','tree-row'),chevron=el('span','tree-chevron'),icon=el('img','tree-icon'),label=el('span','tree-name');
+  const li=el('li'),btn=el('button','tree-row'),chevron=el('span','tree-chevron'),pic=el('img','tree-icon'),label=el('span','tree-name');
   btn.type='button';btn.style.paddingLeft=`${8+depth*14}px`;btn.dataset.kind=entry.type;btn.title=path;label.textContent=entry.name;
-  icon.src=`/vendor/file-icons/${iconName(entry.name,entry.type,!!node?.open)}.svg`;icon.alt='';icon.setAttribute('aria-hidden','true');
+  pic.src=`/vendor/file-icons/${iconName(entry.name,entry.type,!!node?.open)}.svg`;pic.alt='';pic.setAttribute('aria-hidden','true');
   if(entry.type==='file'){chevron.classList?.add('none');if(active()===path)btn.classList?.add('active');}
-  else{chevron.textContent=node?.open?'▾':'▸';btn.setAttribute('aria-expanded',String(!!node?.open));}
-  btn.append(chevron,icon,label);li.append(btn);
+  else{chevron.append(icon(node?.open?'chevron-down':'chevron-right',doc));btn.setAttribute('aria-expanded',String(!!node?.open));}
+  btn.append(chevron,pic,label);li.append(btn);
   btn.onclick=()=>entry.type==='file'?open(path,entry.size):toggle(path,entry);
   if(node?.open&&node.entries){const ul=el('ul');ul.append(...node.entries.map(e=>row(e,path?`${path}/${e.name}`:e.name,depth+1)));li.append(ul);}
   return li;

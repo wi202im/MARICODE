@@ -12,7 +12,7 @@ class Element {
  querySelector(){return this.footer;}
 }
 test('duplicate attachment controls stay distinct and survive unrelated refreshes',t=>{
- const prior=globalThis.document;globalThis.document={createElement:()=>new Element()};t.after(()=>{globalThis.document=prior;});
+ const prior=globalThis.document;globalThis.document={createElement:()=>new Element(),createElementNS:()=>new Element()};t.after(()=>{globalThis.document=prior;});
  const form=new Element();form.footer=new Element();let context={id:'session-a',active:true,connected:true,busy:false,pending:null},composer;
  composer=createAttachmentComposer({form,prompt:{},context:()=>context,upload:()=>assert.fail('draft must not upload'),changed:()=>composer.render(),notice:()=>{}});
  const file=new File(['trial'],'same.txt',{type:'text/plain'});

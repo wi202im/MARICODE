@@ -138,3 +138,11 @@
 .tree-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #entries .tree-row[data-kind=directory] .tree-name,#entries .tree-row[data-kind=other] .tree-name{font-weight:500}
 @media(max-width:760px){#entries .tree-row{min-height:36px}}
+/* Lucide icons drawn by CSS for pseudo-elements (masks take the text colour). */
+.bubble.agent>small::before{content:"";background:var(--surface2) url(/vendor/lucide/sparkles.svg) center/14px no-repeat}
+:where(details:not(.activity-group,.activity-tool,#display-preferences,.connection-menu,#tools details))>summary::before,#tools summary::before{content:"";display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;background:var(--dim);-webkit-mask:url(/vendor/lucide/chevron-right.svg) center/contain no-repeat;mask:url(/vendor/lucide/chevron-right.svg) center/contain no-repeat;transition:transform .12s}
+#tools details[open]>summary::before{content:"";transform:rotate(90deg)}
+.connection-menu>summary::after{content:"";display:inline-block;width:18px;height:18px;vertical-align:middle;background:currentColor;-webkit-mask:url(/vendor/lucide/ellipsis.svg) center/contain no-repeat;mask:url(/vendor/lucide/ellipsis.svg) center/contain no-repeat}
+.tree-chevron .glyph,.task-pin-icon .glyph{width:12px;height:12px;vertical-align:-1px}.center-tab-close .glyph,.attachment-list .glyph{width:13px;height:13px}
+.plan-list .glyph{width:13px;height:13px;vertical-align:-2px}.plan-list .completed .glyph{color:var(--success)}
+#send .glyph{width:18px;height:18px;stroke-width:2}.attach-button .glyph{width:17px;height:17px}
