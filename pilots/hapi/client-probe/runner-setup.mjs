@@ -16,7 +16,7 @@ import {createSessionTerminal,terminalPending} from './session-terminal.mjs';
 import {discoverClaudeSource,discoverCliSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
 import {repoStates,pinMismatches,pinFrom,validBranch} from './branch-pin.mjs';
-async function ownerAuthorization(config){
+export async function ownerAuthorization(config){
  const token=await readFile(config.tokenFile,'utf8');
  const auth=await fetch(config.hubUrl+'/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({accessToken:token}),redirect:'error',signal:AbortSignal.timeout(3000)});
  if(!auth.ok)throw Error();const {token:bearer}=await auth.json();if(typeof bearer!=='string'||!bearer)throw Error();return 'Bearer '+bearer;
@@ -44,9 +44,12 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('Local Hub required');
  if(['directory','accountConfig','binary','tokenFile'].some(k=>typeof config[k]!=='string'||!isAbsolute(config[k])))throw Error('Absolute launcher paths required');
  const c={...config,hubUrl:url.origin,taskDirectory:join(config.directory,'tasks')},slot=config.directory;let busy=false,phase=null,child=null,resumePending=null;
+ // Data shared by every Runner of this Mac (plans, worktrees, general chat, imports, handoffs) lives beside the primary slot,
+ // so a request moved to another Runner continues the same plan. Lifecycle files stay per Runner slot.
+ const shared=config.shared??slot;
  // Same session in the official terminal UI, with this Runner generation's environment and Hub.
  const terminal=sessionTerminal??createSessionTerminal({directory:()=>slot+'.terminal',runner:()=>({prepared:c.directory,binary:c.binary,hubUrl:c.hubUrl,tokenFile:c.tokenFile})});
- async function generalDirectory(){return join(await realpath(dirname(slot)),basename(slot)+'.general','general-chat');}
+ async function generalDirectory(){return join(await realpath(dirname(shared)),basename(shared)+'.general','general-chat');}
  async function prepareGeneralDirectory(){
   const path=await generalDirectory();
   for(const part of [dirname(path),path]){
@@ -68,7 +71,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  }
 
  async function exists(p){try{await stat(p);return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}}
- async function handoffLinks(){try{return JSON.parse(await readFile(slot+'.handoffs.json','utf8'));}catch(e){if(e.code==='ENOENT')return {};throw e;}}
+ async function handoffLinks(){try{return JSON.parse(await readFile(shared+'.handoffs.json','utf8'));}catch(e){if(e.code==='ENOENT')return {};throw e;}}
  async function state(){
   await current();
   if(phase)return phase==='running'&&!child?.running?'exited':phase;
@@ -119,16 +122,18 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   if(!cfg.cwd.endsWith('/local-setup/working-directory')&&!(await registry.list({includeRemoved:true})).some(p=>p.path===cfg.cwd))rows.unshift({key:'',label:cfg.cwd.split('/').at(-1),path:cfg.cwd,projectId:legacyProjectId(cfg.cwd)});
   return rows;
  }
- async function launchCurrent(){
+ async function launchCurrent(project){
   const path=join(c.directory,'prepared.json'),plan=JSON.parse(await readFile(path,'utf8'));
   let roots=[plan.cwd];
-  if(c.projectsPath){
+  if(config.roots)roots=await config.roots(project);
+  else if(c.projectsPath){
    const registry=projectRegistry(c.projectsPath),rows=await registry.list();
-   roots=[];for(const row of rows){try{roots.push((await registry.get(row.id)).path);}catch{/* Missing unrelated folders do not block healthy workspaces. */}}
+   const elsewhere=new Set(await config.excludeKeys?.()??[]);
+   roots=[];for(const row of rows.filter(r=>!elsewhere.has(r.id))){try{roots.push((await registry.get(row.id)).path);}catch{/* Missing unrelated folders do not block healthy workspaces. */}}
    if(!plan.cwd.endsWith('/local-setup/working-directory'))roots.push(plan.cwd);
    if(!roots.length)roots=[plan.cwd];
   }
-  if(c.projectsPath)roots.push(await prepareGeneralDirectory());
+  if(c.projectsPath&&!config.roots)roots.push(await prepareGeneralDirectory());
   await writeFile(path,JSON.stringify({...plan,workspaceRoots:[...new Set(roots)]})+'\n',{mode:0o600});
   const token=await readFile(c.tokenFile,'utf8');child=await launch({prepared:c.directory,binary:c.binary,hubUrl:c.hubUrl,token});phase='running';
  }
@@ -176,7 +181,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      if(before==='prepared'&&(await snapshot()).configuration!=='matched')await prepareNext();
     }
     if((await snapshot()).configuration!=='matched')throw Error('Configuration changed');
-    phase='starting';try{await launchCurrent();}catch{phase='unknown';throw Error('Start unconfirmed');}
+    phase='starting';try{await launchCurrent(project);}catch{phase='unknown';throw Error('Start unconfirmed');}
 
  }
  async function selectedProject(authorization,key){
@@ -193,8 +198,17 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   if(!p?.active||!owner?.active||owner.removed)throw Object.assign(Error('이 세션의 원래 계정으로 전환하고 세션 기록을 확인하세요. 다른 계정의 설정은 변경하지 않습니다.'),{rejected:true});
   return {sessionId:id,agent:m.flavor,cwd:project.path,accountId:p.active,alias:owner.alias,revision:await accountRevision(c.accountConfig)};
  }
- const plans=c.projectsPath?createWorkspacePlans({directory:slot+'.workspace-plans',worktreeDirectory:slot+'.worktrees',registry:projectRegistry(c.projectsPath)}):null;
+ const plans=c.projectsPath?createWorkspacePlans({directory:shared+'.workspace-plans',worktreeDirectory:shared+'.worktrees',registry:projectRegistry(c.projectsPath)}):null;
  const api={status,projects,
+  // Placement for the Runner pool: 'ready' needs no restart, 'refreshable' may restart now, 'busy' cannot restart (running work).
+  async placement(project,agent){
+   await current();const now=await state();
+   if(['unprepared','prepared','exited'].includes(now))return 'refreshable';
+   if(now!=='running')return 'busy';
+   if(!await refreshRequired(project,agent))return 'ready';
+   return await unresolvedTasks()||await hasActive(c)?'busy':'refreshable';
+  },
+  async machine(){await current();try{return await machineId(c);}catch{return null;}},
   async generalChat(authorization){
    await authorize(authorization);if(!c.projectsPath)throw Error('General chat unavailable');
    return exclusive(async()=>{
@@ -206,7 +220,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   async claudeImportHistory(authorization,id,before){
    await current();
    const available=await api.workspace(authorization),session=available.find(s=>s.id===id);if(!session)throw Error('등록된 세션을 선택하세요.');
-   return claudeImports({directory:slot+'.claude-imports',project:session.project,machineId:await machineId(c)}).history(id,before);
+   return claudeImports({directory:shared+'.claude-imports',project:session.project,machineId:await machineId(c)}).history(id,before);
   },
   async claudeImport(authorization,input,action){
    await authorize(authorization);
@@ -221,7 +235,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     const link=(await accountProfiles(c.accountConfig).list()).claude,connected=link?.confirmed,destination=link?.accounts[0]?.path;
     const discovery=await discoverClaudeSource({source:input.source||(action==='list'&&connected?destination:action==='list'?'':join(homedir(),'.claude'))}),source=discovery.source;
     if(!source)return {sessions:[],skipped:0,status:'source-unresolved',sourceOrigin:discovery.origin};
-    const makeImports=id=>claudeImports({directory:slot+'.claude-imports',project:p.path,destination,machineId:id});
+    const makeImports=id=>claudeImports({directory:shared+'.claude-imports',project:p.path,destination,machineId:id});
     if(action==='list')return {...await makeImports('not-started').list(source,input.offset??0),sourceOrigin:discovery.origin};
     const callbacks={
      register:async record=>{
@@ -379,8 +393,8 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     if(input.action==='remove'){
      if(affected.some(s=>s.active||s.thinking||Object.keys(s.agentState?.requests??{}).length))throw Error('실행 중인 세션을 먼저 종료하세요. 대화 기록은 유지됩니다.');
      if(await unresolvedTasks())throw Error('미확인 세션 생성 결과를 먼저 확인하세요.');
-     let records=[];try{records=await readdir(slot+'.workspace-plans');}catch(e){if(e.code!=='ENOENT')throw e;}
-     for(const name of records.filter(f=>/^[a-f0-9-]{36}\.json$/.test(f)))if(JSON.parse(await readFile(join(slot+'.workspace-plans',name),'utf8')).state!=='ready')throw Error('미확인 작업공간 준비 결과를 먼저 확인하세요.');
+     let records=[];try{records=await readdir(shared+'.workspace-plans');}catch(e){if(e.code!=='ENOENT')throw e;}
+     for(const name of records.filter(f=>/^[a-f0-9-]{36}\.json$/.test(f)))if(JSON.parse(await readFile(join(shared+'.workspace-plans',name),'utf8')).state!=='ready')throw Error('미확인 작업공간 준비 결과를 먼저 확인하세요.');
     }
     if(input.action==='delete'){
      // App record only: the Hub session and its messages. The CLI's own transcript file is untouched.
@@ -451,11 +465,12 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     let prepared;
     if(input.workspace.mode!=='current'){
      let legacy;try{legacy=JSON.parse(await readFile(join(c.taskDirectory,input.requestId+'.json'),'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
-     if(legacy){try{await readFile(join(slot+'.workspace-plans',input.requestId+'.json'));}catch{throw Object.assign(Error('기존 세션 요청의 작업 방식을 바꿀 수 없습니다.'),{rejected:true});}}
+     if(legacy){try{await readFile(join(shared+'.workspace-plans',input.requestId+'.json'));}catch{throw Object.assign(Error('기존 세션 요청의 작업 방식을 바꿀 수 없습니다.'),{rejected:true});}}
     }
     if(!plans)prepared={project:input.project,path:project.path};
     else prepared=await plans.prepare(input,project,async()=>{
-     const active=['unprepared','prepared'].includes(await state())?await activeAuthorizedSessions(authorization):await hasActive(c);
+     // A dedicated Runner (fixed roots) owns no other folder's sessions before it first starts.
+     const active=['unprepared','prepared'].includes(await state())?!config.roots&&await activeAuthorizedSessions(authorization):await hasActive(c);
      if(await unresolvedTasks()||active)throw Object.assign(Error('기존 실행 세션이나 미확인 생성 요청이 있어 작업 공간을 변경하지 않았습니다. 실행을 마친 뒤 다시 시도하세요.'),{rejected:true});
     },{check});
     if(!prepared)return {state:'none'};
@@ -475,7 +490,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     if(input.handoffFrom){const source=(await api.workspace(authorization)).find(s=>s.id===input.handoffFrom);if(!source||source.project!==prepared.path||source.agent===input.agent)throw Object.assign(Error('인계 출처 세션을 확인하지 못해 만들지 않았습니다.'),{rejected:true,status:400});}
     const effective={requestId:input.requestId,agent:input.agent,project:prepared.project};
     const result=await createRunnerWorkspace(c).task(effective,authorization,check);
-    if(input.handoffFrom&&result.state==='created'&&/^[a-f0-9-]{36}$/.test(result.session?.id??'')){const links=await handoffLinks();if(links[result.session.id]!==input.handoffFrom){links[result.session.id]=input.handoffFrom;const temp=slot+'.handoffs.'+randomUUID()+'.tmp';await writeFile(temp,JSON.stringify(links),{mode:0o600,flag:'wx'});await rename(temp,slot+'.handoffs.json');}}
+    if(input.handoffFrom&&result.state==='created'&&/^[a-f0-9-]{36}$/.test(result.session?.id??'')){const links=await handoffLinks();if(links[result.session.id]!==input.handoffFrom){links[result.session.id]=input.handoffFrom;const temp=slot+'.handoffs.'+randomUUID()+'.tmp';await writeFile(temp,JSON.stringify(links),{mode:0o600,flag:'wx'});await rename(temp,shared+'.handoffs.json');}}
     return result.state==='none'?{state:'prepared'}:result;
    });
   },

@@ -5,7 +5,7 @@ import {mkdir,readFile,writeFile,stat,access,readdir} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {join,isAbsolute} from 'node:path';
 import {randomBytes} from 'node:crypto';
-import {createRunnerSetup} from '../../pilots/hapi/client-probe/runner-setup.mjs';
+import {createRunnerPool} from '../../pilots/hapi/client-probe/runner-pool.mjs';
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function launchHub({binary,directory,port,token,recordPid}){
  // Refuse existing listeners; never adopt or terminate by PID/port.
@@ -43,7 +43,7 @@ async function checkIdle({upstream,token,directory}){
  let files;try{files=await readdir(join(directory,'runner','tasks'));}catch(e){if(e.code==='ENOENT')return;throw e;}
  for(const f of files.filter(f=>/^[a-f0-9-]{36}\.json$/.test(f)))if(JSON.parse(await readFile(join(directory,'runner','tasks',f),'utf8')).state!=='created')throw Error('Unconfirmed task remains');
 }
-export async function startBackend({directory,binary,accountConfig,port=61193,ownership},{launch=launchHub,runner=createRunnerSetup,idle=checkIdle}={}){
+export async function startBackend({directory,binary,accountConfig,port=61193,ownership},{launch=launchHub,runner=createRunnerPool,idle=checkIdle}={}){
  if([directory,binary,accountConfig].some(p=>typeof p!=='string'||!isAbsolute(p))||!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid backend configuration');
  if(!(await stat(binary)).isFile())throw Error('HAPI executable unavailable');await access(binary,constants.X_OK);
  const home=join(directory,'hub'),tokenFile=join(home,'token.private');

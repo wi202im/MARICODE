@@ -346,7 +346,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
               if(input.workspace)workspaceRequest(input);
               if(accountsService&&(await accountsService.status(input.agent)).state!=='connected'){res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'AI_SETUP',error:'선택한 AI의 설치·구독 로그인을 먼저 연결하세요.'}));return;}
               if(!input.workspace)try{await runnerService.ready(req.headers.authorization,input.project,input.agent);
-                for(let attempt=0;attempt<15;attempt++){if((await runnerService.status()).workspaceAvailable)break;if(attempt===14)throw Error();await new Promise(resolve=>setTimeout(resolve,300));}}
+                for(let attempt=0;attempt<15;attempt++){if((await runnerService.status(input.project)).workspaceAvailable)break;if(attempt===14)throw Error();await new Promise(resolve=>setTimeout(resolve,300));}}
               catch(error){const reason=runnerSetupReason(error);
                 const message=reason==='RUNNER_ACTIVE'?'새 프로젝트나 AI를 적용하려면 이 컴퓨터의 기존 세션 실행을 먼저 종료해 주세요. 기존 작업은 유지했고 새 세션은 만들지 않았습니다. 종료 후 다시 만들기를 누르면 자동으로 준비합니다.':reason==='RUNNER_UNCONFIRMED'?'이전 세션 생성 결과를 먼저 확인해 주세요. 실행 환경을 바꾸거나 새 세션을 만들지 않았습니다.':'실행 환경의 준비를 확인하지 못했습니다. 컴퓨터 설정에서 실행 상태를 확인해 주세요. 새 세션 생성 요청은 보내지 않았습니다.';
                 res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason,error:message}));return;}
@@ -502,7 +502,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
             if(!result.ok||(await result.json()).ok!==true)throw Error('Archive outcome unknown');
             res.setHeader('Content-Type','application/json');res.end('{"ok":true}');
           };
-          if(runnerWorkspace&&runnerService.runSessionMutation)await runnerService.runSessionMutation(perform);else await perform();
+          if(runnerWorkspace&&runnerService.runSessionMutation)await runnerService.runSessionMutation(perform,{session:id});else await perform();
         }catch{reply(502,!forwarded);}
         return;
       }
@@ -560,7 +560,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
       }
       if(req.method==='GET'&&/\/api\/sessions\/[^/]+\/(file|file-link|directory|files)$/.test(u.pathname)&&(handoffTarget||(runnerWorkspace&&runnerService.target))){
         // A stopped Runner cannot list files; this Mac's own sessions are then read from disk with the same checks.
-        let fileTarget,localRead=false;try{if(runnerWorkspace&&runnerService.status&&!(await runnerService.status()).workspaceAvailable){if(!runnerService.localMachine)throw Object.assign(Error('Runner offline'),{status:409});fileTarget={machineId:await runnerService.localMachine()};localRead=true;}else fileTarget=runnerWorkspace?await runnerService.target(req.headers.authorization):handoffTarget;}catch(error){res.writeHead(error.status===401?401:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'RUNNER_OFFLINE',error:'이 컴퓨터의 실행 환경에 연결되지 않았습니다. 컴퓨터 설정에서 실행 환경을 시작한 뒤 다시 읽어 주세요. 대화와 파일은 그대로 남아 있습니다.'}));return;}
+        let fileTarget,localRead=false;const fileScope={session:u.pathname.split('/')[3]};try{if(runnerWorkspace&&runnerService.status&&!(await runnerService.status(fileScope)).workspaceAvailable){if(!runnerService.localMachine)throw Object.assign(Error('Runner offline'),{status:409});fileTarget={machineId:await runnerService.localMachine(fileScope)};localRead=true;}else fileTarget=runnerWorkspace?await runnerService.target(req.headers.authorization,fileScope):handoffTarget;}catch(error){res.writeHead(error.status===401?401:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'RUNNER_OFFLINE',error:'이 컴퓨터의 실행 환경에 연결되지 않았습니다. 컴퓨터 설정에서 실행 환경을 시작한 뒤 다시 읽어 주세요. 대화와 파일은 그대로 남아 있습니다.'}));return;}
         const id=u.pathname.split('/')[3];
         const check=await fetch(new URL(`/api/sessions/${id}`,target),{headers,signal:controller.signal,redirect:'error'});
         if(!check.ok){res.writeHead(check.status).end();return;}
@@ -598,7 +598,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
           if(!project)throw Error('Project unavailable');
           await runnerService.ready(req.headers.authorization,project.key,m.flavor);
           for(let attempt=0;attempt<40;attempt++){
-            if((await runnerService.status()).workspaceAvailable)break;
+            if((await runnerService.status(project.key)).workspaceAvailable)break;
             if(attempt===39)throw Error('Runner unavailable');
             await new Promise(resolve=>setTimeout(resolve,250));
           }
