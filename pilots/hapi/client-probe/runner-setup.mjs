@@ -1,4 +1,6 @@
 import {sessionTitle} from './workspace.mjs';
+// A new project folder needs a Runner restart, which is refused while sessions run; keep that reason visible.
+export const runnerSetupReason=error=>['RUNNER_ACTIVE','RUNNER_UNCONFIRMED'].includes(error?.code)?error.code:'RUNNER_SETUP';
 import {workspaceChoices,workspaceRequest,createWorkspacePlans} from './workspace-plans.mjs';
 import {projectRegistry,legacyProjectId} from './project-registry.mjs';
 import {randomUUID} from 'node:crypto';
@@ -466,7 +468,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
        if(connected)break;if(attempt===14)throw Error('Runner connection unavailable');
        await new Promise(r=>setTimeout(r,300));
       }
-     }catch(error){throw Object.assign(Error('작업 폴더 선택은 보존했습니다. 실행기 준비 상태를 확인한 뒤 같은 요청의 결과를 확인하세요.'),{rejected:false,reason:'RUNNER_SETUP'});}
+     }catch(error){throw Object.assign(Error('작업 폴더 선택은 보존했습니다. 실행기 준비 상태를 확인한 뒤 같은 요청의 결과를 확인하세요.'),{rejected:false,reason:runnerSetupReason(error)});}
     }
     if(!check&&prepared.branch&&(await workspaceChoices(prepared.path)).branch!==prepared.branch)throw Error('선택 후 브랜치가 바뀌었습니다. 세션을 만들지 않았습니다.');
     // A handoff target records its source so the new session can link back; the source must be this project's other-AI session.

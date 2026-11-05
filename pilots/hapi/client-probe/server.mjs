@@ -6,7 +6,7 @@ import {gitSummary} from './git-status.mjs';
 import {createLanDiscovery} from './lan-discovery.mjs';
 import {createDiscovery} from './discovery.mjs';
 import {serverIdentity} from './server-identity.mjs';
-import {createRunnerSetup} from './runner-setup.mjs';
+import {createRunnerSetup,runnerSetupReason} from './runner-setup.mjs';
 import {machineOptions} from './machine-setup.mjs';
 import {createAccountRegistration} from './account-registration.mjs';
 import {serverAddress} from './connections/registry.mjs';
@@ -347,14 +347,14 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
               if(accountsService&&(await accountsService.status(input.agent)).state!=='connected'){res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'AI_SETUP',error:'선택한 AI의 설치·구독 로그인을 먼저 연결하세요.'}));return;}
               if(!input.workspace)try{await runnerService.ready(req.headers.authorization,input.project,input.agent);
                 for(let attempt=0;attempt<15;attempt++){if((await runnerService.status()).workspaceAvailable)break;if(attempt===14)throw Error();await new Promise(resolve=>setTimeout(resolve,300));}}
-              catch(error){const reason=['RUNNER_ACTIVE','RUNNER_UNCONFIRMED'].includes(error.code)?error.code:'RUNNER_SETUP';
+              catch(error){const reason=runnerSetupReason(error);
                 const message=reason==='RUNNER_ACTIVE'?'새 프로젝트나 AI를 적용하려면 이 컴퓨터의 기존 세션 실행을 먼저 종료해 주세요. 기존 작업은 유지했고 새 세션은 만들지 않았습니다. 종료 후 다시 만들기를 누르면 자동으로 준비합니다.':reason==='RUNNER_UNCONFIRMED'?'이전 세션 생성 결과를 먼저 확인해 주세요. 실행 환경을 바꾸거나 새 세션을 만들지 않았습니다.':'실행 환경의 준비를 확인하지 못했습니다. 컴퓨터 설정에서 실행 상태를 확인해 주세요. 새 세션 생성 요청은 보내지 않았습니다.';
                 res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason,error:message}));return;}
             }
             result=await runnerService.task(JSON.parse(raw),req.headers.authorization,u.pathname.endsWith('/check'));
           }else{res.writeHead(405).end();return;}
           res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
-        }catch(error){res.writeHead([400,401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,reason:error.reason,error:error.reason==='RUNNER_SETUP'?'작업 폴더 선택은 보존했습니다. 실행 환경 준비를 확인하지 못했습니다. 생성 결과 확인을 눌러 같은 요청으로 계속하세요.':error.rejected?error.message:'결과를 확인하지 못했습니다. 같은 요청의 결과 확인을 눌러 주세요.'}));}return;
+        }catch(error){res.writeHead([400,401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,reason:error.reason,error:error.reason==='RUNNER_ACTIVE'?'작업 폴더 선택은 보존했습니다. 새 프로젝트 폴더를 쓰려면 실행기를 다시 시작해야 하는데, 이 컴퓨터에서 실행 중인 세션이 있어 시작하지 않았습니다. 실행 중인 세션을 종료한 뒤 생성 결과 확인을 누르면 같은 요청으로 계속합니다.':error.reason==='RUNNER_UNCONFIRMED'?'작업 폴더 선택은 보존했습니다. 이전 세션 생성 결과를 먼저 확인해 주세요.':error.reason==='RUNNER_SETUP'?'작업 폴더 선택은 보존했습니다. 실행 환경 준비를 확인하지 못했습니다. 생성 결과 확인을 눌러 같은 요청으로 계속하세요.':error.rejected?error.message:'결과를 확인하지 못했습니다. 같은 요청의 결과 확인을 눌러 주세요.'}));}return;
       }
       if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,pairing:localImport&&!!pairing,sessionTerminal:localImport&&!!runnerService?.openSessionTerminal,claudeImport:localImport&&!!runnerService?.claudeImport,codexImport:localImport&&!!runnerService?.codexImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{generalChat:!!runnerService.generalChat,workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
       if(req.method==='GET'&&assets.has(u.pathname)) {

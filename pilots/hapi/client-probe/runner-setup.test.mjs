@@ -414,3 +414,9 @@ test('branch pin is kept per registered session and checks the repositories dire
  r=await service.branchPin('Bearer synthetic',{id:sid,action:'remove',repo:'api',branch:'feature/x'});assert.deepEqual(r.pin,{repos:{api:['main']}});
  r=await service.branchPin('Bearer synthetic',{id:sid,action:'disable'});assert.equal(r.pin,null);assert.equal((await service.workspace('Bearer synthetic'))[0].branchPin,undefined);
 });
+test('runner readiness failures keep the specific reason so the user sees why a new folder was not applied',async()=>{
+ const {runnerSetupReason}=await import('./runner-setup.mjs');
+ assert.equal(runnerSetupReason(Object.assign(Error('x'),{code:'RUNNER_ACTIVE'})),'RUNNER_ACTIVE');
+ assert.equal(runnerSetupReason(Object.assign(Error('x'),{code:'RUNNER_UNCONFIRMED'})),'RUNNER_UNCONFIRMED');
+ assert.equal(runnerSetupReason(Error('connection')),'RUNNER_SETUP');
+});
