@@ -10,6 +10,8 @@ import {startFakeHub,createProject,ids,sessionList} from './fake-hub.mjs';
 import {launchChrome,openPage} from './browser.mjs';
 import {auditScript} from './audit.mjs';
 import {scenarios} from './scenarios.mjs';
+import {createPairing} from '../../pilots/hapi/client-probe/pairing.mjs';
+import {createEnvironment} from '../../pilots/hapi/client-probe/environment.mjs';
 
 const root=dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const filter=process.argv[2]??'';
@@ -18,7 +20,11 @@ const outDir=join(root,'.runtime','ux',stamp);await mkdir(outDir,{recursive:true
 const temp=await realpath(await mkdtemp(join(tmpdir(),'maricode-ux-')));
 const project=await createProject(join(temp,'project'));
 const hub=await startFakeHub({project});
-const app=createServer({upstream:hub.url,sessionId:ids.claude,sessions:sessionList});await new Promise(r=>app.listen(0,'127.0.0.1',r));
+// A device login needs a JWT-shaped token with an expiry; the fake Hub never checks it.
+const b64=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),fakeJwt=`${b64({alg:'none'})}.${b64({exp:Math.floor(Date.now()/1000)+3600})}.x`;
+const pairing=globalThis.uxPairing=createPairing({authenticate:async()=>fakeJwt});
+const environmentPath=join(temp,'environment.json');await createEnvironment(environmentPath).save({revision:0,roles:{local:true,server:true,remote:true}});
+const app=createServer({upstream:hub.url,sessionId:ids.claude,sessions:sessionList,pairing,environmentPath});await new Promise(r=>app.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${app.address().port}`;
 const chrome=await launchChrome({profile:join(temp,'chrome'),port:9400+Math.floor(Math.random()*400)});
 const results=[];
