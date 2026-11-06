@@ -41,7 +41,7 @@ let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JS
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
 let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null,pairingEnabled=false;
-let sessionTerminalEnabled=false,terminalBusy=false;
+let sessionTerminalEnabled=false,terminalBusy=false,pinnedPrompt=null;
 let commandSuggest=null,fileMentions=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
@@ -1397,10 +1397,23 @@ if($('menu-terminal'))$('menu-terminal').onclick=()=>openSessionTerminal();
 // Menus close once an item is chosen, so the result they open is not hidden behind them.
 for(const menu of document.querySelectorAll('details.connection-menu'))menu.addEventListener('click',e=>{if(e.target.closest('button')&&!e.target.closest('summary'))menu.open=false;});
 function updateJumpLatest(){const s=$('conversation-history'),b=$('jump-latest');if(s&&b)b.hidden=!moreBelow(s);updateStuckPrompt();}
-// The request that scrolled past stays pinned (sticky CSS) in two lines; earlier pinned ones are hidden behind it.
-function updateStuckPrompt(){const s=$('conversation-history');if(!s)return;const top=s.getBoundingClientRect().top+1,pinned=[...s.querySelectorAll('.bubble.user:not(.child-message)')].filter(b=>b.getBoundingClientRect().top<=top);
- for(const b of s.querySelectorAll('.bubble.user'))b.classList.remove('stuck','stuck-under');pinned.forEach((b,i)=>b.classList.add(i===pinned.length-1?'stuck':'stuck-under'));}
+// Keep original messages in normal flow. A zero-height sticky layer shows only a visual copy;
+// clamping the original bubble changes scrollHeight and can fight browser scroll anchoring.
+function updateStuckPrompt(){
+ const scroller=$('conversation-history');if(!scroller)return;
+ if(!pinnedPrompt){
+  const layer=document.createElement('div'),card=document.createElement('div'),label=document.createElement('small'),text=document.createElement('span');
+  layer.className='pinned-prompt-layer';layer.setAttribute('aria-hidden','true');card.className='pinned-prompt';card.hidden=true;
+  card.append(label,text);layer.append(card);scroller.prepend(layer);pinnedPrompt={card,label,text};
+ }
+ const bounds=scroller.getBoundingClientRect();
+ const bubble=[...$('messages').querySelectorAll('.bubble.user:not(.child-message):not(.queued)')].findLast(b=>b.getBoundingClientRect().top<=bounds.top+1);
+ const {card,label,text}=pinnedPrompt;card.hidden=!bubble;if(!bubble)return;
+ const rect=bubble.getBoundingClientRect(),heading=[...(bubble.querySelector(':scope > small')?.childNodes??[])].map(n=>n.textContent.trim()).filter(Boolean).join(' '),body=bubble.querySelector(':scope > span')?.textContent??'';
+ if(label.textContent!==heading)label.textContent=heading;if(text.textContent!==body)text.textContent=body;
+ card.style.left=(rect.left-bounds.left)+'px';card.style.width=rect.width+'px';
+}
 if($('jump-latest')){const s=$('conversation-history');s.addEventListener('scroll',updateJumpLatest,{passive:true});
  // Cards and streamed replies grow the content without a scroll event.
- const grow=new ResizeObserver(updateJumpLatest);grow.observe($('messages'));
+ const grow=new ResizeObserver(updateJumpLatest);grow.observe($('messages'));grow.observe(s);
  $('jump-latest').onclick=()=>s.scrollTo({top:s.scrollHeight,behavior:'smooth'});}

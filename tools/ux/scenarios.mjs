@@ -1,10 +1,21 @@
 // User tasks, written the way a person would try them. Each step names what the person wants;
 // the runner records clicks, whether the screen visibly reacted, errors and a screenshot.
 import {ids} from './fake-hub.mjs';
+// The pinned summary is a non-interactive visual copy; elementFromPoint intentionally sees through it.
+async function expectPinnedPrompt(ui){
+ const visible=await ui.evaluate("(()=>{const e=document.querySelector('.pinned-prompt'),s=document.getElementById('conversation-history');if(!e||e.hidden)return false;const r=e.getBoundingClientRect(),b=s.getBoundingClientRect();return getComputedStyle(e).display!=='none'&&r.width>20&&r.height>20&&r.height<140&&Math.abs(r.top-b.top)<2;})()");
+ if(!visible)throw Error('상단 요약이 보이는 위치에 없음');return {changes:1};
+}
 export const scenarios=[
  {name:'연결하고 대화 열기',goal:'처음 화면에서 로그인하고 원하는 대화를 연다',steps:[
   ['토큰 입력칸 찾기',ui=>ui.click('#token')],['토큰 입력',ui=>ui.type('ux')],['연결 누르기',ui=>ui.click('연결')],
   ['목록에서 “파일 뷰어 탭 만들기” 열기',ui=>ui.click('파일 뷰어 탭 만들기')]]},
+ {name:'긴 요청을 위에 고정해 읽기',goal:'긴 사용자 요청이 대화 위에 걸려도 스크롤 위치와 메시지 높이가 흔들리지 않는다',session:ids.claude,steps:[
+  ['좁은 화면에서 긴 요청 읽기',async ui=>{await ui.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await ui.evaluate("(()=>{const s=document.getElementById('conversation-history'),b=s.querySelector('.bubble.user');b.querySelector(':scope > span').textContent=Array.from({length:24},(_,i)=>'긴 요청 '+i+' — 이 대화의 스크롤 위치가 유지되는지 확인합니다.').join('\\n');const tail=document.createElement('div');tail.style.height='2000px';document.getElementById('messages').append(tail);s.scrollTop=0;return true;})()");await ui.wait(300);return {changes:1};}],
+  ['요청이 위에 걸리는 위치로 스크롤',async ui=>{await ui.evaluate("(()=>{const s=document.getElementById('conversation-history'),b=s.querySelector('.bubble.user');window.__stickyHeight=b.getBoundingClientRect().height;s.scrollTop+=b.getBoundingClientRect().top-s.getBoundingClientRect().top+2;return true;})()");return {changes:1};}],
+  ['손을 떼면 대화가 안정적으로 유지됨',async ui=>{const result=await ui.evaluate("(async()=>{const s=document.getElementById('conversation-history'),b=s.querySelector('.bubble.user'),samples=[];for(let i=0;i<90;i++){await new Promise(requestAnimationFrame);samples.push({top:s.scrollTop,height:b.getBoundingClientRect().height,stuck:b.classList.contains('stuck')});}return JSON.stringify(samples);})()");const rows=JSON.parse(result).slice(10);const before=await ui.evaluate('window.__stickyHeight');if(Math.abs(rows.at(-1).height-before)>1)throw Error('고정할 때 원본 메시지 높이가 변경됨: '+before+' → '+rows.at(-1).height);const range=k=>Math.max(...rows.map(r=>r[k]))-Math.min(...rows.map(r=>r[k]));if(range('top')>1||range('height')>1)throw Error('스크롤/높이 흔들림: '+JSON.stringify({top:range('top'),height:range('height')}));return expectPinnedPrompt(ui);}],
+  ['위로 돌아가면 원본만 표시',async ui=>{await ui.evaluate("document.getElementById('conversation-history').scrollTop=0;true");await ui.wait(300);if(!await ui.evaluate("document.querySelector('.pinned-prompt').hidden"))throw Error('상단에서 요약이 남음');return {changes:1};}],
+  ['넓은 화면에서도 원본 높이를 유지',async ui=>{await ui.send('Emulation.setDeviceMetricsOverride',{width:1400,height:880,deviceScaleFactor:1,mobile:false});await ui.wait(300);const before=await ui.evaluate("document.querySelector('#messages .bubble.user').getBoundingClientRect().height");await ui.evaluate("(()=>{const s=document.getElementById('conversation-history'),b=s.querySelector('.bubble.user');s.scrollTop+=b.getBoundingClientRect().top-s.getBoundingClientRect().top+2;return true;})()");await ui.wait(500);if(Math.abs(before-await ui.evaluate("document.querySelector('#messages .bubble.user').getBoundingClientRect().height"))>1)throw Error('넓은 화면 높이 변경');return expectPinnedPrompt(ui);}]]},
  {name:'AI가 한 일 읽기',goal:'답변·생각·도구 활동을 펼쳐 무엇을 했는지 본다',session:ids.claude,steps:[
   ['“생각” 펼치기',ui=>ui.click('.reasoning-block summary')],['도구 활동 펼치기',ui=>ui.click('.activity-group summary')]]},
  {name:'바뀐 파일 확인',goal:'이번 작업에서 바뀐 파일의 diff를 보고 대화로 돌아온다',session:ids.claude,steps:[
