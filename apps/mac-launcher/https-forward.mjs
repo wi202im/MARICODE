@@ -35,7 +35,7 @@ export function createHttpsForward(deps={}){
  }
  return {get phase(){return phase;},async start({origin,target}){
   if(phase!=='stopped')throw Error('Forward already owned or unknown');
-  remoteOrigin(origin);const url=new URL(origin);
+  remoteOrigin(origin);const url=new URL(origin),port=url.port||'443',hostPort=url.hostname+':'+port;
   if(!/^http:\/\/127\.0\.0\.1:[0-9]+$/.test(target))throw Error('Loopback target required');
   phase='starting';
   try{
@@ -43,10 +43,10 @@ export function createHttpsForward(deps={}){
    if(self.BackendState!=='Running'||self.Self?.DNSName?.replace(/\.$/,'')!==url.hostname)throw Error('Tailscale machine mismatch');
    const before=await read(['serve','status','--json']);
    if(Object.keys(before).length!==0)throw Error('Existing Serve configuration preserved');
-   child=start(['serve','--https='+String(url.port||443),target],()=>{if(phase==='running'){phase='unknown';deps.onExit?.();}});
+   child=start(['serve','--https='+port,target],()=>{if(phase==='running'){phase='unknown';deps.onExit?.();}});
    for(let i=0;i<20;i++){
     const config=await read(['serve','status','--json']);
-    const matches=Object.entries(config.Foreground??{}).filter(([,v])=>v.TCP?.[url.port||443]?.HTTPS===true&&v.Web?.[url.host]?.Handlers?.['/']?.Proxy===target);
+    const matches=Object.entries(config.Foreground??{}).filter(([,v])=>v.TCP?.[port]?.HTTPS===true&&v.Web?.[hostPort]?.Handlers?.['/']?.Proxy===target);
     if(child.alive===false)throw Error('Forward exited during startup');
     if(matches.length===1){owner=matches[0][0];phase='running';return;}
     await wait(250);

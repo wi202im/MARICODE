@@ -51,3 +51,16 @@ test('unconfirmed cleanup stays locked until a successful explicit stop',async()
  await assert.rejects(service.start({origin,target}));assert.equal(f.starts,1);
  fail=false;await service.stop();assert.equal(service.phase,'stopped');
 });
+
+// Tailscale v1.104.5 ipn/serve.go: Web keys are HostPort; even default HTTPS requires :443.
+// https://github.com/tailscale/tailscale/blob/v1.104.5/ipn/serve.go
+for(const address of ['https://mini.tail123.ts.net','https://mini.tail123.ts.net:8445'])test('recognizes explicit host:port in Serve readiness for '+address,async()=>{
+ const url=new URL(address),port=url.port||'443',key=url.hostname+':'+port;let config={},starts=0,stops=0;
+ const service=createHttpsForward({
+  query:async args=>args[0]==='status'?{BackendState:'Running',Self:{DNSName:url.hostname+'.'}}:config,
+  launch:args=>{assert.deepEqual(args,['serve','--https='+port,target]);starts++;config={Foreground:{owned:{TCP:{[port]:{HTTPS:true}},Web:{[key]:{Handlers:{'/':{Proxy:target}}}}}}};return {alive:true,stop:async()=>{stops++;config={};}};},
+  delay:async()=>{}
+ });
+ await service.start({origin:address,target});assert.equal(service.phase,'running');assert.equal(starts,1);assert.equal(stops,0);
+ await service.stop();assert.equal(service.phase,'stopped');assert.equal(stops,1);
+});
