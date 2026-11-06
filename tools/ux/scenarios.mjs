@@ -21,6 +21,10 @@ export const scenarios=[
   ['중지하고 바로 보내기',ui=>ui.click('중지하고 바로 보내기')]]},
  {name:'작업 중인 AI 다루기',goal:'작업 중인 대화에서 대기 메시지를 취소하고 작업을 중지한다',session:ids.busy,steps:[
   ['대기 메시지 취소',ui=>ui.click('.queue-bar button')],['중지 버튼',ui=>ui.click('#stop')]]},
+ {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
+  ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
+  ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],
+  ['거절이 전달됨',async ui=>{for(let t=0;t<20;t++){if(await ui.evaluate("document.body.innerText.includes('거절을 전달했습니다')"))return {changes:1};await ui.wait(200);}throw Error('거절 전달 안내가 보이지 않음');}]]},
  {name:'파일을 지정해 요청하기',goal:'입력창에서 @로 파일을 골라 요청에 넣는다',session:ids.claude,steps:[
   ['입력창 누르기',ui=>ui.click('#prompt')],['“@app” 입력',ui=>ui.type('이 파일 봐줘 @app')],['Enter로 후보 고르기',ui=>ui.key('Enter')]]},
  {name:'CLI 명령 쓰기',goal:'/config 같은 명령을 쓰려 한다',session:ids.claude,steps:[

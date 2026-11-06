@@ -186,7 +186,7 @@ function renderWorkflow(){
     const buttons=document.createElement('div');buttons.className='buttons';
     const questions=requestQuestions(session?.metadata?.flavor,request),isQuestion=['AskUserQuestion','request_user_input'].includes(request.tool);
     const unsupported=isQuestion&&!questions||new TextEncoder().encode(readable(request)).length>48000;
-    for(const choice of (questions?permissionChoices(session?.metadata?.flavor,request).filter(c=>c.action==='deny'):permissionChoices(session?.metadata?.flavor,request))){
+    for(const choice of (questions?[]:permissionChoices(session?.metadata?.flavor,request))){
       const button=document.createElement('button');button.textContent=choice.label;button.title=choice.detail??choice.label;
       button.disabled=!!session?.resumeUnconfirmed||busy||!connected||!session?.active||!!permissionActions?.pending||unsupported;
       button.onclick=()=>decidePermission(id,request,choice.action,choice.scope);buttons.append(button);
@@ -194,7 +194,7 @@ function renderWorkflow(){
     }
     const note=document.createElement('p');note.className='permission-note';note.textContent=questions?'답변은 현재 질문에만 전달되며 도구 실행 권한을 변경하지 않습니다.':unsupported?'이 질문 유형은 아직 이 화면에서 처리할 수 없습니다.':permissionActions?.pending?'결과 확인 중 · 다시 보내지 않습니다.':permissionChoices(session?.metadata?.flavor,request).some(c=>c.scope==='session')?'세션 허용은 표시된 범위에만 적용됩니다. 다른 세션에는 적용되지 않습니다.':'표시된 요청 한 건에만 적용됩니다. 이 요청은 세션 허용을 제공하지 않습니다.';
     if(isQuestion)title.textContent='답변이 필요합니다';
-    card.append(title);if(questions){const key=sessionId+':'+id+':'+requestSnapshot(request);if(!questionDrafts.has(key))questionDrafts.set(key,{});card.append(questionForm(questions,questionDrafts.get(key),!!session?.resumeUnconfirmed||busy||!connected||!session?.active||!!permissionActions?.pending,answers=>{questionDecision(session.metadata.flavor,request,answers);void decidePermission(id,request,'approve','once',answers);},notice));}else card.append(summary);const preview=renderEdit(request.arguments);if(preview)card.append(preview);card.append(detail,buttons,note);return card;
+    card.append(title);if(questions){const key=sessionId+':'+id+':'+requestSnapshot(request);if(!questionDrafts.has(key))questionDrafts.set(key,{});card.append(questionForm(questions,questionDrafts.get(key),!!session?.resumeUnconfirmed||busy||!connected||!session?.active||!!permissionActions?.pending,answers=>{questionDecision(session.metadata.flavor,request,answers);void decidePermission(id,request,'approve','once',answers);},notice,()=>void decidePermission(id,request,'deny','once')));}else card.append(summary);const preview=renderEdit(request.arguments);if(preview)card.append(preview);card.append(detail,buttons,note);return card;
   });
   $('permission-list').replaceChildren(...nodes);
   }

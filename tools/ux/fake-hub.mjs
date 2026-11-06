@@ -3,8 +3,8 @@ import http from 'node:http';
 import {readFile,readdir,stat,mkdir,writeFile} from 'node:fs/promises';
 import {join,relative,resolve} from 'node:path';
 
-export const ids={claude:'11111111-1111-4111-8111-111111111111',codex:'22222222-2222-4222-8222-222222222222',busy:'33333333-3333-4333-8333-333333333333'};
-export const sessionList=[{id:ids.claude,label:'파일 뷰어 탭 만들기'},{id:ids.codex,label:'결제 API 리팩터링'},{id:ids.busy,label:'릴리스 노트 정리'}];
+export const ids={claude:'11111111-1111-4111-8111-111111111111',codex:'22222222-2222-4222-8222-222222222222',busy:'33333333-3333-4333-8333-333333333333',question:'44444444-4444-4444-8444-444444444444'};
+export const sessionList=[{id:ids.claude,label:'파일 뷰어 탭 만들기'},{id:ids.codex,label:'결제 API 리팩터링'},{id:ids.busy,label:'릴리스 노트 정리'},{id:ids.question,label:'배포 방식 정하기'}];
 
 export async function createProject(root){
  const files={'src/app.mjs':"import {open} from './file-viewer.mjs';\nexport function start(){\n  open('README.md');\n}\n",'src/file-viewer.mjs':"// Center file tabs\nconst maxTabs=12;\nexport function open(path){ return path; }\n",
@@ -36,9 +36,10 @@ const codexMessages=()=>[msg(1,'user',{type:'text',text:'결제 API의 오류 �
 
 export async function startFakeHub({project,port=0}){
  const hits=[];let queued=new Set(['queued-1']);
+ let question={q1:{tool:'AskUserQuestion',arguments:{questions:[{question:'어디에 배포할까요?',header:'배포',multiSelect:false,options:[{label:'스테이징',description:'먼저 확인'},{label:'운영'}]}]},createdAt:Date.now()}};
  const flavor=id=>id===ids.codex?'codex':'claude';
  const session=id=>({id,active:true,activeAt:Date.now(),updatedAt:Date.now(),thinking:id===ids.busy,metadata:{path:project,flavor:flavor(id),machineId:'ux-mac',host:'ux-mac',name:sessionList.find(s=>s.id===id)?.label},
-  agentState:{requests:id===ids.busy?{}:{},controlledByUser:false},permissionMode:'default',modelMode:'default'});
+  agentState:{requests:id===ids.question?question:{},controlledByUser:false},permissionMode:'default',modelMode:'default'});
  const messages=id=>id===ids.claude?claudeMessages(project):id===ids.busy?busyMessages(project):codexMessages();
  const inside=p=>{const full=resolve(project,p||'.');if(relative(project,full).startsWith('..'))throw Error('outside');return full;};
  const server=http.createServer(async(req,res)=>{
@@ -55,6 +56,7 @@ export async function startFakeHub({project,port=0}){
    if(rest==='/messages/queued-state')return send({queuedLocalIds:[...queued],indeterminateLocalIds:[],invokedLocalMessages:[]});
    if(req.method==='DELETE'&&rest.startsWith('/messages/')){queued=new Set();return send({status:'cancelled',localId:'queued-1'});}
    if(rest==='/abort')return send({ok:true});
+   if(/^\/permissions\/[^/]+\/(approve|deny)$/.test(rest)){question={};return send({ok:true});}
    if(rest==='/git-diff-numstat')return send({success:true,exitCode:0,stdout:u.searchParams.get('staged')?'':'2\t1\tsrc/file-viewer.mjs\n'});
    if(rest==='/git-diff-file')return send({success:true,exitCode:0,stdout:'diff --git a/src/file-viewer.mjs b/src/file-viewer.mjs\n@@ -1,2 +1,3 @@\n-const maxTabs=8;\n+// Center file tabs\n+const maxTabs=12;\n export function open(path){ return path; }\n'});
    if(rest==='/slash-commands')return send({success:true,commands:[{name:'compact',source:'builtin',description:'대화 요약'},{name:'config',source:'builtin',description:'설정'},{name:'mcp',source:'builtin',description:'MCP 관리'}]});
