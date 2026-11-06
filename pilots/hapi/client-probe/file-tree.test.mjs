@@ -48,3 +48,10 @@ test('the selection a render makes does not open a file',async()=>{
  const s=setup({'':[{name:'README.md',type:'file',size:5}]});await s.t.reload();list_select(s,'README.md');assert.deepEqual(s.opened,[]);
  await new Promise(r=>setTimeout(r));list_select(s,'README.md');assert.deepEqual(s.opened,[['README.md',5]]);
 });
+test('reveal opens every folder down to a path clicked in a reply',async()=>{
+ const s=setup({'':[{name:'pilots',type:'directory'}],pilots:[{name:'hapi',type:'directory'}],'pilots/hapi':[{name:'a.mjs',type:'file'}]});
+ globalThis.CSS??={escape:v=>v};
+ assert.equal(await s.t.reveal('pilots/hapi'),true);
+ assert.ok('open' in s.row('pilots').attrs&&'open' in s.row('hapi').attrs);assert.ok(s.row('a.mjs'));
+ assert.equal(await s.t.reveal('missing'),false);assert.equal(s.errors.length,1);
+});

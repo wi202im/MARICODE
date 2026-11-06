@@ -68,6 +68,14 @@ export function createFileTree({api,base,list,open,error=()=>{},active=()=>null,
    if(mine!==serial)return false;nodes=fresh;render();return true;
   }catch(e){if(mine===serial){list.replaceChildren();error(e);}return false;}
  }
+ // Opens every folder down to path and scrolls it into view (used by paths clicked in replies).
+ async function reveal(path){
+  if(!nodes.has('')&&!await reload())return false;
+  const mine=serial,parts=path?path.split('/'):[];
+  try{for(let i=1;i<=parts.length;i++){const p=parts.slice(0,i).join('/'),node=nodes.get(p)??{entries:await read(p)};if(mine!==serial)return false;node.open=true;nodes.set(p,node);}}
+  catch(e){if(mine===serial)error(e);return false;}
+  render();list.querySelector?.(`[data-file="${CSS.escape(path)}"]`)?.scrollIntoView({block:'center'});return true;
+ }
  function clear(){serial++;nodes=new Map();kinds=new Map();list.replaceChildren();}
- return {reload,clear,render,toggled,get loaded(){return nodes.has('');}};
+ return {reload,clear,render,toggled,reveal,get loaded(){return nodes.has('');}};
 }

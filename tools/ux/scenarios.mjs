@@ -14,6 +14,9 @@ export const scenarios=[
   ['오른쪽 패널 열기',ui=>ui.click('#info-tab')],['파일 탭',ui=>ui.click('#files-tab')],['src 폴더 펼치기',ui=>ui.click('vscode-tree-item[data-name="src"]')],
   ['app.mjs 열기',ui=>ui.click('vscode-tree-item[data-name="app.mjs"]')],['가운데에 파일 탭이 열림',ui=>ui.expectVisible('.center-tab.active')],['README.md 열기',ui=>ui.click('vscode-tree-item[data-name="README.md"]')],
   ['마크다운 원본 보기',ui=>ui.click('원본')],['탭 닫기',ui=>ui.click('.center-tab.active .center-tab-close')]]},
+ {name:'답변 속 경로 열기',goal:'AI 답변에 적힌 파일과 폴더를 눌러 바로 연다',session:ids.claude,steps:[
+  ['답변의 파일 경로 누르기',ui=>ui.click('a[data-path="src/file-viewer.mjs"]')],['가운데에 파일 탭이 열림',ui=>ui.expectVisible('.center-tab.active')],
+  ['대화 탭으로 돌아가기',ui=>ui.click('.center-tab-main')],['답변의 폴더 경로 누르기',ui=>ui.click('a[data-path="docs/"]')],['파일 트리에서 폴더가 펼쳐짐',ui=>ui.expectVisible('vscode-tree-item[data-name="viewer.md"]')]]},
  {name:'작업 중인 AI 다루기',goal:'작업 중인 대화에서 대기 메시지를 취소하고 작업을 중지한다',session:ids.busy,steps:[
   ['대기 메시지 취소',ui=>ui.click('.queue-bar button')],['중지 버튼',ui=>ui.click('#stop')]]},
  {name:'파일을 지정해 요청하기',goal:'입력창에서 @로 파일을 골라 요청에 넣는다',session:ids.claude,steps:[

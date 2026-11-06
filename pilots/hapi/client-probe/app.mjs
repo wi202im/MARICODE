@@ -470,6 +470,19 @@ async function openPath(path,kind){
 const fileError=e=>fileFeedback(e.message.includes('(403)')?'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다.':e.message,true,e.reason==='RUNNER_OFFLINE');
 // Workspace layout opens files as center tabs; the narrow layout closes the inspector overlay to show them.
 function openFile(path,size){fileTabs.open(path,{size});fileTree?.render();if(compactSidebar.matches)workspacePanel('chat');}
+// Paths in replies (data-path from markdown.mjs): folders reveal in the file tree, other paths open as center tabs.
+document.addEventListener('click',e=>{const a=e.target.closest?.('a[data-path]');if(!a)return;e.preventDefault();openReplyPath(a.dataset.path);});
+async function openReplyPath(value){
+ const root=session?.metadata?.path,outside=()=>{workspacePanel('files');fileFeedback('프로젝트 밖 경로는 열 수 없습니다: '+value);};
+ let path=value.replace(/\/+$/,'');
+ if(path.startsWith('/')){if(!root||!(path===root||path.startsWith(root+'/')))return outside();path=path.slice(root.length+1);}
+ try{path=relativePath(path);}catch{return outside();}
+ const folder=value.endsWith('/')||(await api(base()+'/directory?path='+encodeURIComponent(path)).catch(()=>null))?.success;
+ if(folder&&fileTree){workspacePanel('files');fileFeedback('');if(!await fileTree.reveal(path))fileFeedback('폴더를 열 수 없습니다: '+value,true);}
+ else if(folder)openPath(path,'directory');
+ else if(fileTabs)openFile(path);
+ else openPath(path,'file');
+}
 const fileStatus=document.createElement('div');fileStatus.className='file-feedback';fileStatus.setAttribute('role','status');$('entries').before(fileStatus);
 function fileFeedback(message,retry=false,offline=false){
  fileStatus.replaceChildren();if(!message)return;const text=document.createElement('p');text.textContent=message;fileStatus.append(text);

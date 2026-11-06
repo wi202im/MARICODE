@@ -423,7 +423,10 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil, let target = navigationAction.request.url,
            target.scheme == "https" || (target.scheme == "http" && target.host == "127.0.0.1" && target.port == 61192) {
-            if target.path == "/workspace", desktopMachineOrigin(target) != nil { openMachine(target) } else { webView.load(navigationAction.request) }
+            if target.path == "/workspace", desktopMachineOrigin(target) != nil { openMachine(target) }
+            // Links in replies point at outside sites; open them in the browser instead of replacing the app view.
+            else if target.scheme == "https", desktopMachineOrigin(target) == nil { NSWorkspace.shared.open(target) }
+            else { webView.load(navigationAction.request) }
         }
         return nil
     }

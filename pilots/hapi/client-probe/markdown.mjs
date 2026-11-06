@@ -3,17 +3,27 @@ export function safeLink(value){
  if(/[\s\u0000-\u001f]/.test(value))return null;
  try{const u=new URL(value);return ['https:','http:'].includes(u.protocol)&&!u.username&&!u.password?u.href:null;}catch{return null;}
 }
+// Project-looking paths (optionally :line or #Lnn) become links the workspace opens; URLs and spaces never match.
+export function pathTarget(value){
+ const m=/^(~?\/?[\w.@+-]+(?:\/[\w.@+-]+)*\/?)(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?)?$/.exec(value);
+ return m&&(m[1].includes('/')||/[^.]\.[A-Za-z]\w{0,7}$/.test(m[1]))?m[1]:null;
+}
 export function inlineTokens(text){
- const result=[],pattern=/\\([\\`*_[\]])|(`+)([^`]+)\2|\*\*([^*]+)\*\*|\*([^*\n]+)\*|(!?)\[([^\]]+)\]\(([^)]+)\)/g;let start=0;
+ // Bare paths need a folder and an extension so ordinary words stay text.
+ const result=[],pattern=/\\([\\`*_[\]])|(`+)([^`]+)\2|\*\*([^*]+)\*\*|\*([^*\n]+)\*|(!?)\[([^\]]+)\]\(([^)]+)\)|(https?:\/\/[^\s<>()[\]`'"]+)|(?<![\w/.~-])((?:~?\/)?[\w.@+-]+(?:\/[\w.@+-]+)+\.[A-Za-z]\w{0,7}(?::\d+(?::\d+)?)?)/g;let start=0;
  for(const m of text.matchAll(pattern)){
   if(m.index>start)result.push({type:'text',text:text.slice(start,m.index)});
+  let end=m.index+m[0].length;
   if(m[1])result.push({type:'text',text:m[1]});
-  else if(m[2])result.push({type:'code',text:m[3]});
+  else if(m[2])result.push(pathTarget(m[3])?{type:'code',text:m[3],path:pathTarget(m[3])}:{type:'code',text:m[3]});
   else if(m[4])result.push({type:'strong',text:m[4]});
   else if(m[5])result.push({type:'em',text:m[5]});
   else if(!m[6]&&safeLink(m[8]))result.push({type:'link',text:m[7],href:safeLink(m[8])});
+  else if(!m[6]&&pathTarget(m[8]))result.push({type:'path',text:m[7],path:pathTarget(m[8])});
+  else if(m[9]){const url=m[9].replace(/[.,;:!?]+$/,'');end=m.index+url.length;result.push(safeLink(url)?{type:'link',text:url,href:safeLink(url)}:{type:'text',text:url});}
+  else if(m[10])result.push({type:'path',text:m[10],path:pathTarget(m[10])});
   else result.push({type:'text',text:m[0]});
-  start=m.index+m[0].length;
+  start=end;
  }
  if(start<text.length)result.push({type:'text',text:text.slice(start)});return result;
 }
@@ -34,7 +44,12 @@ export function parseMarkdown(text){
   const body=[lines[i++]];while(i<lines.length&&lines[i].trim()&&!special(i))body.push(lines[i++]);out.push({type:'paragraph',text:body.join('\n')});
  }return out;
 }
-function inline(parent,text,doc){for(const t of inlineTokens(text)){if(t.type==='text'){parent.append(doc.createTextNode(t.text));continue;}const e=doc.createElement(t.type==='link'?'a':t.type);e.textContent=t.text;if(t.type==='link'){e.href=t.href;e.target='_blank';e.rel='noopener noreferrer';}parent.append(e);}}
+function inline(parent,text,doc){for(const t of inlineTokens(text)){if(t.type==='text'){parent.append(doc.createTextNode(t.text));continue;}
+ const e=doc.createElement(t.type==='link'||t.type==='path'?'a':t.type);e.textContent=t.text;
+ if(t.type==='link'){e.href=t.href;e.target='_blank';e.rel='noopener noreferrer';}
+ // The workspace opens data-path links (see app.mjs); href keeps them focusable.
+ if(t.path){const a=t.type==='path'?e:doc.createElement('a');a.href='#';a.className='path-link';a.dataset.path=t.path;a.title=t.path+' 열기';if(a!==e)a.append(e);parent.append(a);continue;}
+ parent.append(e);}}
 export function copyButton(text,label,doc=document){const b=doc.createElement('button');b.type='button';b.className='copy-button';b.textContent=label;b.setAttribute('aria-label',label);b.onclick=async()=>{try{await navigator.clipboard.writeText(text);b.textContent='복사됨';}catch{b.textContent='복사 실패 · 직접 선택해 주세요';}};return b;}
 export function renderMarkdown(text,doc=document){
  const root=doc.createElement('div');root.className='markdown';
