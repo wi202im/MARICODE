@@ -37,7 +37,7 @@ function forkButton(localId,onFork){
  return b;
 }
 export function renderConversation(container,messages,{engine,session,onFork,queued,onDiff,onGitReview}={}){
- const signature=JSON.stringify([session?.id,engine,messages,session?.agentState?.completedRequests,!!onFork,armedFork,[...(queued?.ids??[])],[...(queued?.busy??[])]]);
+ const signature=JSON.stringify([session?.id,engine,messages,session?.agentState?.completedRequests,!!onFork,armedFork,[...(queued?.ids??[])],[...(queued?.busy??[])],!!queued?.onInterrupt,!!queued?.stopping]);
  if(rendered.get(container)===signature)return;rendered.set(container,signature);
  const opened=new Set([...container.querySelectorAll('details[open]')].map(e=>e.dataset.key??e.dataset.callId));
  // Activity groups open on their own while a step runs and close when done, unless the person toggled them.
@@ -74,7 +74,8 @@ export function renderConversation(container,messages,{engine,session,onFork,que
   if(onFork&&row.view.role==='user'&&row.localId&&!row.parent&&!queued?.ids?.has(row.key))el.append(forkButton(row.localId,onFork));
   if(row.view.role==='user'&&queued?.ids?.has(row.key)){el.classList.add('queued');const bar=node('div','queue-bar'),busy=queued.busy?.has(row.key);bar.append(node('span','queue-label','대기 중 · 지금 작업이 끝나면 전달됩니다'));
    const cancel=node('button','','취소');cancel.type='button';cancel.disabled=busy;cancel.onclick=()=>queued.onCancel(row.key);bar.append(cancel);
-   if(queued.steer){const steer=node('button','','지금 반영');steer.type='button';steer.title='진행 중인 작업에 바로 전달합니다(Codex)';steer.disabled=busy;steer.onclick=()=>queued.onSteer(row.key);bar.append(steer);}el.append(bar);}
+   if(queued.steer){const steer=node('button','','지금 반영');steer.type='button';steer.title='진행 중인 작업에 바로 전달합니다(Codex)';steer.disabled=busy;steer.onclick=()=>queued.onSteer(row.key);bar.append(steer);}
+   if(queued.onInterrupt){const now=node('button','','중지하고 바로 보내기');now.type='button';now.title='지금 작업을 멈추고 이 메시지를 바로 보냅니다. 이미 바뀐 파일은 되돌리지 않습니다.';now.disabled=busy||queued.stopping;now.onclick=queued.onInterrupt;bar.append(now);}el.append(bar);}
   return el;
  });
  const done=Object.values(session?.agentState?.completedRequests??{}).sort((a,b)=>(a.completedAt??0)-(b.completedAt??0)).slice(-3);

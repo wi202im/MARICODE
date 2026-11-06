@@ -146,7 +146,7 @@ function render(){
   renderWorkflow();
   const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
   const canFork=workspaceLayout&&session?.metadata?.capabilities?.conversationHistory?.forkAtMessage===true&&session.active&&!session.thinking&&!busy&&!actions?.pending;
-  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null,onDiff:fileTabs?change=>{fileTabs.openDiff(change);if(compactSidebar.matches)workspacePanel('chat');}:null,onGitReview:workspaceLayout?()=>{revealInPanel('git-review');gitReview?.load?.(true);}:null,queued:{ids:queuedIds,busy:queueBusy,steer:session?.metadata?.flavor==='codex',onCancel:cancelQueued,onSteer:steerQueued}});finder?.refresh();
+  renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null,onDiff:fileTabs?change=>{fileTabs.openDiff(change);if(compactSidebar.matches)workspacePanel('chat');}:null,onGitReview:workspaceLayout?()=>{revealInPanel('git-review');gitReview?.load?.(true);}:null,queued:{ids:queuedIds,busy:queueBusy,steer:session?.metadata?.flavor==='codex',onCancel:cancelQueued,onSteer:steerQueued,onInterrupt:session?.metadata?.flavor==='claude'?()=>stopTurn('중지를 요청했습니다. 대기 중인 메시지가 바로 이어서 전달됩니다. 이미 바뀐 파일은 되돌리지 않습니다.'):null,stopping}});finder?.refresh();
   if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
    el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
@@ -1309,13 +1309,15 @@ async function queueAction(id,kind){
  finally{queueBusy.delete(id);await refresh().catch(()=>{});render();}
 }
 const cancelQueued=id=>queueAction(id,'cancel'),steerQueued=id=>queueAction(id,'steer');
-async function stopTurn(){
+// HAPI's Claude launcher keeps queued messages across an abort and sends the next one right away;
+// Codex clears its queue on abort, so only Claude offers stop-and-send.
+async function stopTurn(done='중지를 요청했습니다. 이미 바뀐 파일은 되돌리지 않습니다.'){
  if(stopping||!session?.thinking)return;stopping=true;render();const owner=sessionId;
- try{await api(base()+'/abort',{method:'POST',body:{}});if(owner===sessionId)notice('중지를 요청했습니다. 이미 바뀐 파일은 되돌리지 않습니다.');}
+ try{await api(base()+'/abort',{method:'POST',body:{}});if(owner===sessionId)notice(done);}
  catch(e){if(owner===sessionId)notice('중지 요청을 확인하지 못했습니다. '+e.message);}
  finally{stopping=false;await refresh().catch(()=>{});render();}
 }
-if($('stop'))$('stop').onclick=stopTurn;
+if($('stop'))$('stop').onclick=()=>stopTurn();
 if($('open-terminal'))$('open-terminal').onclick=()=>openSessionTerminal();
 if($('menu-terminal'))$('menu-terminal').onclick=()=>openSessionTerminal();
 // Menus close once an item is chosen, so the result they open is not hidden behind them.
