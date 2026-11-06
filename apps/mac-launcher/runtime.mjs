@@ -2,9 +2,9 @@ import {cleanStart110,appReset,requestAppReset,cancelAppReset,appResetRequested}
 import {resetLegacyCliProfiles,addCliUser} from './cli-profile-reset.mjs';
 import {acquireRuntimeLock} from './runtime-lock.mjs';
 import {resolveHapiBinary} from './bundled-hapi.mjs';
-import {createHttpsForward} from './https-forward.mjs';
+import {createHttpsForward,readTailscaleStatus} from './https-forward.mjs';
 import {createEnvironment} from '../../pilots/hapi/client-probe/environment.mjs';
-import {readRemoteOrigin} from './remote-config.mjs';
+import {readRemoteOrigin,registerStartupOrigin} from './remote-config.mjs';
 import http from 'node:http';
 import {mkdir,readFile} from 'node:fs/promises';
 import {isAbsolute,join} from 'node:path';
@@ -17,7 +17,7 @@ import {createDesktopAccess} from './desktop-access.mjs';
 import {checkDataFormat} from './data-format.mjs';
 const listen=server=>new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
 const close=server=>new Promise(resolve=>{server.closeAllConnections();server.close(()=>resolve());});
-export async function startDesktopWeb({directory,port=61192,beforeClose=async()=>{},onForwardExit=()=>{},cleanInstall=false}){
+export async function startDesktopWeb({directory,port=61192,beforeClose=async()=>{},onForwardExit=()=>{},cleanInstall=false,tailscaleStatus=readTailscaleStatus}){
  if(!isAbsolute(directory)||!Number.isInteger(port)||port<0||port>65535)throw Error('Invalid launcher configuration');
  await mkdir(directory,{recursive:true,mode:0o700});
  const ownership=await acquireRuntimeLock(directory);
@@ -32,7 +32,8 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
   stage='configuration';
   if(!cleanInstall)await resetLegacyCliProfiles(directory);
   await addCliUser(directory);
-  const remote=await readRemoteOrigin(directory);
+  const environment=await createEnvironment(join(directory,'environment.json')).read();
+  const remote=await registerStartupOrigin({directory,server:environment.roles.server,query:tailscaleStatus});
   let config;
   try{config=JSON.parse(await readFile(join(directory,'backend.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
   if(config){

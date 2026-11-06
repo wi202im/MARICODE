@@ -38,3 +38,32 @@ test('desktop forwards only the saved origin and keeps remote machine APIs disab
  assert.equal(await request('/api/environment',{host:new URL(origin).host,origin}),403);
  }finally{await runtime?.close();await rm(directory,{recursive:true,force:true});}
 });
+
+test('startup discovers this Mac only when access is enabled and no address decision exists',async t=>{
+ const {startDesktopWeb}=await import('./runtime.mjs');const {createEnvironment}=await import('../../pilots/hapi/client-probe/environment.mjs');
+ const {writeFile,stat}=await import('node:fs/promises');
+ for(const [name,server,saved,status,expected,calls] of [
+  ['new server',true,undefined,{BackendState:'Running',Self:{DNSName:'mini.tail123.ts.net.'}},'https://mini.tail123.ts.net',1],
+  ['local only',false,undefined,{BackendState:'Running',Self:{DNSName:'mini.tail123.ts.net.'}},null,0],
+  ['custom port',true,'https://mini.tail123.ts.net:8445',{},'https://mini.tail123.ts.net:8445',0],
+  ['explicit unregister',true,null,{},null,0],
+  ['stopped Tailscale',true,undefined,{BackendState:'Stopped',Self:{DNSName:'mini.tail123.ts.net.'}},null,1],
+  ['invalid name',true,undefined,{BackendState:'Running',Self:{DNSName:'evil.example.'}},null,1],
+  ['unavailable tool',true,undefined,null,null,1]
+ ])await t.test(name,async()=>{
+  const directory=await mkdtemp(join(tmpdir(),'maricode-auto-origin-'));let runtime,count=0;
+  try{
+   await createEnvironment(join(directory,'environment.json')).save({revision:0,roles:{local:true,server,remote:false}});
+   if(saved!==undefined)await writeFile(join(directory,'remote.json'),JSON.stringify({version:1,origin:saved}));
+   runtime=await startDesktopWeb({directory,port:0,tailscaleStatus:async()=>{count++;await stat(join(directory,'web.lock'));if(status===null)throw Error('offline');return status;}});
+   assert.equal(count,calls);assert.equal(await readRemoteOrigin(directory),expected);assert.equal(runtime.remotePhase,'stopped');
+   if(saved===undefined&&expected===null)await assert.rejects(stat(join(directory,'remote.json')),e=>e.code==='ENOENT');
+   if(name==='new server'){
+    assert.equal((await stat(join(directory,'remote.json'))).mode&0o777,0o600);
+    const response=await new Promise((resolve,reject)=>http.get(runtime.url+'/workspace',{headers:{host:'mini.tail123.ts.net'}},r=>{r.resume();r.on('end',()=>resolve(r.statusCode));}).on('error',reject));
+    assert.equal(response,200);await runtime.close();runtime=null;
+    runtime=await startDesktopWeb({directory,port:0,tailscaleStatus:async()=>{throw Error('must not rediscover');}});assert.equal(await readRemoteOrigin(directory),expected);
+   }
+  }finally{await runtime?.close();await rm(directory,{recursive:true,force:true});}
+ });
+});

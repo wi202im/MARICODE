@@ -5,6 +5,7 @@ const binary='/Applications/Tailscale.app/Contents/MacOS/Tailscale';
 const env={PATH:'/usr/bin:/bin',HOME:process.env.HOME,LANG:'en_US.UTF-8',TERM:'xterm-256color'};
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function query(args){const {stdout}=await promisify(execFile)(binary,args,{env,timeout:5000,maxBuffer:1048576});return JSON.parse(stdout);}
+export const readTailscaleStatus=()=>query(['status','--json']);
 export function launchOwned(args,onExit,{spawnChild=spawn,timeout=5000}={}){
  const child=spawnChild(binary,args,{env,stdio:'ignore'});let ended=false,signalError=false;
  const exited=new Promise(resolve=>{

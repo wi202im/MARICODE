@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,rename,rm} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rename,rm,lstat} from 'node:fs/promises';
 import {join,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 export function remoteOrigin(value){
@@ -24,4 +24,21 @@ export async function saveRemoteOrigin({directory,origin,expected}){
   await writeFile(temp,JSON.stringify({version:1,origin:next})+'\n',{flag:'wx',mode:0o600});
   await rename(temp,join(directory,'remote.json'));
  }finally{await rm(temp,{force:true});await rm(lock,{recursive:true});}
+}
+
+// Called only while runtime owns web.lock, before its server accepts requests.
+// A saved null is an explicit unregister decision and must survive subsequent launches.
+export async function registerStartupOrigin({directory,server,query}){
+ const path=join(directory,'remote.json');
+ try{await lstat(path);return await readRemoteOrigin(directory);}catch(e){if(e.code!=='ENOENT')throw e;}
+ if(!server)return null;
+ let origin;
+ try{
+  const state=await query(),name=state?.Self?.DNSName?.replace(/\.$/,'');
+  if(state?.BackendState!=='Running'||typeof name!=='string'||!/^([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.){2}ts\.net$/.test(name))return null;
+  origin=remoteOrigin('https://'+name);
+ }catch{return null;} // Missing/offline Tailscale must not prevent local work.
+ try{await writeFile(path,JSON.stringify({version:1,origin})+'\n',{flag:'wx',mode:0o600});}
+ catch(e){if(e.code!=='EEXIST')throw e;return await readRemoteOrigin(directory);}
+ return origin;
 }
