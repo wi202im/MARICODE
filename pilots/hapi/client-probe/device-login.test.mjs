@@ -33,3 +33,25 @@ test('restoration cannot undo a logout while identity is loading',async()=>{
 test('device storage is capped at four hours even for a longer issued expiry',()=>{
  const s=storage();saveDeviceLogin(s,token(999999),id,1000);assert.equal(readDeviceLogin(s,1000).expires,15400);
 });
+test('a device with a refresh secret keeps it past token expiry and refreshes once under a lock',async()=>{
+ const {refreshDeviceLogin,restoreDeviceLogin}=await import('./device-login.mjs');const s=storage(),refresh={id:'d1',secret:'old'};
+ assert.equal(saveDeviceLogin(s,token(2000),id,1000,refresh),true);
+ assert.deepEqual(readDeviceLogin(s,3000)?.refresh,refresh,'an expired token with a refresh secret is kept');
+ const calls=[];let held=0;const locks={request:async(name,fn)=>{assert.equal(name,'maricode-device-refresh');held++;try{return await fn();}finally{held--;}}};
+ const fetcher=async(path,options)=>{if(path==='/api/server-identity')return {ok:true,json:async()=>({serverId:id})};
+  calls.push([path,JSON.parse(options.body),options.headers['X-Merry-Server-Id'],held]);return {ok:true,status:200,json:async()=>({token:token(20000),device:{id:'d1',secret:'new'}})};};
+ const restored=await restoreDeviceLogin(s,fetcher,3000,locks);
+ assert.equal(restored.token,token(20000));assert.deepEqual(readDeviceLogin(s,3000).refresh,{id:'d1',secret:'new'});
+ assert.deepEqual(calls,[['/api/device-refresh',{id:'d1',secret:'old'},id,1]]);
+ // Still fresh: no second refresh.
+ await refreshDeviceLogin(s,fetcher,3000,locks);assert.equal(calls.length,1);
+});
+test('a refused refresh clears the device login; a raced one reads the other window\'s result',async()=>{
+ const {refreshDeviceLogin}=await import('./device-login.mjs');const s=storage();
+ saveDeviceLogin(s,token(2000),id,1000,{id:'d1',secret:'old'});
+ await assert.rejects(refreshDeviceLogin(s,async()=>({ok:false,status:401,json:async()=>({error:'끝났습니다'})}),3000),/끝났습니다/);
+ assert.equal(s.getItem(deviceLoginKey),null);
+ saveDeviceLogin(s,token(2000),id,1000,{id:'d1',secret:'old'});
+ const raced=await refreshDeviceLogin(s,async()=>{saveDeviceLogin(s,token(20000),id,3000,{id:'d1',secret:'new'});return {ok:false,status:409,json:async()=>({})};},3000);
+ assert.equal(raced.token,token(20000));
+});

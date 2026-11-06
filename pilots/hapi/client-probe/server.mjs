@@ -57,7 +57,7 @@ export function allowedRoute(method,url,sessionId) {
   if(p!==base+'/messages/queued-state'&&/^\/messages\/[A-Za-z0-9_-]{1,80}(\/steer)?$/.test(p.slice(base.length))&&p.startsWith(base+'/messages/')&&!url.search)return p.endsWith('/steer')?method==='POST':method==='DELETE';
   return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork','/abort'].some(x=>p===base+x);
 }
-export function createServer({cleanStart=false,appReset=null,pairing,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
+export function createServer({cleanStart=false,appReset=null,pairing,deviceLogins,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
   if(runnerConfig&&(runnerConfig.accountConfig!==accountConfig||new URL(runnerConfig.hubUrl).origin!==new URL(upstream).origin))throw Error('Runner must use the displayed account configuration and Hub');
   if(runnerConfig&&(handoffTarget||taskTarget))throw Error('Runner workspace cannot use a different fixed task target');
   const environment=environmentPath?createEnvironment(environmentPath):null;
@@ -232,6 +232,8 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
         if(req.headers['x-merry-server-id']&&req.headers['x-merry-server-id']!==await serverIdentity(environmentPath+'.identity.json')){res.writeHead(403).end();return;}
         if(!local&&u.pathname==='/api/events'){remoteStreams.add(res);res.on('close',()=>remoteStreams.delete(res));}
       }
+      // A device revoked at this server loses its current token here too, before HAPI's own 4-hour expiry.
+      if(deviceLogins&&req.headers.authorization?.startsWith('Bearer ')&&await deviceLogins.revoked(req.headers.authorization.slice(7))){res.writeHead(401).end();return;}
       const children=handoffs?await handoffs.list():[];
       let available=[...sessions,...children,...(trialTasks?await trialTasks.list():[]),...(taskTarget?[...await tasks.list(),...await projectHandoffs.list()].map(r=>({...r,project:r.project??taskTarget.project,scope:'personal'})):[])];
       const runnerWorkspace=typeof runnerService?.workspace==='function';
@@ -248,9 +250,28 @@ export function createServer({cleanStart=false,appReset=null,pairing,desktopAcce
       if(pairing&&u.pathname==='/api/pair'){
         if(req.method!=='POST'||u.search){res.writeHead(405).end();return;}
         let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>256){res.writeHead(413).end();return;}}
-        try{const token=await pairing.redeem(JSON.parse(raw).code);if(typeof token!=='string'||!token)throw Error('Login unavailable');res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify({token}));}
+        // Staying signed in registers this device for refresh; the name is checked before the one-time code is spent.
+        let input;try{input=JSON.parse(raw);if(input.device!==undefined&&(!deviceLogins||typeof input.device!=='string'||!input.device.trim()||input.device.length>60||/[\u0000-\u001f]/.test(input.device)))throw Error();}catch{res.writeHead(400).end();return;}
+        try{const token=await pairing.redeem(input.code);if(typeof token!=='string'||!token)throw Error('Login unavailable');const device=input.device===undefined?undefined:await deviceLogins.register(input.device,token);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify({token,...(device?{device}:{})}));}
         catch(error){res.writeHead(error.status===401?401:503,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.status===401,error:error.status===401?error.message:'로그인을 발급하지 못했습니다. 서버 Mac의 상태를 확인하세요.'}));}
         return;
+      }
+      if(deviceLogins&&u.pathname==='/api/device-refresh'){
+        if(req.method!=='POST'||u.search){res.writeHead(405).end();return;}
+        let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>512){res.writeHead(413).end();return;}}
+        let input;try{input=JSON.parse(raw);if(typeof input.id!=='string'||input.id.length>64||typeof input.secret!=='string'||input.secret.length>128||![undefined,'forget'].includes(input.action))throw Error();}catch{res.writeHead(400).end();return;}
+        try{const out=input.action==='forget'?(await deviceLogins.forget(input.id,input.secret),{forgotten:true}):await deviceLogins.refresh(input.id,input.secret);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify(out));}
+        catch(error){const status=[401,409].includes(error.status)?error.status:503;res.writeHead(status,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:status!==503,error:status===503?'로그인을 갱신하지 못했습니다. 서버 Mac의 상태를 확인하세요.':error.message}));}
+        return;
+      }
+      if(deviceLogins&&u.pathname==='/api/devices'){
+        // Like the pairing code: only the server Mac's own signed-in app may list or revoke devices.
+        if(!localImport||u.search||!['GET','POST'].includes(req.method)){res.writeHead(403).end();return;}
+        try{const check=await fetch(new URL('/api/sessions',target),{headers:{authorization:req.headers.authorization??''},redirect:'error',signal:AbortSignal.timeout(5000)});if(!check.ok){res.writeHead(check.status===401?401:403).end();return;}}catch{res.writeHead(503).end();return;}
+        if(req.method==='POST'){let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>256){res.writeHead(413).end();return;}}
+         let input;try{input=JSON.parse(raw);if(input.action!=='revoke'||typeof input.id!=='string'||input.id.length>64)throw Error();}catch{res.writeHead(400).end();return;}
+         await deviceLogins.revoke(input.id);}
+        res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify({devices:await deviceLogins.list()}));return;
       }
       if(u.pathname==='/api/conversations/prepare'){
         if(req.method!=='POST'||u.search||!runnerService?.generalChat){res.writeHead(405).end();return;}

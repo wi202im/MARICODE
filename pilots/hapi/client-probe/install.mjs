@@ -1,4 +1,4 @@
-import {saveDeviceLogin,validServerId} from './device-login.mjs';
+import {saveDeviceLogin,validServerId,deviceLabel} from './device-login.mjs';
 // The QR link opens this page with a one-time pairing code in the fragment (never sent to the server).
 // Chrome-family installs share the browser's storage, so we log in here and the installed app opens signed in.
 // Apple WebKit (iPhone/iPad, Mac Safari) keeps installed apps' storage apart: keep the code for the installed app.
@@ -12,9 +12,9 @@ const ua=navigator.userAgent,appleWebKit=/iPhone|iPad|iPod/.test(ua)||/Macintosh
 async function login(){
  const identity=await fetch('/api/server-identity',{credentials:'omit',redirect:'error',signal:AbortSignal.timeout(8000)});
  const serverId=identity.ok?(await identity.json()).serverId:null;if(!validServerId(serverId))throw Error('서버 신원을 확인하지 못했습니다.');
- const r=await fetch('/api/pair',{method:'POST',headers:{'X-Merry-Protocol':'1','Content-Type':'application/json'},body:JSON.stringify({code}),signal:AbortSignal.timeout(15000)});
+ const r=await fetch('/api/pair',{method:'POST',headers:{'X-Merry-Protocol':'1','Content-Type':'application/json'},body:JSON.stringify({code,device:deviceLabel()}),signal:AbortSignal.timeout(15000)});
  const body=await r.json().catch(()=>({}));if(!r.ok||typeof body.token!=='string')throw Error(body.error??'로그인하지 못했습니다.');
- if(!saveDeviceLogin(localStorage,body.token,serverId))throw Error('이 브라우저에 로그인을 보관하지 못했습니다.');
+ if(!saveDeviceLogin(localStorage,body.token,serverId,undefined,body.device))throw Error('이 브라우저에 로그인을 보관하지 못했습니다.');
 }
 if(code){
  window.history.replaceState(null,'',location.pathname);

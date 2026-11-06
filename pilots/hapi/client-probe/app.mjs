@@ -19,7 +19,7 @@ import './vendor/vscode-elements/bundled.js';
 import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
-import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,validServerId,deviceLoginKey} from './device-login.mjs';
+import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,refreshDeviceLogin,readDeviceLogin,deviceLabel,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
 import {createReadRecovery,connectionFailure,desktopRelogin} from './reconnect.mjs';
@@ -279,7 +279,9 @@ async function openWorkspace(){
  if(workspaceLayout){await configureTasks(config);refreshCatalog();}workspaceOpened=true;
 }
 // A QR link carries the one-time code in the fragment: take it out of the address and pre-fill the login.
-{const code=/^#code=([A-Z0-9]{4}-[A-Z0-9]{4})$/.exec(location.hash)?.[1];if(code){window.history.replaceState(null,'',location.pathname+location.search);$('token').value=code;}}
+// An installed app (or a QR login) usually wants to stay signed in, so that choice starts checked there.
+{const code=/^#code=([A-Z0-9]{4}-[A-Z0-9]{4})$/.exec(location.hash)?.[1];if(code){window.history.replaceState(null,'',location.pathname+location.search);$('token').value=code;}
+ if(code||matchMedia('(display-mode: standalone)').matches||navigator.standalone===true){$('remember-device').checked=true;$('remember-login').checked=false;}}
 $('login-form').addEventListener('submit',async e=>{
  e.preventDefault();recovery?.stop();epoch++;streamController?.abort();token='';deviceServerId='';clearDeviceLogin(deviceStorage);saveTabToken(sessionStorage,'',false);const button=e.submitter;button.disabled=true;const credential=$('token').value;$('token').value='';const attempt=epoch;
  try{
@@ -290,12 +292,12 @@ $('login-form').addEventListener('submit',async e=>{
    deviceServerId=id;
   }
   // An 8-character XXXX-XXXX value is a one-time pairing code, never an access token.
-  const result=/^[A-Za-z0-9]{4}[-\s]?[A-Za-z0-9]{4}$/.test(credential.trim())?await api('/api/pair',{method:'POST',body:{code:credential.trim()}}):await api('/api/auth',{method:'POST',body:{accessToken:credential}});
+  const result=/^[A-Za-z0-9]{4}[-\s]?[A-Za-z0-9]{4}$/.test(credential.trim())?await api('/api/pair',{method:'POST',body:{code:credential.trim(),...($('remember-device').checked?{device:deviceLabel()}:{})}}):await api('/api/auth',{method:'POST',body:{accessToken:credential}});
   if(attempt!==epoch)return;
   if(typeof result.token!=='string'||!result.token)throw Error('로그인 응답을 확인하지 못했습니다.');
   token=result.token;
-  const saved=$('remember-device').checked?saveDeviceLogin(deviceStorage,token,deviceServerId):saveTabToken(sessionStorage,token,$('remember-login').checked);
-  beginRecovery();if(!saved)notice('로그인 정보를 보관할 수 없어 다시 열면 재로그인이 필요합니다.');
+  const saved=$('remember-device').checked?saveDeviceLogin(deviceStorage,token,deviceServerId,undefined,result.device):saveTabToken(sessionStorage,token,$('remember-login').checked);
+  beginRecovery();scheduleDeviceRefresh();if(!saved)notice('로그인 정보를 보관할 수 없어 다시 열면 재로그인이 필요합니다.');
  }catch(e){if(attempt===epoch)notice(e.message);}finally{button.disabled=false;}
 });
 async function selectSession(id){
@@ -320,7 +322,18 @@ async function selectSession(id){
   const selectedEpoch=epoch;tab(false);render();await refresh();if(selectedEpoch===epoch)stream(selectedEpoch);
 }
 $('session-select').onchange=()=>selectSession($('session-select').value).catch(e=>notice(e.message));
+// A device registered at the server renews its 4-hour login before it ends, and once more if a request finds it ended.
+let deviceRefreshTimer=null,deviceRefreshing=null;
+function scheduleDeviceRefresh(){clearTimeout(deviceRefreshTimer);const saved=readDeviceLogin(deviceStorage);if(!saved?.refresh||saved.token!==token)return;
+ deviceRefreshTimer=setTimeout(()=>void refreshDevice(),Math.max(0,(saved.expires-600)*1000-Date.now()));}
+function refreshDevice(){
+ deviceRefreshing??=refreshDeviceLogin(deviceStorage,fetch).then(next=>{if(!next?.token)return false;token=next.token;deviceServerId=next.serverId;scheduleDeviceRefresh();return true;},e=>{notice(e.message);return false;}).finally(()=>{deviceRefreshing=null;});
+ return deviceRefreshing;
+}
 function clearLogin(message,state='login-needed'){
+ // Only a refused refresh ends the device login; a network failure keeps it for the next reload.
+ if(state==='expired'&&!desktopLogin&&readDeviceLogin(deviceStorage)?.refresh){const used=token;void refreshDevice().then(ok=>{if(token!==used&&ok){notice('로그인을 갱신했습니다. 실패한 요청은 다시 보내지 않았으니 결과를 확인한 뒤 다시 시도해 주세요.');beginRecovery();}else if(!ok&&readDeviceLogin(deviceStorage)?.refresh){showConnection('unavailable');}else if(!ok)clearLogin(message,'login-needed');});return;}
+ clearTimeout(deviceRefreshTimer);
  // Mac app: an expired login (4h) gets a fresh one from the app instead of the login screen; the unsent draft is kept.
  if(state==='expired'&&desktopLogin&&desktopRelogin(sessionStorage)){rememberChat();const d=chatDrafts.read(sessionId);try{if(sessionId&&(d.text||d.note))sessionStorage.setItem('maricode-desktop-draft',JSON.stringify({id:sessionId,...d}));}catch{}recovery?.stop();epoch++;streamController?.abort();token='';notice('로그인이 만료되어 다시 연결합니다.');location.replace('/workspace');return;}
   sessionTerminalEnabled=false;$('terminal-offer')?.remove();attachmentComposer?.clearAll();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
@@ -331,7 +344,8 @@ function clearLogin(message,state='login-needed'){
   if(workspaceLayout){$('account-list').replaceChildren();$('account-host').textContent='연결 상태를 조회해 주세요.';$('account-notice').textContent='';}
   $('workspace').hidden=true;$('login').hidden=false;fileTabs?.clear();$('messages').replaceChildren();$('file-content').textContent='';$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();showConnection(state);render();notice(message);
 }
-$('logout').onclick=()=>clearLogin('로그아웃했습니다. 보관한 인증 토큰을 삭제했습니다. 불확실한 전송의 식별자는 재로그인 후 확인합니다.');
+// Logging out also ends this device's registration at the server (best effort: unused ones expire in 30 days).
+$('logout').onclick=()=>{const saved=readDeviceLogin(deviceStorage);if(saved?.refresh)fetch('/api/device-refresh',{method:'POST',credentials:'omit',headers:{'X-Merry-Protocol':'1','Content-Type':'application/json'},body:JSON.stringify({...saved.refresh,action:'forget'})}).catch(()=>{});clearLogin('로그아웃했습니다. 보관한 인증 토큰을 삭제했습니다. 불확실한 전송의 식별자는 재로그인 후 확인합니다.');};
 $('older').onclick=async()=>{
   if($('older').disabled)return;
   const mine=epoch,held=history,cursor=history.cursor;loadingHistory=true;render();
@@ -683,7 +697,15 @@ async function pairingAction(action){
   renderPairingExpiry();
  }catch{$('pairing-expiry').textContent='코드를 만들지 못했습니다. 이 Mac의 앱에서 로그인한 상태인지 확인하세요.';}
 }
-function openPairing(){if(!pairingEnabled)return;$('pairing-dialog').showModal();pairingAction('issue');}
+// Devices that stay signed in; revoking ends refresh and the device's current token at this server.
+async function renderDevices(action){
+ const list=$('pairing-devices');if(!list)return;
+ try{const r=await api('/api/devices',action?{method:'POST',body:action}:{});list.replaceChildren(...(r.devices.length?r.devices.map(d=>{const li=document.createElement('li'),name=document.createElement('span'),when=document.createElement('small'),revoke=document.createElement('button');
+   name.textContent=d.name;when.textContent=' · 마지막 사용 '+new Date(d.lastUsed).toLocaleString();revoke.type='button';revoke.textContent='끊기';revoke.setAttribute('aria-label',d.name+' 연결 끊기');
+   revoke.onclick=()=>{revoke.disabled=true;void renderDevices({action:'revoke',id:d.id});};li.append(name,when,revoke);return li;}):[Object.assign(document.createElement('li'),{textContent:'없음'})]));}
+ catch{list.replaceChildren(Object.assign(document.createElement('li'),{textContent:'기기 목록을 불러오지 못했습니다.'}));}
+}
+function openPairing(){if(!pairingEnabled)return;$('pairing-dialog').showModal();pairingAction('issue');void renderDevices();}
 // In the Mac app the native window draws the QR from the registered Tailscale address and this code.
 async function showPairingQR(){if(!(pairingExpires>Date.now()))await pairingAction('issue');const code=$('pairing-code').textContent;if(pairingExpires>Date.now()&&/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code))window.webkit.messageHandlers.maricode.postMessage('pairing-qr:'+code);}
 if(workspaceLayout&&window.webkit?.messageHandlers?.maricode){$('pairing-qr').hidden=false;$('pairing-qr').onclick=showPairingQR;}
@@ -769,11 +791,12 @@ async function restoreLogin(){
  try{if(!localToken)device=await restoreDeviceLogin(deviceStorage,fetch);}catch(e){showConnection('login-needed');notice(e.message);return;}
  if(attempt!==epoch)return;
  const saved=localToken||device?.token||readTabToken(sessionStorage);if(!saved){showConnection('login-needed');return;}
- deviceServerId=device?.serverId??'';token=saved;$('remember-login').checked=!localToken&&!device;$('remember-device').checked=!!device;beginRecovery();
+ deviceServerId=device?.serverId??'';token=saved;$('remember-login').checked=!localToken&&!device;$('remember-device').checked=!!device;beginRecovery();scheduleDeviceRefresh();
 }
 $('remember-device').onchange=()=>{if($('remember-device').checked)$('remember-login').checked=false;};
 $('remember-login').onchange=()=>{if($('remember-login').checked)$('remember-device').checked=false;};
-window.addEventListener('storage',e=>{if(e.key===deviceLoginKey&&e.newValue===null&&deviceServerId)clearLogin('다른 창에서 로그아웃했습니다.');});
+window.addEventListener('storage',e=>{if(e.key===deviceLoginKey&&e.newValue===null&&deviceServerId)clearLogin('다른 창에서 로그아웃했습니다.');
+ else if(e.key===deviceLoginKey&&deviceServerId){const s=readDeviceLogin(deviceStorage);if(s?.serverId===deviceServerId&&s.expires>Date.now()/1000){token=s.token;scheduleDeviceRefresh();}}});
 restoreLogin();
 
 

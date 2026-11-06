@@ -437,6 +437,40 @@ test('pairing codes are issued only to the signed-in local app and redeem once f
  assert.equal((await post('/api/pair',{code},{origin:'https://untrusted.example'})).status,403);
 });
 
+test('a paired device that stays signed in refreshes remotely; only the local app lists and revokes devices',async t=>{
+ const {createPairing}=await import('./pairing.mjs');const {createDeviceLogins}=await import('./device-logins.mjs');
+ const {mkdtemp,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+ const dir=await mkdtemp(join(tmpdir(),'device-server-'));
+ const b64=v=>Buffer.from(JSON.stringify(v)).toString('base64url');let n=0;const jwt=()=>`${b64({alg:'HS256'})}.${b64({exp:Math.floor(Date.now()/1000)+3600,n:++n})}.s`;
+ const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.writeHead(req.headers.authorization==='Bearer fixture'?200:401).end('{"sessions":[]}');});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));
+ const pairing=createPairing({authenticate:async()=>jwt()}),deviceLogins=createDeviceLogins({path:join(dir,'devices.json'),authenticate:async()=>jwt()});
+ const server=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,pairing,deviceLogins});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(()=>{server.closeAllConnections();server.close();hub.closeAllConnections();hub.close();return rm(dir,{recursive:true,force:true});});
+ const url=`http://127.0.0.1:${server.address().port}`,remote={'x-forwarded-for':'100.64.0.9'};
+ const post=(path,body,headers={})=>fetch(url+path,{method:'POST',headers:{origin:url,'content-type':'application/json',...headers},body:JSON.stringify(body)});
+ const issue=async()=>(await (await post('/api/pairing-code',{action:'issue'},{authorization:'Bearer fixture'})).json()).code;
+ // A bad device name is refused before the one-time code is spent.
+ let code=await issue();assert.equal((await post('/api/pair',{code,device:'x'.repeat(61)},remote)).status,400);
+ const paired=await (await post('/api/pair',{code,device:'iPhone · Safari'},remote)).json();
+ assert.ok(paired.token&&paired.device.id&&paired.device.secret);
+ const refreshed=await post('/api/device-refresh',paired.device,remote);assert.equal(refreshed.status,200);
+ const next=await refreshed.json();assert.notEqual(next.device.secret,paired.device.secret);
+ assert.equal((await post('/api/device-refresh',{id:paired.device.id,secret:'nope'},remote)).status,401);
+ assert.equal((await fetch(url+'/api/devices',{headers:{authorization:'Bearer fixture',...remote}})).status,403);
+ const listed=await (await fetch(url+'/api/devices',{headers:{authorization:'Bearer fixture'}})).json();
+ assert.deepEqual(listed.devices.map(d=>d.name),['iPhone · Safari']);
+ assert.equal((await post('/api/devices',{action:'revoke',id:paired.device.id},{authorization:'Bearer fixture'})).status,200);
+ assert.equal((await post('/api/device-refresh',next.device,remote)).status,401);
+ // Its last token is refused at this server even though HAPI would still accept it.
+ assert.equal((await fetch(url+'/api/sessions',{headers:{authorization:'Bearer '+next.token}})).status,401);
+ // Logging out forgets a device; a plain code login does not register one.
+ code=await issue();const other=await (await post('/api/pair',{code,device:'Android · Chrome'},remote)).json();
+ assert.equal((await post('/api/device-refresh',{...other.device,action:'forget'},remote)).status,200);
+ code=await issue();assert.deepEqual(Object.keys(await (await post('/api/pair',{code},remote)).json()),['token']);
+ assert.deepEqual((await (await fetch(url+'/api/devices',{headers:{authorization:'Bearer fixture'}})).json()).devices,[]);
+});
+
 test('the session terminal opens only from authenticated same-origin local requests with a bounded body',async t=>{
  let starts=0,body=null;const authCheck=auth=>{if(auth!=='Bearer fixture')throw Object.assign(Error('auth'),{status:401});};
  const runnerService={sessionTerminalStatus:async auth=>{authCheck(auth);return {phase:'idle'};},openSessionTerminal:async(auth,input)=>{authCheck(auth);starts++;body=input;return {phase:'opening',agent:'claude'};}};

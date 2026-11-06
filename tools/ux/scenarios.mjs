@@ -25,12 +25,19 @@ export const scenarios=[
   ['QR 링크 열기',async ui=>{const {code}=globalThis.uxPairing.issue();await ui.evaluate(`location.href='/install#code=${code}';true`);await ui.wait(1500);return {changes:1};}],
   ['Chrome에서는 바로 로그인되고 코드는 주소에서 빠짐',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([document.getElementById('pair-status')?.textContent,location.hash,!!localStorage.getItem('merry-device-login-v1')])"));if(!r[0].includes('로그인했습니다')||r[1]!==''||!r[2])throw Error('상태: '+JSON.stringify(r));return {changes:1};}],
   ['작업 화면 열기',ui=>ui.click('#pair-open')],
-  ['로그인된 작업 화면',async ui=>{await ui.wait(1500);if(!await ui.evaluate("document.getElementById('login')?.hidden===true"))throw Error('로그인 화면이 남음');return {changes:1};}]]},
+  ['로그인된 작업 화면',async ui=>{await ui.wait(1500);if(!await ui.evaluate("document.getElementById('login')?.hidden===true"))throw Error('로그인 화면이 남음');return {changes:1};}],
+  ['4시간이 다 되어 가면 다시 열 때 자동 갱신',async ui=>{const before=await ui.evaluate("(()=>{const k='merry-device-login-v1',s=JSON.parse(localStorage.getItem(k));s.expires=Math.floor(Date.now()/1000)+60;localStorage.setItem(k,JSON.stringify(s));return s.refresh.secret;})()");
+   await ui.evaluate("location.reload();true");await ui.wait(2500);
+   const r=JSON.parse(await ui.evaluate("JSON.stringify([JSON.parse(localStorage.getItem('merry-device-login-v1'))?.refresh?.secret,document.getElementById('login')?.hidden])"));
+   if(!r[0]||r[0]===before||r[1]!==true)throw Error('갱신 안 됨: '+JSON.stringify(r));return {changes:1};}]]},
  {name:'iPhone에서 QR 열기',goal:'iPhone은 설치 앱이 저장소를 따로 쓰므로 코드를 아껴 두고 홈 화면 추가를 안내한다',steps:[
   ['iPhone Safari로 QR 링크 열기',async ui=>{await ui.send('Emulation.setUserAgentOverride',{userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'});
    const {code}=globalThis.uxPairing.issue();globalThis.uxIphoneCode=code;await ui.evaluate(`location.href='/install#code=${code}';true`);await ui.wait(1500);return {changes:1};}],
   ['홈 화면 추가 안내, 코드는 쓰지 않음',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([document.getElementById('pair-status')?.textContent,document.getElementById('pair-open')?.getAttribute('href'),location.hash])"));
    if(!r[0].includes('홈 화면에 추가')||r[1]!=='/workspace#code='+globalThis.uxIphoneCode||r[2]!==''||!globalThis.uxPairing.status.active)throw Error('상태: '+JSON.stringify(r));return {changes:1};}]]},
+ {name:'로그인 유지 기기 끊기',goal:'서버 Mac에서 로그인 유지 중인 기기를 보고 끊는다',session:ids.claude,steps:[
+  ['다른 기기 연결 코드 열기',ui=>ui.click('#pairing-open')],['기기 목록에 휴대폰이 보임',ui=>ui.expectVisible('#pairing-devices button')],
+  ['끊기',ui=>ui.click('#pairing-devices button')],['목록이 비어 있음',async ui=>{await ui.wait(800);const t=await ui.evaluate("document.getElementById('pairing-devices').textContent");if(t!=='없음')throw Error('남은 목록: '+t);return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],
