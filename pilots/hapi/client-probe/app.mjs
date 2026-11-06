@@ -1,3 +1,4 @@
+import {setupPanelLayout} from './panel-layout.mjs';
 import {cliProfileControls} from './cli-profile-ui.mjs';
 import {supportedChatCommands,chatCommandName,chatCommandSupported} from './command-support.mjs';
 import {bindComposerEnter} from './composer-input.mjs';
@@ -801,6 +802,7 @@ function updateSidebarToggle(){
 }
 
 if(workspaceLayout){
+ setupPanelLayout({shell:document.querySelector('.shell'),sidebar:$('sidebar'),inspector:$('inspector'),storage:deviceStorage});
  $('git-summary').onclick=()=>revealInPanel('info-git');$('git-refresh').onclick=()=>{loadGit(true);gitReview?.reset();};
  $('session-info-tab').onclick=()=>workspacePanel('info');$('info-tab').onclick=()=>workspacePanel(workspaceView==='chat'?lastInspector:'chat');$('back-chat').onclick=()=>workspacePanel('chat');
  updateSidebarToggle();

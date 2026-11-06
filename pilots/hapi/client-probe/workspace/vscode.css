@@ -106,3 +106,38 @@ textarea{font-size:13px}
 .accounts-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface0)}
 .accounts-dialog h2{font-size:13px;margin:0;font-weight:600}.accounts-dialog .account-panel{padding:4px 16px 16px;border:0;margin:0}
 .sidebar-bottom #open-accounts,.sidebar-bottom #pairing-open{width:28px;height:28px;min-height:28px;padding:5px;flex-shrink:0}
+
+/* Shared desktop geometry, including the browser workspace. */
+.sidebar,.live-inspector{position:relative}
+.panel-resizer{position:absolute;top:0;bottom:0;width:6px;z-index:36;cursor:col-resize;touch-action:none;outline:none}
+.panel-resizer-left{right:0}.panel-resizer-right{left:0}
+.panel-resizer::after{content:"";position:absolute;inset:0 2px;background:transparent}
+.panel-resizer:hover::after,.panel-resizer:focus-visible::after{background:var(--focus)}
+.resizing-panels,.resizing-panels *{cursor:col-resize!important;user-select:none!important}
+.resizing-panels .panel-resizer::after{background:var(--focus)}
+body:not(.maricode-desktop) .topbar{background:var(--sidebar)}
+@media(min-width:761px){
+ .live-inspector{flex-shrink:0}.sidebar{flex-shrink:0}
+}
+@media(max-width:760px){
+ .panel-resizer{display:none}
+ .shell>.sidebar{position:fixed;width:min(340px,90vw);padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);box-shadow:12px 0 32px #0004}
+ .sidebar .brand{height:48px;justify-content:flex-start;border-bottom:1px solid var(--border);margin-bottom:8px}
+ .sidebar .brand .mobile{margin-left:auto}
+ .workspace{position:relative}
+ .topbar{height:calc(48px + env(safe-area-inset-top));min-height:calc(48px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);padding-inline:8px}
+ #open-nav,#info-tab,.connection-menu>summary{width:40px;height:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center}
+ .topbar .workspace-heading h1{font-size:13px}
+ .workspace.inspector-visible .conversation{display:flex}
+ .workspace.inspector-visible .conversation>:not(.topbar){visibility:hidden;pointer-events:none}
+ .workspace.inspector-visible .live-inspector{position:absolute;inset:calc(48px + env(safe-area-inset-top)) 0 0;width:100%;height:auto;z-index:34;border-top:1px solid var(--border)}
+ .inspector-head{padding-inline:12px;height:48px;min-height:48px}
+ .inspector-tabs button,#back-chat{min-height:40px}
+ .live-files,.session-info{padding:16px}
+ .composer-wrap{padding-inline:10px}
+ .composer-wrap #send-form{border-radius:10px}
+ .composer-options button{min-height:40px;max-width:145px}
+ #send{width:40px;height:40px;min-height:40px}
+ .sidebar-bottom{height:48px;min-height:48px}
+ .sidebar-bottom button,.sidebar-bottom a{min-height:40px}
+}
