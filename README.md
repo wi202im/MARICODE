@@ -2,9 +2,9 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Maricode 1.1.1** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.1.1/MARICODE-1.1.1-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.1.1). HAPI 0.33.3 and Node are included.
+**Maricode 1.1.2** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.1.2/MARICODE-1.1.2-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.1.2). HAPI 0.33.3 and Node are included.
 
-**1.1.1 update:** Preserves settings, project registrations and conversations created in 1.1.0. This version does not run the 1.1.0 full reset. Finish active work and quit the previous app before replacing it.
+**1.1.2 update:** Preserves settings, project registrations and conversations created in 1.1.0. This version does not run the 1.1.0 full reset. Finish active work and quit the previous app before replacing it.
 
 
 App, menu and Dock names use **Maricode**; the native title bar displays the installed version. HAPI corresponding source is provided as a separate release attachment, with licenses and notices retained inside the app.
@@ -16,7 +16,7 @@ App, menu and Dock names use **Maricode**; the native title bar displays the ins
 - Default new sessions to the most recent AI in the same workspace, carrying over supported model/reasoning settings without copying approval grants.
 - Import selected local Claude Code or Codex conversations for the project, preserve the originals and automatically resume the copied native session through HAPI.
 - Read conversations, tool activity and file changes; answer questions and approval requests near the composer.
-- Register named AI accounts and switch one active account per AI; conversations resume only from their original account profile.
+- Connect each AI to its existing official CLI settings and login; no app-owned AI account copies are created.
 - Inspect Git diffs, hand recent conversation text to another AI as a draft, or branch supported Codex conversations at a message.
 - Use model/reasoning/access controls, supported Codex Fast/plan options, context usage, command/skill suggestions, conversation search and in-app turn alerts.
 - Connect another device with a short-lived one-time code, without putting a long-lived token in a URL.
@@ -53,10 +53,10 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 
 ## Verification and limitations
 
-- Version 1.1.1 includes updated automated and synthetic UI checks; see the release notes for results. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
-- Local CLI chat cards support Claude/Codex MCP listing and HTTP add/remove, plugin listing, account status, and Codex diagnostics. Isolated real CLI checks passed; current card rendering and live HAPI reconnect with MCP tools remain unverified.
+- Version 1.1.2 includes updated automated and synthetic UI checks; see the release notes for results. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
+- CLI-only commands open the same HAPI session in an official terminal UI. The previous MCP/plugin/account/diagnostic command cards have been removed. Actual terminal handoff and return still need live verification.
 - No Intel Mac build or App Store release. The app downloads a verified DMG; replacing the installed app is manual and preserves the external data directory.
-- Accounts are registered by name, but each AI has only one active account at a time. Switching is blocked during active or unconfirmed work. Different subscription accounts and Claude account switching have not been fully tested.
+- Each AI uses one connected official CLI settings location. Changing that connection is blocked while its sessions are active or unconfirmed.
 - No QR image, cross-machine automatic session synchronization, MCP OAuth/stdio editing, built-in terminal or subscription quota display. Connection codes still require an accessible LAN/Tailscale server.
 - Import does not copy credentials, MCP/settings, memory or attachment files. Originals and copies diverge after import. Codex subfolder discovery has automated coverage; resuming those specific subfolder conversations remains unverified.
 - AI settings and approval choices depend on provider/HAPI support. Fast/plan option values were verified at the server; their actual response differences were not. Claude does not support the exposed per-message branching flow.
