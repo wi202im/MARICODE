@@ -746,6 +746,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     self.open.isEnabled = true; self.stop.isEnabled = true; self.connect.isEnabled = true; self.remoteStart.isEnabled = true
                     self.restoreAfterReleaseTransition()
                 }
+                if line == "REMOTE_STARTING" { self.remoteConfirmed = false; self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = false; self.status.stringValue = "저장된 주소의 HTTPS 전달을 복원하고 있습니다… 로컬 작업은 계속할 수 있습니다."; self.pushRemoteState() }
                 if line == "REMOTE_ON" { self.remoteConfirmed = true; self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 실행 중 · 등록 주소로 접속하세요. 원격 로그인은 별도로 필요합니다."; self.pushRemoteState() }
                 if line == "REMOTE_OFF" { self.remoteConfirmed = false; self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "이 앱의 HTTPS 전달을 종료했습니다. 로컬 작업은 유지됩니다."; self.pushRemoteState() }
                 if line == "REMOTE_FAILED" { self.remoteConfirmed = false; self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "전달을 시작하지 못했습니다. Tailscale 연결·기기 주소·서버 역할·기존 Serve 설정을 확인하세요. 기존 설정은 변경하지 않았습니다."; self.pushRemoteState() }

@@ -89,3 +89,37 @@ test('pairing preparation discovers and starts once after enabling access, prese
   phase='running';await assert.rejects(runtime.prepareRemote());assert.equal(starts,1);
  }finally{release();await runtime?.close();await rm(directory,{recursive:true,force:true});}
 });
+
+test('server relaunch restores HTTPS at the saved origin without blocking local readiness or duplicating starts',async()=>{
+ const {startDesktopWeb}=await import('./runtime.mjs'),{createEnvironment}=await import('../../pilots/hapi/client-probe/environment.mjs'),{writeFile}=await import('node:fs/promises');
+ const directory=await mkdtemp(join(tmpdir(),'maricode-restore-'));let runtime,starts=[],phase='stopped',release;
+ const deps={backend:async()=>({upstream:'http://127.0.0.1:1',authenticate:async()=>'fixture',close:async()=>{}}),forward:()=>({get phase(){return phase;},start:async args=>{starts.push(args);await new Promise(r=>release=r);phase='running';},stop:async()=>{phase='stopped';}})};
+ try{
+  await createEnvironment(join(directory,'environment.json')).save({revision:0,roles:{local:true,server:true,remote:false}});
+  await writeFile(join(directory,'backend.json'),JSON.stringify({version:1,binary:'/bin/echo'}));
+  await saveRemoteOrigin({directory,origin:'https://mini.tail123.ts.net:8445',expected:null});
+  for(let i=0;i<2;i++){
+   runtime=await startDesktopWeb({directory,port:0},deps);
+   assert.ok(runtime.remoteStartup instanceof Promise);
+   for(let j=0;j<50&&!release;j++)await new Promise(r=>setTimeout(r,5));
+   assert.equal(starts.length,i+1);assert.equal((await fetch(runtime.url+'/setup')).status,200);
+   assert.equal(starts[i].origin,'https://mini.tail123.ts.net:8445');assert.equal(starts[i].target,runtime.url);
+   await assert.rejects(runtime.prepareRemote());release();release=null;assert.equal(await runtime.remoteStartup,true);
+   await runtime.prepareRemote();assert.equal(starts.length,i+1);await runtime.close();runtime=null;
+  }
+ }finally{release?.();await runtime?.remoteStartup;await runtime?.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('startup forwarding failure leaves local app usable; disabled or unregistered access never starts',async()=>{
+ const {startDesktopWeb}=await import('./runtime.mjs'),{createEnvironment}=await import('../../pilots/hapi/client-probe/environment.mjs'),{writeFile}=await import('node:fs/promises');
+ for(const [server,origin,expected] of [[true,'https://mini.tail123.ts.net',false],[false,'https://mini.tail123.ts.net',null],[true,null,null]]){
+  const directory=await mkdtemp(join(tmpdir(),'maricode-restore-fail-'));let runtime,starts=0;
+  try{
+   await createEnvironment(join(directory,'environment.json')).save({revision:0,roles:{local:true,server,remote:false}});
+   await writeFile(join(directory,'backend.json'),JSON.stringify({version:1,binary:'/bin/echo'}));await saveRemoteOrigin({directory,origin,expected:null});
+   runtime=await startDesktopWeb({directory,port:0},{backend:async()=>({upstream:'http://127.0.0.1:1',authenticate:async()=>'fixture',close:async()=>{}}),forward:()=>({phase:'stopped',start:async()=>{starts++;throw Error('offline or existing Serve');},stop:async()=>{}})});
+   assert.equal(await runtime.remoteStartup,expected);assert.equal(starts,expected===false?1:0);assert.equal((await fetch(runtime.url+'/setup')).status,200);
+   assert.equal(await readRemoteOrigin(directory),origin);
+  }finally{await runtime?.close();await rm(directory,{recursive:true,force:true});}
+ }
+});

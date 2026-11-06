@@ -70,7 +70,11 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
     await forward.start({origin:remote,target:`http://127.0.0.1:${web.address().port}`});
    }finally{if(forward.phase==='stopped')ownership.remoteStopped();remoteBusy=false;}
   }
-  return {url:`http://127.0.0.1:${web.address().port}`,appReset:reset.reset,get remotePhase(){return forward.phase;},
+  // Restore access after app replacement/relaunch. Local UI becomes ready independently;
+  // startRemote keeps the existing ownership, settings and duplicate-operation guards.
+  const remoteStartup=backend&&environment.roles.server&&remote
+   ?startRemote(remote).then(()=>true,()=>false):Promise.resolve(null);
+  return {url:`http://127.0.0.1:${web.address().port}`,appReset:reset.reset,remoteStartup,get remoteStarting(){return remoteBusy;},get remotePhase(){return forward.phase;},
   startRemote,prepareRemote:()=>startRemote(undefined,true),
   async stopRemote(){
    if(closed||closing||remoteBusy)throw Error('Remote operation pending');
@@ -100,6 +104,8 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   runtime=await startDesktopWeb({directory:process.argv[2],port:Number(process.argv[3]??61192),cleanInstall:process.argv[4]==='--clean-start-1.1.0',onForwardExit:()=>process.stdout.write('REMOTE_UNKNOWN\n')});
   if(runtime.appReset)process.stdout.write('APP_RESET\n');
   process.stdout.write('READY '+runtime.url+'\n');
+  if(runtime.remoteStarting)process.stdout.write('REMOTE_STARTING\n');
+  void runtime.remoteStartup.then(result=>{if(result!==null)process.stdout.write(result?'REMOTE_ON\n':runtime.remotePhase==='unknown'?'REMOTE_UNKNOWN\n':'REMOTE_FAILED\n');});
   let stopping=false;const stop=async()=>{if(stopping)return;stopping=true;try{await runtime.close();process.exit(0);}catch{stopping=false;process.stdout.write('STOP_BLOCKED\n');}};
   process.stdin.setEncoding('utf8');let input='';process.stdin.on('data',chunk=>{input+=chunk;let i;while((i=input.indexOf('\n'))!==-1){const command=input.slice(0,i);input=input.slice(i+1);if(command==='quit')void stop();else if(/^remote-prepare [a-f0-9-]{36}$/.test(command)&&!stopping){const request=command.slice(15);void runtime.prepareRemote().then(()=>process.stdout.write('REMOTE_ON\nPAIRING_READY '+request+'\n'),()=>process.stdout.write((runtime.remotePhase==='running'?'REMOTE_ON\n':runtime.remotePhase==='unknown'?'REMOTE_UNKNOWN\n':'REMOTE_FAILED\n')+'PAIRING_FAILED '+request+'\n'));}else if(command.startsWith('remote-start ')&&!stopping)void runtime.startRemote(command.slice(13)).then(()=>process.stdout.write('REMOTE_ON\n'),()=>process.stdout.write(runtime.remotePhase==='unknown'?'REMOTE_UNKNOWN\n':'REMOTE_FAILED\n'));else if(command==='remote-stop'&&!stopping)void runtime.stopRemote().then(()=>process.stdout.write('REMOTE_OFF\n'),()=>process.stdout.write('REMOTE_UNKNOWN\n'));else if(command==='connect'&&!stopping)void runtime.connect().then(()=>process.stdout.write('CONNECT_READY\n'),()=>process.stdout.write('CONNECT_FAILED\n'));}if(input.length>1024)input='';});process.stdin.on('end',()=>void stop());process.stdin.resume();
   process.on('SIGTERM',()=>void stop());process.on('SIGINT',()=>void stop());
