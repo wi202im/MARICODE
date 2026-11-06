@@ -3,13 +3,10 @@ import {questionDecision,requestQuestions} from './questions.mjs';
 import {uploadPayload} from './attachments.mjs';
 import {workspaceRequest} from './workspace-plans.mjs';
 import {gitSummary} from './git-status.mjs';
-import {createLanDiscovery} from './lan-discovery.mjs';
-import {createDiscovery} from './discovery.mjs';
 import {serverIdentity} from './server-identity.mjs';
 import {createRunnerSetup,runnerSetupReason} from './runner-setup.mjs';
 import {machineOptions} from './machine-setup.mjs';
 import {createAccountRegistration} from './account-registration.mjs';
-import {serverAddress} from './connections/registry.mjs';
 import {createAccounts} from './accounts.mjs';
 import {settingsView,settingChange} from './settings.mjs';
 import http from 'node:http';
@@ -57,11 +54,10 @@ export function allowedRoute(method,url,sessionId) {
   if(p!==base+'/messages/queued-state'&&/^\/messages\/[A-Za-z0-9_-]{1,80}(\/steer)?$/.test(p.slice(base.length))&&p.startsWith(base+'/messages/')&&!url.search)return p.endsWith('/steer')?method==='POST':method==='DELETE';
   return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork','/abort'].some(x=>p===base+x);
 }
-export function createServer({cleanStart=false,appReset=null,pairing,deviceLogins,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],clientOrigins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,discoveryService=createDiscovery(),lanDiscoveryService=createLanDiscovery(),runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
+export function createServer({cleanStart=false,appReset=null,pairing,deviceLogins,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
   if(runnerConfig&&(runnerConfig.accountConfig!==accountConfig||new URL(runnerConfig.hubUrl).origin!==new URL(upstream).origin))throw Error('Runner must use the displayed account configuration and Hub');
   if(runnerConfig&&(handoffTarget||taskTarget))throw Error('Runner workspace cannot use a different fixed task target');
   const environment=environmentPath?createEnvironment(environmentPath):null;
-  const clients=new Set(clientOrigins.map(serverAddress));
   const setupNonce=randomBytes(32).toString('hex'),remoteStreams=new Set();
   const uploads=new Map(),fileLinks=createFileLinks();
   const target=new URL(upstream),decisions=new Set(),archives=new Set(),sessionMutations=new Set(),settingLocks=new Set(),handoffs=handoffTarget?createHandoffs(handoffTarget):null;
@@ -86,23 +82,6 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
     try {
     // Workspace protocol is opt-in for existing unversioned clients. Reject before any side effect.
     if(req.headers['x-merry-protocol']!==undefined&&req.headers['x-merry-protocol']!=='1'){res.writeHead(426,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,error:'workspace-update-required'}));return;}
-    const crossClient=clients.has(req.headers.origin)&&!allowedOrigins.has(req.headers.origin);
-    if(crossClient){
-      const method=req.method==='OPTIONS'?req.headers['access-control-request-method']:req.method;
-      const historyRead=method==='GET'&&/^\/api\/sessions\/[a-zA-Z0-9-]+\/messages$/.test(u.pathname)&&u.search==='?limit=50';
-      const messageSend=method==='POST'&&/^\/api\/sessions\/[a-zA-Z0-9-]+\/messages(?:\/queued-state)?$/.test(u.pathname)&&!u.search;
-      const eventRead=method==='GET'&&u.pathname==='/api/events'&&/^\?sessionId=[a-zA-Z0-9-]+$/.test(u.search);
-      let fileRead=false;if((handoffTarget||runnerService?.target)&&method==='GET'&&/^\/api\/sessions\/[a-zA-Z0-9-]+\/(file|directory)$/.test(u.pathname)&&u.searchParams.size===1&&u.searchParams.has('path')){try{relativePath(u.searchParams.get('path'));fileRead=true;}catch{}}
-      const permissionWrite=method==='POST'&&/^\/api\/sessions\/[a-zA-Z0-9-]+\/permissions\/(?:[A-Za-z0-9_-]|%3[Aa]|:)+\/(approve|deny)$/.test(u.pathname)&&!u.search;
-      const clientRoute=permissionWrite||fileRead||eventRead||messageSend||historyRead||(method==='GET'&&(u.pathname==='/config'||u.pathname==='/api/server-identity'||/^\/api\/sessions\/[a-zA-Z0-9-]+$/.test(u.pathname)))||(method==='POST'&&u.pathname==='/api/auth');
-      if(!environment||!clientRoute||(u.search&&!historyRead&&!eventRead&&!fileRead)||!(await environment.read()).roles.server){res.writeHead(403).end();return;}
-      res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Vary','Origin');allowedOrigins.add(req.headers.origin);
-      if(req.method==='OPTIONS'){
-        const headers=(req.headers['access-control-request-headers']??'').toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
-        if(headers.some(h=>!['authorization','content-type','x-merry-server-id'].includes(h))){res.writeHead(403).end();return;}
-        res.setHeader('Access-Control-Allow-Methods','GET, POST');res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type, X-Merry-Server-Id');res.writeHead(204).end();return;
-      }
-    }
     if(u.pathname==='/desktop-connect'){
       const ownHost=`127.0.0.1:${server.address().port}`;
       const local=req.headers.host===ownHost&&['127.0.0.1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)&&!req.headers.forwarded&&!Object.keys(req.headers).some(k=>k.startsWith('x-forwarded-')||k.startsWith('tailscale-'));
@@ -138,22 +117,6 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
       if(environment){
         // Setup belongs to the execution machine, never to a remote browser claiming it.
         const local=(!req.headers.origin||req.headers.origin===`http://${host}`)&&host===`127.0.0.1:${server.address().port}`&&!req.headers.forwarded&&!Object.keys(req.headers).some(k=>k.startsWith('x-forwarded-'));
-        const connectionAssets=new Map([['/connections','connections/index.html'],['/connections/','connections/index.html'],['/connections/app.mjs','connections/app.mjs'],['/connections/disclosure.mjs','connections/disclosure.mjs'],['/connections/registry.mjs','connections/registry.mjs'],['/connections/client.mjs','connections/client.mjs'],['/connections/identity.mjs','connections/identity.mjs'],['/connections/outbox.mjs','connections/outbox.mjs'],['/connections/live.mjs','connections/live.mjs'],['/connections/permissions.mjs','connections/permissions.mjs'],['/workflow.mjs','workflow.mjs'],['/connections/style.css','connections/style.css'],['/core.mjs','core.mjs']]);
-        if(connectionAssets.has(u.pathname)){
-          const state=await environment.read();
-          if(req.method!=='GET'||u.search){res.writeHead(405).end();return;}
-          if(!(state.configured&&(local?(state.roles.remote||(['/core.mjs','/workflow.mjs'].includes(u.pathname)&&state.roles.local)):state.roles.server))){
-            if(local){res.writeHead(303,{Location:'/setup'}).end();return;}res.writeHead(403).end();return;
-          }
-          res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
-          const name=connectionAssets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');res.end(await readPresentationAsset(name));return;
-        }
-        if(['/api/environment/discovery','/api/environment/discovery-lan'].includes(u.pathname)){
-          const state=await environment.read();
-          if(!local||u.search||req.headers['x-setup-nonce']!==setupNonce||!state.configured||!state.roles.remote){res.writeHead(403).end();return;}
-          if(req.method!=='GET'){res.writeHead(405).end();return;}
-          res.setHeader('Content-Type','application/json');res.end(JSON.stringify(await (u.pathname.endsWith('discovery-lan')?lanDiscoveryService:discoveryService).find()));return;
-        }
         if(u.pathname==='/api/environment/runner'){
           if(!local||u.search||req.headers['x-setup-nonce']!==setupNonce||!canUseMachine(await environment.read(),true)){res.writeHead(403).end();return;}
           if(!runnerService){res.writeHead(503).end();return;}
@@ -216,7 +179,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
               try{await environment.save(JSON.parse(body));for(const stream of remoteStreams)stream.destroy();remoteStreams.clear();}
               catch{res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({error:'설정을 저장하지 못했습니다. 현재 설정을 다시 조회하세요.'}));return;}
             }else if(req.method!=='GET'){res.writeHead(405).end();return;}
-            res.setHeader('Content-Type','application/json');res.end(JSON.stringify({...await environment.read(),nonce:setupNonce,cleanStart:cleanStart===true,appReset:appReset?.reset===true,resetRequested:appReset?await appReset.requested():false,resetAvailable:!!appReset,aiConfigurationRegistered:!!accountsService,aiRegistrationAvailable:!!registrationService,runnerSetupAvailable:!!runnerService,discoveryAvailable:true,remoteEndpointConfigured:origins.length>0}));return;
+            res.setHeader('Content-Type','application/json');res.end(JSON.stringify({...await environment.read(),nonce:setupNonce,cleanStart:cleanStart===true,appReset:appReset?.reset===true,resetRequested:appReset?await appReset.requested():false,resetAvailable:!!appReset,aiConfigurationRegistered:!!accountsService,aiRegistrationAvailable:!!registrationService,runnerSetupAvailable:!!runnerService,remoteEndpointConfigured:origins.length>0}));return;
           }
           res.writeHead(405).end();return;
         }
@@ -662,5 +625,5 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   const port=Number(process.env.D1_PORT??61165);
   if(process.env.D3_MACHINE_DIRECTORY&&(process.env.D2_ACCOUNT_CONFIG||process.env.D3_ACCOUNT_CANDIDATES))throw Error('Choose one machine account configuration');
   const machine=process.env.D3_MACHINE_DIRECTORY?await machineOptions(process.env.D3_MACHINE_DIRECTORY):{accountConfig:process.env.D2_ACCOUNT_CONFIG,accountCandidates:process.env.D3_ACCOUNT_CANDIDATES?JSON.parse(process.env.D3_ACCOUNT_CANDIDATES):{}};
-  createServer({upstream:'http://127.0.0.1:61164',sessions,runnerConfig:process.env.D3_RUNNER_CONFIG?JSON.parse(await readFile(process.env.D3_RUNNER_CONFIG,'utf8')):undefined,environmentPath:process.env.D3_ENVIRONMENT_PATH,discoveryService:createDiscovery({...(process.env.D3_TAILSCALE_BINARY?{binary:process.env.D3_TAILSCALE_BINARY}:{})}),clientOrigins:(process.env.D3_CLIENT_ORIGINS??'').split(',').filter(Boolean),...machine,taskTarget:process.env.D2_TASK_TARGET?JSON.parse(process.env.D2_TASK_TARGET):undefined,handoffTarget:process.env.D2_HANDOFF_TARGET?JSON.parse(process.env.D2_HANDOFF_TARGET):undefined,origins:(process.env.D1_ORIGINS??'').split(',').filter(Boolean)}).listen(port,'127.0.0.1',()=>console.log(`Development client listening on loopback port ${port}`));
+  createServer({upstream:'http://127.0.0.1:61164',sessions,runnerConfig:process.env.D3_RUNNER_CONFIG?JSON.parse(await readFile(process.env.D3_RUNNER_CONFIG,'utf8')):undefined,environmentPath:process.env.D3_ENVIRONMENT_PATH,...machine,taskTarget:process.env.D2_TASK_TARGET?JSON.parse(process.env.D2_TASK_TARGET):undefined,handoffTarget:process.env.D2_HANDOFF_TARGET?JSON.parse(process.env.D2_HANDOFF_TARGET):undefined,origins:(process.env.D1_ORIGINS??'').split(',').filter(Boolean)}).listen(port,'127.0.0.1',()=>console.log(`Development client listening on loopback port ${port}`));
 }

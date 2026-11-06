@@ -24,7 +24,7 @@ const hub=await startFakeHub({project});
 // A device login needs a JWT-shaped token with an expiry; the fake Hub never checks it.
 const b64=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),fakeJwt=`${b64({alg:'none'})}.${b64({exp:Math.floor(Date.now()/1000)+3600})}.x`;
 const pairing=globalThis.uxPairing=createPairing({authenticate:async()=>fakeJwt});
-const environmentPath=join(temp,'environment.json');await createEnvironment(environmentPath).save({revision:0,roles:{local:true,server:true,remote:true}});
+const environmentPath=join(temp,'environment.json');await createEnvironment(environmentPath).save({revision:0,roles:{local:true,server:true,remote:false}});
 const deviceLogins=createDeviceLogins({path:join(temp,'device-logins.json'),authenticate:async()=>`${b64({alg:'none'})}.${b64({exp:Math.floor(Date.now()/1000)+3600,n:Math.random()})}.x`});
 const app=createServer({upstream:hub.url,sessionId:ids.claude,sessions:sessionList,pairing,deviceLogins,environmentPath});await new Promise(r=>app.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${app.address().port}`;

@@ -1,15 +1,25 @@
 import http from 'node:http';
 import {test} from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {createEnvironment,canUseMachine} from './environment.mjs';
-test('first launch, durable roles, server includes local, stale update rejected',async t=>{
+test('first launch, this Mac always works locally, other-device access is the only choice, stale update rejected',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'mari-env-'));t.after(()=>rm(dir,{recursive:true,force:true}));const path=join(dir,'machine.json');const e=createEnvironment(path);
  assert.equal((await e.read()).configured,false);
- const a=await e.save({revision:0,roles:{local:false,server:true,remote:true}});assert.deepEqual(a.roles,{local:true,server:true,remote:true});
+ const a=await e.save({revision:0,roles:{local:true,server:true,remote:false}});assert.deepEqual(a.roles,{local:true,server:true,remote:false});
  assert.deepEqual(await createEnvironment(path).read(),a);
  await assert.rejects(e.save({revision:0,roles:{local:true,server:false,remote:false}}));
- const b=await e.save({revision:1,roles:{local:false,server:false,remote:true}});assert.equal(canUseMachine(b,true),false);assert.equal(canUseMachine(b,false),false);
- await assert.rejects(e.save({revision:2,roles:{local:false,server:false,remote:false}}));
+ // The remote role is gone: it cannot be saved, and a remote-only machine is not local.
+ await assert.rejects(e.save({revision:1,roles:{local:true,server:false,remote:true}}),/브라우저/);
+ await assert.rejects(e.save({revision:1,roles:{local:false,server:false,remote:true}}),/브라우저/);
+ const b=await e.save({revision:1,roles:{local:true,server:false,remote:false}});assert.equal(canUseMachine(b,true),true);assert.equal(canUseMachine(b,false),false);
  await writeFile(path,'broken');await assert.rejects(e.read());
+});
+test('an older remote-only machine starts over at first setup; older saved remote flags are dropped',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'mari-env-'));t.after(()=>rm(dir,{recursive:true,force:true}));const path=join(dir,'machine.json');const e=createEnvironment(path);
+ await writeFile(path,JSON.stringify({version:1,revision:4,roles:{local:false,server:false,remote:true}}));
+ const old=await e.read();assert.equal(old.configured,false);assert.equal(old.revision,4);assert.equal(canUseMachine(old,true),false);
+ assert.deepEqual((await e.save({revision:4,roles:{local:true,server:false,remote:false}})).roles,{local:true,server:false,remote:false});
+ await writeFile(path,JSON.stringify({version:1,revision:7,roles:{local:true,server:true,remote:true}}));
+ assert.deepEqual((await e.read()).roles,{local:true,server:true,remote:false});
 });
 test('machine access enforces role, and concurrent settings cannot overwrite',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'mari-env-'));t.after(()=>rm(dir,{recursive:true,force:true}));const e=createEnvironment(join(dir,'machine.json'));
@@ -39,12 +49,12 @@ test('proxy requires setup, gates local/remote traffic and keeps settings local'
  assert.equal((await remote('/config')).status,403);
  assert.equal((await remote('/api/environment')).status,403);
  assert.equal((await fetch(base+'/api/environment',{headers:{'x-forwarded-for':'100.1.1.1'}})).status,403);
- assert.equal((await save(1,{local:false,server:true,remote:true})).status,200);
+ assert.equal((await save(1,{local:true,server:true,remote:false})).status,200);
  assert.equal((await remote('/config')).status,200);
- assert.equal((await save(2,{local:false,server:false,remote:true})).status,200);
- assert.equal((await fetch(base+'/config')).status,403);
+ assert.equal((await save(2,{local:true,server:false,remote:true})).status,409);
+ assert.equal((await save(2,{local:true,server:false,remote:false})).status,200);
+ assert.equal((await remote('/config')).status,403);
  assert.equal((await fetch(base+'/setup')).status,200);
- assert.equal((await fetch(base+'/connections')).status,200);
  for(const asset of ['/theme.css','/settings.css'])assert.equal((await fetch(base+asset)).status,200);
  assert.equal((await remote('/setup/style.css')).status,403);
  assert.equal((await remote('/api/environment')).status,403);
@@ -52,7 +62,7 @@ test('proxy requires setup, gates local/remote traffic and keeps settings local'
 
 test('remote workspace never offers execution-machine setup links',async t=>{
  const {createServer}=await import('./server.mjs');const dir=await mkdtemp(join(tmpdir(),'mari-remote-ui-')),file=join(dir,'machine.json');
- await createEnvironment(file).save({revision:0,roles:{local:true,server:true,remote:true}});
+ await createEnvironment(file).save({revision:0,roles:{local:true,server:true,remote:false}});
  const s=createServer({upstream:'http://127.0.0.1:1',sessions:[],environmentPath:file,origins:['https://mini.test']});
  await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{s.closeAllConnections();s.close();return rm(dir,{recursive:true,force:true});});
  const base=`http://127.0.0.1:${s.address().port}`;
@@ -76,43 +86,26 @@ test('initial AI setup needs local role and nonce, cannot change an existing log
  assert.equal((await fetch(base+'/api/environment/accounts',{headers:{...headers,'x-forwarded-for':'100.1.1.1'}})).status,403);
 });
 
-test('explicit client origin enables only connection reads/auth, never local setup',async t=>{
+test('other origins are refused without any cross-origin allowance',async t=>{
  const {createServer}=await import('./server.mjs');const dir=await mkdtemp(join(tmpdir(),'mari-cors-')),path=join(dir,'machine.json');await createEnvironment(path).save({revision:0,roles:{local:true,server:true,remote:false}});
- const s=createServer({upstream:'http://127.0.0.1:1',sessionId:'00000000-0000-0000-0000-000000000000',environmentPath:path,clientOrigins:['http://127.0.0.1:61171']});await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{s.closeAllConnections();s.close();return rm(dir,{recursive:true,force:true});});const base=`http://127.0.0.1:${s.address().port}`,origin='http://127.0.0.1:61171';
- const preflight=await fetch(base+'/api/auth',{method:'OPTIONS',headers:{origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type'}});assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-origin'),origin);assert.equal(preflight.headers.get('access-control-allow-credentials'),null);
- assert.equal((await fetch(base+'/config',{headers:{origin}})).status,200);
- const receipt='/api/sessions/00000000-0000-0000-0000-000000000000/messages/queued-state';
- assert.equal((await fetch(base+receipt,{method:'OPTIONS',headers:{origin,'Access-Control-Request-Method':'POST'}})).status,204);
- assert.equal((await fetch(base+receipt,{method:'POST',headers:{origin,'Content-Type':'application/json'},body:'{}'})).status,401);
- assert.equal((await fetch(base+receipt+'?token=x',{method:'POST',headers:{origin}})).status,403);
- const events='/api/events?sessionId=00000000-0000-0000-0000-000000000000';
- assert.equal((await fetch(base+events,{method:'OPTIONS',headers:{origin,'Access-Control-Request-Method':'GET'}})).status,204);
- for(const query of ['&all=true','&token=synthetic','&machineId=x'])assert.equal((await fetch(base+events+query,{headers:{origin}})).status,403);
- assert.equal((await fetch(base+events,{headers:{origin}})).status,401);
- const messages='/api/sessions/00000000-0000-0000-0000-000000000000/messages?limit=50';
- assert.equal((await fetch(base+messages,{headers:{origin}})).status,401);
- assert.equal((await fetch(base+messages.split('?')[0],{method:'OPTIONS',headers:{origin,'Access-Control-Request-Method':'POST'}})).status,204);
- assert.equal((await fetch(base+messages.split('?')[0],{method:'POST',headers:{origin,'Content-Type':'application/json'},body:'{}'})).status,401);
- assert.equal((await fetch(base+messages.replace('000000000000/messages','000000000001/messages'),{headers:{origin,authorization:'Bearer synthetic'}})).status,403);
- assert.equal((await fetch(base+messages,{method:'OPTIONS',headers:{origin,'Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'authorization'}})).status,204);
- for(const [path,method] of [[messages,'POST'],[messages+'&token=bad','GET'],[messages.replace('limit=50','limit=500'),'GET'],['/api/sessions/00000000-0000-0000-0000-000000000000/file','GET']])assert.equal((await fetch(base+path,{method:'OPTIONS',headers:{origin,'Access-Control-Request-Method':method}})).status,403);
-
- assert.equal((await fetch(base+'/api/environment',{headers:{origin}})).status,403);
- assert.equal((await fetch(base+'/config',{headers:{origin:'https://evil.example'}})).status,403);
+ const s=createServer({upstream:'http://127.0.0.1:1',sessionId:'00000000-0000-0000-0000-000000000000',environmentPath:path});await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{s.closeAllConnections();s.close();return rm(dir,{recursive:true,force:true});});
+ const base=`http://127.0.0.1:${s.address().port}`,origin='http://127.0.0.1:61171';
+ const preflight=await fetch(base+'/api/auth',{method:'OPTIONS',headers:{origin,'Access-Control-Request-Method':'POST'}});assert.equal(preflight.status,403);assert.equal(preflight.headers.get('access-control-allow-origin'),null);
+ for(const path of ['/config','/api/server-identity','/connections','/api/environment/discovery'])assert.equal((await fetch(base+path,{headers:{origin}})).status,403,path);
+ assert.notEqual((await fetch(base+'/connections')).status,200);
 });
-test('cross-origin file reads require a configured project and reject external symlinks',async t=>{
+test('file reads require a configured project and reject external symlinks',async t=>{
  const {createServer}=await import('./server.mjs'),{mkdir,symlink}=await import('node:fs/promises');const dir=await mkdtemp(join(tmpdir(),'mari-remote-files-')),root=join(dir,'project'),path=join(dir,'env.json');await mkdir(root);await writeFile(join(root,'hello.txt'),'hello');await writeFile(join(dir,'outside.txt'),'outside');await symlink('../outside.txt',join(root,'external'));await symlink('hello.txt',join(root,'internal'));await createEnvironment(path).save({revision:0,roles:{local:true,server:true,remote:false}});
- const id='00000000-0000-0000-0000-000000000000',reads=[];const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.url===`/api/sessions/${id}`)res.end(JSON.stringify({session:{id,metadata:{machineId:'fixture',path:root}}}));else{reads.push(req.url);res.end(JSON.stringify({success:true,content:'aGVsbG8='}));}});await new Promise(r=>hub.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:61171';const server=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,sessionId:id,environmentPath:path,clientOrigins:[origin],handoffTarget:{directory:join(dir,'handoffs'),machineId:'fixture',project:root}});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(async()=>{for(const s of [server,hub]){s.closeAllConnections();s.close();}await rm(dir,{recursive:true,force:true});});const base=`http://127.0.0.1:${server.address().port}/api/sessions/${id}/file?path=`;
+ const id='00000000-0000-0000-0000-000000000000',reads=[];const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.url===`/api/sessions/${id}`)res.end(JSON.stringify({session:{id,metadata:{machineId:'fixture',path:root}}}));else{reads.push(req.url);res.end(JSON.stringify({success:true,content:'aGVsbG8='}));}});await new Promise(r=>hub.listen(0,'127.0.0.1',r));let origin;const server=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,sessionId:id,environmentPath:path,handoffTarget:{directory:join(dir,'handoffs'),machineId:'fixture',project:root}});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(async()=>{for(const s of [server,hub]){s.closeAllConnections();s.close();}await rm(dir,{recursive:true,force:true});});origin=`http://127.0.0.1:${server.address().port}`;const base=`http://127.0.0.1:${server.address().port}/api/sessions/${id}/file?path=`;
  const headers={origin,authorization:'Bearer synthetic'};assert.equal((await fetch(base+'internal',{headers})).status,200);assert.ok(reads[0].endsWith('path=hello.txt'));assert.equal((await fetch(base+'external',{headers})).status,403);assert.equal((await fetch(base+'..%2Foutside.txt',{headers})).status,403);assert.equal(reads.length,1);
 });
-test('cross-client decisions preserve auth, exact request and at-most-once forwarding',async t=>{
+test('permission decisions preserve auth, exact request and at-most-once forwarding',async t=>{
  const {createServer}=await import('./server.mjs');const dir=await mkdtemp(join(tmpdir(),'mari-permissions-')),path=join(dir,'env.json');await createEnvironment(path).save({revision:0,roles:{local:true,server:true,remote:false}});
  const id='00000000-0000-0000-0000-000000000001',expected={tool:'Bash',arguments:{command:'echo synthetic'}},forwarded=[];
  const hub=http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end('{}');return;}if(req.method==='GET'){res.end(JSON.stringify({session:{id,active:true,agentState:{requests:{one:expected,two:expected,three:expected}}}}));return;}let raw='';for await(const c of req)raw+=c;forwarded.push(JSON.parse(raw));if(req.url.includes('/three/'))res.destroy();else res.end('{"ok":true}');});await new Promise(r=>hub.listen(0,'127.0.0.1',r));
- const origin='http://127.0.0.1:61171',server=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,sessionId:id,environmentPath:path,clientOrigins:[origin]});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(async()=>{for(const s of [server,hub]){s.closeAllConnections();s.close();}await rm(dir,{recursive:true,force:true});});
+ const server=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,sessionId:id,environmentPath:path});await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;t.after(async()=>{for(const s of [server,hub]){s.closeAllConnections();s.close();}await rm(dir,{recursive:true,force:true});});
  const base=`http://127.0.0.1:${server.address().port}/api/sessions/${id}/permissions/`;
  const post=(tail,body={expected},extra={})=>fetch(base+tail,{method:'POST',headers:{origin,'Content-Type':'application/json',authorization:'Bearer synthetic',...extra},body:JSON.stringify(body)});
- assert.equal((await fetch(base+'one/approve',{method:'OPTIONS',headers:{origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'authorization,content-type'}})).status,204);
  assert.equal((await post('one/approve',undefined,{authorization:''})).status,401);assert.equal((await post('one/approve',undefined,{authorization:'Bearer wrong'})).status,401);
  assert.equal((await post('one/approve',undefined,{origin:'https://evil.example'})).status,403);assert.equal((await post('one/approve?token=x')).status,403);
  assert.equal((await post('one/approve',{expected:{tool:'Bash',arguments:{command:'changed'}}})).status,409);assert.equal((await post('one/approve',{expected,mode:'bypassPermissions'})).status,400);assert.equal(forwarded.length,0);
@@ -173,12 +166,12 @@ test('empty runner workspace can authenticate but cannot read unsupported files'
  for(const path of ['file','directory'])assert.equal((await fetch(base+'/api/sessions/'+id+'/'+path,{headers:{authorization:'Bearer synthetic'}})).status,403);
  assert.equal(forwards,1);
 });
-test('registered cross-client Runner file reads keep the project realpath boundary',async t=>{
+test('Runner file reads keep the project realpath boundary',async t=>{
  const {createServer}=await import('./server.mjs'),{symlink}=await import('node:fs/promises');const root=await mkdtemp(join(tmpdir(),'runner-cors-file-')),env=join(root,'env.json'),id='00000000-0000-0000-0000-000000000001';
  await writeFile(join(root,'inside'),'ok');await symlink('/etc/hosts',join(root,'outside'));await createEnvironment(env).save({revision:0,roles:{local:true,server:true,remote:false}});
  const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(req.url.includes('/file')?{content:'b2s='}:{session:{id,metadata:{machineId:'own',path:root}}}));});await new Promise(r=>hub.listen(0,'127.0.0.1',r));
- const origin='http://127.0.0.1:61171',s=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,sessionId:id,environmentPath:env,clientOrigins:[origin],runnerService:{workspace:async()=>[{id,project:root}],target:async()=>({machineId:'own',project:root})}});
+ const s=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,sessionId:id,environmentPath:env,runnerService:{workspace:async()=>[{id,project:root}],target:async()=>({machineId:'own',project:root})}});
  await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{for(const a of [s,hub]){a.closeAllConnections();a.close();}return rm(root,{recursive:true,force:true});});
- const base=`http://127.0.0.1:${s.address().port}/api/sessions/${id}/file?path=`,headers={origin,authorization:'Bearer synthetic'};
+ const base=`http://127.0.0.1:${s.address().port}/api/sessions/${id}/file?path=`,headers={origin:`http://127.0.0.1:${s.address().port}`,authorization:'Bearer synthetic'};
  assert.equal((await fetch(base+'inside',{headers})).status,200);assert.equal((await fetch(base+'outside',{headers})).status,403);
 });

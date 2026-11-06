@@ -1,12 +1,8 @@
 // Guidance only: never starts a process, logs in, or changes a role.
 export function setupProgress(environment,providers=null,runner=null){
  const configured=environment?.configured===true;
- const steps=[{label:'작업 방식 선택',done:configured}];
- if(!configured)return {steps,next:{label:'작업 방식 선택하기',href:'#roles'},ready:false,note:'이 컴퓨터에서 어떻게 작업할지 먼저 선택하세요.'};
- if(!environment.roles.local){
-  steps.push({label:'서버 연결',done:false});
-  return {steps,next:{label:'작업할 서버 연결하기',href:'/connections'},ready:false,note:'원격 전용입니다. 이 컴퓨터에 AI를 설치하지 않고 서버에 로그인해 작업합니다.'};
- }
+ const steps=[{label:'작업 방식 저장',done:configured}];
+ if(!configured)return {steps,next:{label:'작업 방식 저장하기',href:'#roles'},ready:false,note:'기본은 이 Mac에서 작업입니다. 다른 기기 접속은 나중에 켜도 됩니다.'};
  const connected=providers?.some(p=>p.state==='connected')===true;
  const running=runner?.hub==='connected'&&runner?.workspaceAvailable===true;
  steps.push({label:'AI 연결 확인',done:connected},{label:'실행 환경 확인',done:running});

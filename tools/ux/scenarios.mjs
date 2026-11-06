@@ -38,6 +38,13 @@ export const scenarios=[
  {name:'로그인 유지 기기 끊기',goal:'서버 Mac에서 로그인 유지 중인 기기를 보고 끊는다',session:ids.claude,steps:[
   ['다른 기기 연결 코드 열기',ui=>ui.click('#pairing-open')],['기기 목록에 휴대폰이 보임',ui=>ui.expectVisible('#pairing-devices button')],
   ['끊기',ui=>ui.click('#pairing-devices button')],['목록이 비어 있음',async ui=>{await ui.wait(800);const t=await ui.evaluate("document.getElementById('pairing-devices').textContent");if(t!=='없음')throw Error('남은 목록: '+t);return {changes:1};}]]},
+ {name:'컴퓨터 설정 보기',goal:'이 Mac 설정에서 작업 방식을 보고 다른 기기 접속을 켤 곳을 찾는다',steps:[
+  ['설정 화면 열기',async ui=>{await ui.evaluate("location.href='/setup';true");await ui.wait(1500);return {changes:1};}],
+  ['역할 선택 없이 다른 기기 접속 체크만 보임',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([!!document.getElementById('server'),!!document.getElementById('local'),!!document.getElementById('remote'),[...document.querySelectorAll('a')].some(a=>a.getAttribute('href')==='/connections')])"));
+   if(JSON.stringify(r)!=='[true,false,false,false]')throw Error('상태: '+JSON.stringify(r));return {changes:1};}],
+  ['다른 기기 접속 허용 바꾸기',async ui=>{globalThis.uxServerBefore=await ui.evaluate("document.getElementById('server').checked");return ui.click('#server');}],
+  ['상태가 바뀌고 안내가 따라감',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([document.getElementById('server').checked,document.getElementById('impact').textContent])"));
+   if(r[0]===globalThis.uxServerBefore||r[1].includes('접속 허용')!==r[0])throw Error('상태: '+JSON.stringify(r));return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

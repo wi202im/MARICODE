@@ -1,10 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {setupProgress} from './progress.mjs';
-test('first launch and remote-only setup do not imply local AI readiness',()=>{
+test('first launch asks only to save the local setup and never implies AI readiness',()=>{
  assert.equal(setupProgress(null).next.href,'#roles');
- const remote=setupProgress({configured:true,roles:{remote:true,local:false}});
- assert.equal(remote.next.href,'/connections');assert.equal(remote.steps.length,2);
+ assert.equal(setupProgress({configured:false,roles:{local:false,server:false,remote:false}}).steps.length,1);
 });
 test('registered paths and login alone never mean a runnable workspace',()=>{
  const env={configured:true,roles:{local:true},aiConfigurationRegistered:true,runnerSetupAvailable:true};
