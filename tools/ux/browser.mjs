@@ -32,7 +32,7 @@ export async function openPage(chrome,{width=1400,height=880}={}){
   if(!el)return 'null';el.scrollIntoView({block:'nearest'});const r=el.getBoundingClientRect();if(r.bottom<0||r.top>innerHeight||r.right<0||r.left>innerWidth)return 'null';return JSON.stringify({x:r.x+Math.min(r.width/2,40),y:r.y+r.height/2,label:(el.getAttribute('aria-label')||el.textContent||'').trim().slice(0,60)});})()`));
  // Counts DOM changes after an action so a click without visible feedback is reported.
  const watch=()=>evaluate(`(()=>{window.__ux={changes:0,first:null,start:performance.now()};new MutationObserver(ms=>{for(const m of ms){if(m.target.closest?.('#notice')||m.type==='childList'||m.type==='attributes'&&['hidden','open','aria-pressed','aria-selected','class'].includes(m.attributeName)){window.__ux.changes++;window.__ux.first??=performance.now()-window.__ux.start;}}}).observe(document.body,{subtree:true,childList:true,attributes:true});return true;})()`);
- const feedback=async(ms=1500)=>{await wait(ms);return evaluate('JSON.stringify(window.__ux)').then(JSON.parse);};
+ const feedback=async(ms=1500)=>{await wait(ms);return evaluate('JSON.stringify(window.__ux)').then(v=>v===undefined?{changes:1}:JSON.parse(v));}; // A new page has no watcher: the navigation is the reaction.
  const find=async target=>{for(let i=0;i<15;i++){const at=await locate(target);if(at)return at;await wait(200);}return null;};
  async function click(target){const at=await find(target);if(!at)throw Error(`찾을 수 없음: ${target}`);await watch();
   for(const type of ['mouseMoved','mousePressed','mouseReleased'])await send('Input.dispatchMouseEvent',{type,x:at.x,y:at.y,button:'left',clickCount:1});return {...at,...(await feedback())};}

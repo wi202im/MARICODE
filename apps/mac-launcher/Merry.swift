@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import WebKit
 
 final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
@@ -363,7 +364,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
         guard (message.webView === webView || message.webView === utilityViews["settings"] || message.webView === utilityViews["connections"]), let rawAction = message.body as? String else { return }
-        let action = rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
+        let action = rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("pairing-qr:") ? "pairing-qr" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
         guard desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
         if action == "quit-cancelled" {
             guard message.webView === webView, let nonce = quitReviewNonce, rawAction == "quit-cancelled:" + nonce else { return }
@@ -374,6 +375,10 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             quitReviewNonce = nil; NSApp.terminate(nil); return
         }
         if action == "add-project" { addProjectFolder(); return }
+        if action == "pairing-qr" {
+            guard message.webView === webView, activeMachine == "local", desktopWorkspacePath(webView.url?.path) else { return }
+            showPairingQR(String(rawAction.dropFirst("pairing-qr:".count))); return
+        }
         if action == "choose-claude-source" {
             guard message.webView === webView, activeMachine == "local", desktopWorkspacePath(webView.url?.path),
                   let requestId = rawAction.split(separator: ":").last.map(String.init), UUID(uuidString: requestId) != nil else { return }
@@ -652,7 +657,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             previous = config["origin"] as? String
         }
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 420, height: 26))
-        field.stringValue = previous ?? ""; field.placeholderString = "https://기기.사설망.ts.net:포트"
+        field.stringValue = previous ?? tailscaleSelfAddress() ?? ""; field.placeholderString = "https://기기.사설망.ts.net:포트"
         let prompt = NSAlert(); prompt.messageText = "Tailscale HTTPS 주소"
         prompt.informativeText = "이 Maricode 실행기에 사용할 주소를 등록합니다. 주소 등록만으로 연결되지는 않습니다. 서버 역할과 이 앱의 127.0.0.1:61192로 전달하는 HTTPS 설정이 별도로 필요합니다. 기존 Serve 설정은 변경하지 않습니다."
         prompt.accessoryView = field
@@ -708,6 +713,36 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 }
                 status.stringValue = "연결 토큰을 복사했습니다. 신뢰하는 원격 로그인 화면에 붙여 넣으세요. 앱 실행 중에는 30초 뒤 클립보드에서 지웁니다."
             } catch { status.stringValue = "토큰을 복사하지 못했습니다. 전용 HAPI를 먼저 준비하고 서버 역할·주소·토큰 파일 권한을 확인하세요. 다른 서버의 토큰은 사용하지 않습니다." }
+        }
+    }
+    // Pre-fills the address prompt only; the user still confirms it.
+    func tailscaleSelfAddress() -> String? {
+        let tool = Process(), out = Pipe()
+        tool.executableURL = URL(fileURLWithPath: "/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+        tool.arguments = ["status", "--json"]; tool.standardOutput = out; tool.standardError = FileHandle.nullDevice
+        guard (try? tool.run()) != nil else { return nil }
+        let deadline = Date().addingTimeInterval(3)
+        while tool.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        if tool.isRunning { tool.terminate(); return nil }
+        return tailscaleSelfOrigin(out.fileHandleForReading.readDataToEndOfFile())
+    }
+    func showPairingQR(_ code: String) {
+        guard let info = try? RemoteConnection.read(directory: dataDirectory()) else {
+            status.stringValue = "QR을 만들려면 먼저 메뉴의 ‘서버 주소 설정…’에서 Tailscale 주소를 등록하세요."; return
+        }
+        guard let link = pairingInstallURL(origin: info.address, code: code), let filter = CIFilter(name: "CIQRCodeGenerator") else { return }
+        filter.setValue(Data(link.utf8), forKey: "inputMessage"); filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)) else { return }
+        let rep = NSCIImageRep(ciImage: output), image = NSImage(size: NSSize(width: 240, height: 240)); image.addRepresentation(rep)
+        let view = NSImageView(frame: NSRect(x: 0, y: 0, width: 240, height: 240)); view.image = image; view.imageScaling = .scaleProportionallyUpOrDown
+        view.setAccessibilityLabel("다른 기기 연결 QR 코드")
+        let prompt = NSAlert(); prompt.messageText = "휴대폰 카메라로 찍어 연결하세요"
+        prompt.informativeText = "\(link)\n\n설치 안내가 열리고 이 코드로 로그인합니다. 코드는 5분 동안 한 번만 쓸 수 있습니다. 같은 Tailscale에 연결된 기기에서만 열립니다." + (remoteStop.isEnabled ? "" : "\n\nHTTPS 전달이 꺼져 있습니다. 메뉴의 ‘HTTPS 전달 시작…’을 먼저 실행하세요.")
+        prompt.accessoryView = view
+        prompt.addButton(withTitle: "닫기"); prompt.addButton(withTitle: "링크 복사")
+        if prompt.runModal() == .alertSecondButtonReturn {
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(link, forType: .string)
+            status.stringValue = "연결 링크를 복사했습니다. 코드가 들어 있으니 신뢰하는 기기에만 보내세요."
         }
     }
     func applicationWillTerminate(_ notification: Notification) { connectionTimer?.invalidate(); clearCopiedToken() }

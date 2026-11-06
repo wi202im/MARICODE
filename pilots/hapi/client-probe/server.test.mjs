@@ -391,6 +391,8 @@ test('HTML titles and visible branding use the running product version',async t=
   assert.ok(!html.includes('{{PRODUCT_VERSION}}'),path);assert.ok(!html.includes('MARICODE 1.0.0'),path);
  }
  const manifest=await(await fetch(origin+'/manifest.webmanifest')).json();assert.equal(manifest.short_name,'Maricode');
+ const install=await(await fetch(origin+'/install')).text();assert.ok(install.includes('/install.mjs'));
+ for(const [,src] of install.matchAll(/src="([^"]+)"/g))assert.equal((await fetch(origin+src)).status,200,src);
 });
 test('read-only diff routes accept only project-relative paths',()=>{
  const ok=u=>allowedRoute('GET',new URL('http://x'+u),'s1');

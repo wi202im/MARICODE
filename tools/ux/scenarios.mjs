@@ -21,6 +21,11 @@ export const scenarios=[
   ['중지하고 바로 보내기',ui=>ui.click('중지하고 바로 보내기')]]},
  {name:'작업 중인 AI 다루기',goal:'작업 중인 대화에서 대기 메시지를 취소하고 작업을 중지한다',session:ids.busy,steps:[
   ['대기 메시지 취소',ui=>ui.click('.queue-bar button')],['중지 버튼',ui=>ui.click('#stop')]]},
+ {name:'QR 링크로 설치하고 로그인',goal:'휴대폰으로 QR을 찍어 설치 안내를 보고, 코드가 채워진 로그인 화면으로 간다',steps:[
+  ['QR 링크 열기',async ui=>{await ui.evaluate("location.href='/install#code=ABCD-EF23';true");await ui.wait(800);return {changes:1};}],
+  ['설치 안내에 연결 코드가 보이고 주소에서는 빠짐',async ui=>{const r=await ui.evaluate("JSON.stringify([document.getElementById('pair-code')?.textContent,location.hash,!document.getElementById('pair').hidden])");if(r!=='["ABCD-EF23","",true]')throw Error('상태: '+r);return {changes:1};}],
+  ['이 브라우저에서 바로 로그인',ui=>ui.click('#pair-open')],
+  ['로그인 칸에 코드가 채워짐',async ui=>{await ui.wait(800);const r=await ui.evaluate("JSON.stringify([document.getElementById('token')?.value,location.hash])");if(r!=='["ABCD-EF23",""]')throw Error('상태: '+r);return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

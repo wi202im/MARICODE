@@ -278,6 +278,8 @@ async function openWorkspace(){
  if(location.hash)window.history.replaceState(null,'',location.pathname+location.search);
  if(workspaceLayout){await configureTasks(config);refreshCatalog();}workspaceOpened=true;
 }
+// A QR link carries the one-time code in the fragment: take it out of the address and pre-fill the login.
+{const code=/^#code=([A-Z0-9]{4}-[A-Z0-9]{4})$/.exec(location.hash)?.[1];if(code){window.history.replaceState(null,'',location.pathname+location.search);$('token').value=code;}}
 $('login-form').addEventListener('submit',async e=>{
  e.preventDefault();recovery?.stop();epoch++;streamController?.abort();token='';deviceServerId='';clearDeviceLogin(deviceStorage);saveTabToken(sessionStorage,'',false);const button=e.submitter;button.disabled=true;const credential=$('token').value;$('token').value='';const attempt=epoch;
  try{
@@ -682,6 +684,9 @@ async function pairingAction(action){
  }catch{$('pairing-expiry').textContent='코드를 만들지 못했습니다. 이 Mac의 앱에서 로그인한 상태인지 확인하세요.';}
 }
 function openPairing(){if(!pairingEnabled)return;$('pairing-dialog').showModal();pairingAction('issue');}
+// In the Mac app the native window draws the QR from the registered Tailscale address and this code.
+async function showPairingQR(){if(!(pairingExpires>Date.now()))await pairingAction('issue');const code=$('pairing-code').textContent;if(pairingExpires>Date.now()&&/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code))window.webkit.messageHandlers.maricode.postMessage('pairing-qr:'+code);}
+if(workspaceLayout&&window.webkit?.messageHandlers?.maricode){$('pairing-qr').hidden=false;$('pairing-qr').onclick=showPairingQR;}
 if(workspaceLayout){$('pairing-open').onclick=openPairing;$('pairing-new').onclick=()=>pairingAction('issue');$('pairing-cancel').onclick=()=>pairingAction('cancel');$('pairing-close').onclick=()=>$('pairing-dialog').close();}
 async function refreshCatalog(){
  if(!workspaceLayout||!token||catalogBusy)return;
