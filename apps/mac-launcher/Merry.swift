@@ -13,8 +13,6 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     let addAgent = NSButton(title: "다른 AI 추가", target: nil, action: nil)
     let remoteStart = NSButton(title: "HTTPS 전달 시작", target: nil, action: nil)
     let remoteStop = NSButton(title: "HTTPS 전달 종료", target: nil, action: nil)
-    let remoteInfo = NSButton(title: "원격 연결 정보", target: nil, action: nil)
-    var copiedTokenChange: Int?
     let remoteSettings = NSButton(title: "원격 주소 설정", target: nil, action: nil)
     let connect = NSButton(title: "작업 화면 연결", target: nil, action: nil)
     var process: Process?
@@ -28,10 +26,6 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     var stopping = false
     var received = ""
     var webView: WKWebView!
-    var machineViews: [String: WKWebView] = [:]
-    var machineOrder = ["local"]
-    var activeMachine = "local"
-    var machineLabels: [String: String] = [:]
     let updateNotice = NSButton(title: "새 업데이트", target: nil, action: nil)
     let machineLabel = NSTextField(labelWithString: "이 Mac")
     let connectionIndicator = NSImageView()
@@ -45,7 +39,6 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     let leftPanelButton = NSButton()
     let rightPanelButton = NSButton()
     var utilityViews: [String: WKWebView] = [:]
-    var tabsRestored = false
     var selectedAgent: String?
     lazy var appUpdater = AppUpdateController(version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0")
 
@@ -115,13 +108,13 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             controls.centerYAnchor.constraint(equalTo: chrome.centerYAnchor), controls.trailingAnchor.constraint(equalTo: chrome.trailingAnchor, constant: -12),
             browserContainer.topAnchor.constraint(equalTo: chrome.bottomAnchor), browserContainer.leadingAnchor.constraint(equalTo: content.leadingAnchor), browserContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor), browserContainer.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
-        installMachineView(webView, key: "local", label: "이 Mac")
+        installLocalView()
         hostButton.image = NSImage(systemSymbolName: "server.rack", accessibilityDescription: "호스트")
         hostButton.title = ""; hostButton.imagePosition = .imageLeading
         hostButton.target = self; hostButton.action = #selector(showHostMenu)
         hostButton.isBordered = false; hostButton.bezelStyle = .recessed
         hostButton.font = .systemFont(ofSize: 12); hostButton.contentTintColor = .secondaryLabelColor
-        hostButton.setAccessibilityLabel("호스트 관리"); hostButton.toolTip = "컴퓨터 전환과 연결 설정"
+        hostButton.setAccessibilityLabel("이 Mac 관리"); hostButton.toolTip = "이 Mac의 설정과 다른 기기 연결"
         hostButton.translatesAutoresizingMaskIntoConstraints = false
         browserContainer.addSubview(hostButton)
         NSLayoutConstraint.activate([hostButton.leadingAnchor.constraint(equalTo: browserContainer.leadingAnchor, constant: 12), hostButton.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor, constant: -2), hostButton.widthAnchor.constraint(equalToConstant: 28), hostButton.heightAnchor.constraint(equalToConstant: 28)])
@@ -146,41 +139,25 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         startWeb()
         if Bundle.main.object(forInfoDictionaryKey: "MARICODERelease") as? Bool == true { appUpdater.checkSilently() }
     }
-    func updateLocalLabel() {
-        machineLabel.stringValue = machineLabels[activeMachine] ?? "이 Mac"
-        machineLabel.toolTip = activeMachine == "local" ? "현재 컴퓨터 · 이 Mac" : "현재 컴퓨터 · " + activeMachine
+    func updateLocalLabel() { machineLabel.stringValue = "이 Mac"; machineLabel.toolTip = "현재 컴퓨터 · 이 Mac" }
+    func installLocalView() {
+        webView.configuration.userContentController.addUserScript(WKUserScript(source: "document.documentElement.classList.add('maricode-desktop', 'maricode-local')", injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        browserContainer.addSubview(webView)
+        NSLayoutConstraint.activate([webView.topAnchor.constraint(equalTo: browserContainer.topAnchor), webView.leadingAnchor.constraint(equalTo: browserContainer.leadingAnchor), webView.trailingAnchor.constraint(equalTo: browserContainer.trailingAnchor), webView.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor)])
+        updateLocalLabel(); showLocal()
     }
-    func installMachineView(_ view: WKWebView, key: String, label: String) {
-        // Presentation marker only; remote views receive no native command bridge.
-        view.configuration.userContentController.addUserScript(WKUserScript(source: "document.documentElement.classList.add('maricode-desktop', '\(key == "local" ? "maricode-local" : "maricode-remote")')", injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        machineViews[key] = view; view.translatesAutoresizingMaskIntoConstraints = false
-        browserContainer.addSubview(view)
-        NSLayoutConstraint.activate([view.topAnchor.constraint(equalTo: browserContainer.topAnchor), view.leadingAnchor.constraint(equalTo: browserContainer.leadingAnchor), view.trailingAnchor.constraint(equalTo: browserContainer.trailingAnchor), view.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor)])
-        machineLabels[key] = label
-        if hostButton.superview != nil { browserContainer.addSubview(hostButton, positioned: .above, relativeTo: nil) }
-        selectMachine(key)
-    }
-    @objc func closeCurrentMachine() {
-        let key = activeMachine
-        guard key != "local", let view = machineViews.removeValue(forKey: key) else { return }
-        view.stopLoading(); view.removeFromSuperview(); machineOrder.removeAll { $0 == key }; machineLabels.removeValue(forKey: key)
-        selectMachine("local"); saveMachineTabs()
-    }
-    func selectMachine(_ key: String) {
-        guard machineViews[key] != nil else { return }; activeMachine = key
+    func showLocal() {
         status.stringValue = ""
         utilityTrail.clear(); renderScreen()
-        updateLocalLabel()
-        paintConnectionIndicator(nil)
-        refreshConnectionIndicator()
-        if tabsRestored { saveMachineTabs() }
+        paintConnectionIndicator(nil); refreshConnectionIndicator()
     }
     func renderScreen() {
         let current = utilityTrail.current
-        for (id, view) in machineViews { view.isHidden = current != nil || id != activeMachine || (view === webView && !localPageReady) }
+        webView.isHidden = current != nil || !localPageReady
         for (id, view) in utilityViews { view.isHidden = id != current }
         backButton.isHidden = current == nil
-        let section = current == "settings" ? "컴퓨터 설정" : current == "connections" ? "컴퓨터 연결" : nil
+        let section = current == "settings" ? "컴퓨터 설정" : nil
         pageTitle.stringValue = productTitle + (section.map { " · " + $0 } ?? "")
         pageTitle.toolTip = pageTitle.stringValue
         leftPanelButton.isHidden = current != nil; rightPanelButton.isHidden = current != nil
@@ -194,70 +171,41 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let labels = ["live": "실시간 연결됨", "empty": "연결됨 · 작업 세션 없음", "restoring": "연결 복원 중", "connecting": "연결 확인 중", "paused": "실시간 연결 중지", "outdated": "화면 업데이트 필요", "unavailable": "서버 연결 실패", "expired": "인증 만료", "denied": "접근 불가", "login-needed": "로그인 필요"]
         let label = labels[state ?? ""] ?? "연결 상태 확인 전"
         connectionIndicator.toolTip = label; connectionIndicator.setAccessibilityLabel(label)
-        machineLabel.toolTip = (machineLabels[activeMachine] ?? "컴퓨터") + " · " + label
+        machineLabel.toolTip = "이 Mac · " + label
     }
     func refreshConnectionIndicator() {
-        guard let view = machineViews[activeMachine] else { paintConnectionIndicator(nil); return }
-        if view.isLoading { paintConnectionIndicator("connecting"); return }
-        // Read presentation state only; remote pages still have no native command handler.
-        view.evaluateJavaScript("document.getElementById('connection')?.dataset.connectionState ?? null") { [weak self, weak view] result, error in
-            guard let self, let view, self.machineViews[self.activeMachine] === view else { return }
-            self.paintConnectionIndicator(error == nil ? result as? String : nil)
+        if webView.isLoading { paintConnectionIndicator("connecting"); return }
+        webView.evaluateJavaScript("document.getElementById('connection')?.dataset.connectionState ?? null") { [weak self] result, error in
+            self?.paintConnectionIndicator(error == nil ? result as? String : nil)
         }
     }
     @objc func toggleLeftPanel() { togglePanel("open-nav") }
     @objc func toggleRightPanel() { togglePanel("info-tab") }
     func togglePanel(_ id: String) {
-        guard utilityTrail.current == nil, ["open-nav", "info-tab"].contains(id), let view = machineViews[activeMachine], desktopWorkspacePath(view.url?.path) else { return }
-        // Fixed presentation actions only; no native handler is exposed to remote pages.
-        view.evaluateJavaScript("document.getElementById('\(id)')?.click()") { [weak self] _, _ in self?.refreshPanelControls() }
+        guard utilityTrail.current == nil, ["open-nav", "info-tab"].contains(id), desktopWorkspacePath(webView.url?.path) else { return }
+        webView.evaluateJavaScript("document.getElementById('\(id)')?.click()") { [weak self] _, _ in self?.refreshPanelControls() }
     }
     func refreshPanelControls() {
-        guard let view = machineViews[activeMachine] else { return }
-        let workspace = desktopWorkspacePath(view.url?.path)
+        let workspace = desktopWorkspacePath(webView.url?.path)
         leftPanelButton.isEnabled = workspace; rightPanelButton.isEnabled = workspace
         hostButton.isHidden = utilityTrail.current != nil
         guard utilityTrail.current == nil, workspace else { return }
-        view.evaluateJavaScript("document.body.classList.contains('sidebar-collapsed')") { [weak self, weak view] result, _ in
-            guard let self, let view, self.machineViews[self.activeMachine] === view, self.utilityTrail.current == nil else { return }
+        webView.evaluateJavaScript("document.body.classList.contains('sidebar-collapsed')") { [weak self] result, _ in
+            guard let self, self.utilityTrail.current == nil else { return }
             self.hostButton.isHidden = result as? Bool == true
         }
     }
-    func saveMachineTabs() {
-        let saved: [String: Any] = ["origins": machineOrder.filter { $0 != "local" }, "selected": machineOrder.contains(activeMachine) ? activeMachine : "local"]
-        let file = URL(fileURLWithPath: dataDirectory() + "/machine-tabs.json")
-        if let data = try? JSONSerialization.data(withJSONObject: saved) { try? data.write(to: file, options: .atomic); try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path) }
-    }
-    func restoreMachineTabs() {
-        guard !tabsRestored else { return }
-        guard let env = try? Data(contentsOf: URL(fileURLWithPath: dataDirectory() + "/environment.json")), let savedEnv = (try? JSONSerialization.jsonObject(with: env)) as? [String: Any], let roles = savedEnv["roles"] as? [String: Bool] else { return }
-        if roles["remote"] == true, let data = try? Data(contentsOf: URL(fileURLWithPath: dataDirectory() + "/machine-tabs.json")), let saved = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let origins = saved["origins"] as? [String], origins.count <= 20 {
-            for origin in origins { if let url = URL(string: origin), desktopMachineOrigin(url) == origin, let page = URL(string: origin + "/workspace") { openMachine(page) } }
-            if let selected = saved["selected"] as? String { selectMachine(selected) }
-        }
-        tabsRestored = true
-    }
-    func openMachine(_ target: URL) {
-        guard let key = desktopMachineOrigin(target) else { return }
-        if machineViews[key] == nil {
-            let config = WKWebViewConfiguration(); config.websiteDataStore = .default()
-            let view = WKWebView(frame: .zero, configuration: config); view.navigationDelegate = self; view.uiDelegate = self
-            machineOrder.append(key); installMachineView(view, key: key, label: target.host ?? "컴퓨터")
-            view.load(URLRequest(url: target))
-        } else { selectMachine(key) }
-    }
-    var showSetupAfterRestart = false
+    // After the server address changes the app restarts its web server, then reopens the device dialog.
+    var reopenDevicesAfterRestart = false
     func loadDesktop(_ path: String) {
         guard process != nil, !stopping, let target = URL(string: "http://127.0.0.1:61192" + path) else { return }
-        selectMachine("local"); webView.load(URLRequest(url: target))
+        showLocal(); webView.load(URLRequest(url: target))
     }
     func restoreDesktop() {
-        if showSetupAfterRestart { showSetupAfterRestart = false; loadDesktop("/setup"); return }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: dataDirectory() + "/environment.json")),
               let saved = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let roles = saved["roles"] as? [String: Bool] else { loadDesktop("/setup"); return }
         if roles["local"] == true && FileManager.default.fileExists(atPath: dataDirectory() + "/backend.json") { connectWorkspace() }
-        else if roles["remote"] == true { loadDesktop("/connections") }
         else if roles["local"] == true { requestConfiguration("initialize") }
         else { loadDesktop("/setup") }
     }
@@ -272,13 +220,13 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 DispatchQueue.main.async {
                     guard let self, self.process != nil, !self.stopping else { return }
                     if releaseTransition { UserDefaults.standard.set(true, forKey: key) }; self.appResetPending = false
-                    self.restoreDesktop(); self.restoreMachineTabs()
+                    self.removeComputerTabs(); self.restoreDesktop()
                 }
             }
-        } else { restoreDesktop(); restoreMachineTabs() }
+        } else { removeComputerTabs(); restoreDesktop() }
     }
-    @objc func showWorkspace() { if webView.url?.path == "/workspace" { selectMachine("local") } else { restoreDesktop() } }
-    @objc func showConnections() { showUtility("connections", title: "컴퓨터 연결", path: "/connections") }
+    // Computer tabs were removed (other computers open in a browser or PWA); their saved list goes once.
+    func removeComputerTabs() { try? FileManager.default.removeItem(atPath: dataDirectory() + "/machine-tabs.json") }
     func showUtility(_ key: String, title: String, path: String) {
         let freshVisit = utilityTrail.current == nil
         utilityTrail.open(key)
@@ -302,16 +250,12 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         return saved["roles"] as? [String: Bool] ?? [:]
     }
     func addHostActions(to menu: NSMenu) {
-        let actions = desktopHostActions(roles: savedRoles(), localSelected: activeMachine == "local")
+        let actions = desktopHostActions(server: savedRoles()["server"] == true)
         let entries: [(String, String, Selector)] = [
-            ("connections", "컴퓨터 연결 관리…", #selector(showConnections)),
-            ("settings", "이 Mac의 역할·설정…", #selector(showSettings)),
+            ("settings", "이 Mac의 설정…", #selector(showSettings)),
             ("agent", "이 Mac의 AI 연결…", #selector(requestAgentConfiguration)),
-            ("remote-address", "서버 주소 설정…", #selector(requestRemoteConfiguration)),
-            ("remote-info", "원격 접속 주소·토큰…", #selector(showRemoteInfo)),
-            ("remote-start", "HTTPS 전달 시작…", #selector(startRemote)),
-            ("remote-stop", "HTTPS 전달 종료…", #selector(stopRemote)),
-            ("reconnect", "현재 컴퓨터 다시 연결", #selector(retryDesktop))
+            ("devices", "다른 기기 연결…", #selector(showDeviceConnection)),
+            ("reconnect", "작업 화면 다시 연결", #selector(retryDesktop))
         ]
         for (key, title, action) in entries where actions.contains(key) {
             let entry = menu.addItem(withTitle: title, action: action, keyEquivalent: ""); entry.target = self
@@ -321,25 +265,26 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         menu.removeAllItems(); addHostActions(to: menu)
     }
     @objc func showHostMenu() {
-        let menu = NSMenu(title: "호스트")
-        let heading = menu.addItem(withTitle: "작업 중인 컴퓨터", action: nil, keyEquivalent: ""); heading.isEnabled = false
-        for key in machineOrder {
-            let label = machineLabels[key] ?? key
-            let roles = savedRoles()
-            let kind = key != "local" ? "원격" : roles["server"] == true ? "로컬 + 서버" : roles["local"] == true ? "로컬" : "원격 연결용"
-            let entry = menu.addItem(withTitle: label + " · " + kind, action: #selector(selectHostItem(_:)), keyEquivalent: "")
-            entry.target = self; entry.representedObject = key; entry.state = activeMachine == key ? .on : .off
-            entry.image = NSImage(systemSymbolName: key == "local" ? "desktopcomputer" : "network", accessibilityDescription: nil)
-        }
-        if activeMachine != "local" {
-            let close = menu.addItem(withTitle: "현재 컴퓨터 연결 닫기 · 서버 작업은 유지", action: #selector(closeCurrentMachine), keyEquivalent: ""); close.target = self
-        }
-        menu.addItem(.separator()); addHostActions(to: menu)
+        let menu = NSMenu(title: "이 Mac"); addHostActions(to: menu)
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: hostButton.bounds.maxY + 4), in: hostButton)
     }
-    @objc func selectHostItem(_ item: NSMenuItem) { if let key = item.representedObject as? String { selectMachine(key) } }
+    // One place for letting other devices in: the web dialog shows the address, forwarding, code, QR and devices.
+    @objc func showDeviceConnection() {
+        if utilityTrail.current != nil { utilityTrail.clear(); renderScreen() }
+        guard desktopWorkspacePath(webView.url?.path) else {
+            status.stringValue = "작업 화면이 열린 뒤 다시 시도하세요."; return
+        }
+        webView.evaluateJavaScript("window.maricodeOpenPairing?.()") { [weak self] _, _ in self?.pushRemoteState() }
+    }
+    func pushRemoteState() {
+        let info = try? RemoteConnection.read(directory: dataDirectory())
+        let state: [String: Any] = ["address": info?.address ?? NSNull(), "forwarding": remoteStop.isEnabled, "canStart": remoteStart.isEnabled]
+        guard let data = try? JSONSerialization.data(withJSONObject: state), let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.maricodeRemoteState?.(\(json))", completionHandler: nil)
+    }
+    @objc func showWorkspace() { if webView.url?.path == "/workspace" { showLocal() } else { restoreDesktop() } }
     @objc func showSettings() { showUtility("settings", title: "컴퓨터 설정", path: "/setup") }
-    @objc func retryDesktop() { if activeMachine != "local" { if let origin = URL(string: activeMachine), desktopMachineOrigin(origin) != nil, let target = URL(string: activeMachine + "/workspace") { machineViews[activeMachine]?.load(URLRequest(url: target)) } else { machineViews[activeMachine]?.reload() }; return }; if process == nil { startWeb() } else if !stopping { restoreDesktop() } }
+    @objc func retryDesktop() { if process == nil { startWeb() } else if !stopping { restoreDesktop() } }
     @objc func requestLocalConfiguration() { requestConfiguration("configure") }
     @objc func requestAgentConfiguration() { requestConfiguration("add-agent") }
     @objc func requestProjectConfiguration() { requestConfiguration("change-project") }
@@ -359,11 +304,11 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         case "remote-settings": configureRemote()
         default: return
         }
-        showSetupAfterRestart = action == "remote-settings"; startWeb()
+        reopenDevicesAfterRestart = action == "remote-settings"; startWeb()
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
-        guard (message.webView === webView || message.webView === utilityViews["settings"] || message.webView === utilityViews["connections"]), let rawAction = message.body as? String else { return }
+        guard (message.webView === webView || message.webView === utilityViews["settings"]), let rawAction = message.body as? String else { return }
         let action = rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("pairing-qr:") ? "pairing-qr" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
         guard desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
         if action == "quit-cancelled" {
@@ -376,33 +321,33 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         }
         if action == "add-project" { addProjectFolder(); return }
         if action == "pairing-qr" {
-            guard message.webView === webView, activeMachine == "local", desktopWorkspacePath(webView.url?.path) else { return }
+            guard message.webView === webView, desktopWorkspacePath(webView.url?.path) else { return }
             showPairingQR(String(rawAction.dropFirst("pairing-qr:".count))); return
         }
         if action == "choose-claude-source" {
-            guard message.webView === webView, activeMachine == "local", desktopWorkspacePath(webView.url?.path),
+            guard message.webView === webView, desktopWorkspacePath(webView.url?.path),
                   let requestId = rawAction.split(separator: ":").last.map(String.init), UUID(uuidString: requestId) != nil else { return }
             chooseClaudeSource(requestId); return
         }
-        if action == "connect" { if webView.url?.path == "/workspace" { selectMachine("local") } else { restoreDesktop() }; updateLocalLabel(); return }
+        if action == "connect" { if webView.url?.path == "/workspace" { showLocal() } else { restoreDesktop() }; return }
+        if ["remote-start", "remote-stop", "remote-state"].contains(action) {
+            guard message.webView === webView, desktopWorkspacePath(webView.url?.path) else { return }
+            if action == "remote-start" { startRemote() } else if action == "remote-stop" { stopRemote() } else { pushRemoteState() }; return
+        }
         if action == "codex" || action == "claude" { selectedAgent = action; requestConfiguration("add-agent"); return }
         requestConfiguration(action)
     }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let target = navigationAction.request.url else { decisionHandler(.cancel); return }
-        if target.path == "/workspace", let remoteKey = desktopMachineOrigin(target), machineViews[remoteKey] !== webView {
-            decisionHandler(.cancel); openMachine(target); return
-        }
         if target.isFileURL {
             decisionHandler(webView === self.webView && authenticating && target.standardizedFileURL == connectFile.standardizedFileURL ? .allow : .cancel); return
         }
         let local = target.scheme == "http" && target.host == "127.0.0.1" && target.port == 61192
         let owned = webView === self.webView || utilityViews.values.contains { $0 === webView }
-        if owned && local && navigationAction.navigationType == .linkActivated && navigationAction.targetFrame?.isMainFrame == true && ["/setup", "/connections"].contains(target.path) {
-            decisionHandler(.cancel)
-            if target.path == "/setup" { showSettings() } else { showConnections() }; return
+        if owned && local && navigationAction.navigationType == .linkActivated && navigationAction.targetFrame?.isMainFrame == true && target.path == "/setup" {
+            decisionHandler(.cancel); showSettings(); return
         }
-        if webView !== self.webView && local && target.path == "/workspace" { decisionHandler(.cancel); if self.webView.url?.path == "/workspace" { selectMachine("local") } else { restoreDesktop() }; return }
+        if webView !== self.webView && local && target.path == "/workspace" { decisionHandler(.cancel); if self.webView.url?.path == "/workspace" { showLocal() } else { restoreDesktop() }; return }
         if webView === self.webView && local && target.path == "/workspace" && navigationAction.targetFrame?.isMainFrame == true && !authenticating {
             decisionHandler(.cancel); restoreDesktop(); return
         }
@@ -417,20 +362,22 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             webView.evaluateJavaScript("document.forms[0].submit()") { [weak self] _, error in
                 if error != nil { self?.authenticating = false; self?.localPageReady = true; self?.renderScreen(); self?.status.stringValue = "작업 연결 실패 · 다시 연결을 눌러 주세요." }
             }
-        } else { authenticating = false; localPageReady = true; renderScreen(); if activeMachine == "local" { status.stringValue = "" } }
+        } else {
+            authenticating = false; localPageReady = true; renderScreen(); status.stringValue = ""
+            if reopenDevicesAfterRestart && webView.url?.path == "/workspace" { reopenDevicesAfterRestart = false; showDeviceConnection() }
+        }
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if webView === self.webView { authenticating = false }
-        if machineViews[activeMachine] === webView { status.stringValue = "연결 실패 · 서버와 사설망 연결을 확인하세요." }
+        if webView === self.webView { status.stringValue = "작업 화면 연결 실패 · 다시 연결해 주세요." }
         // Static local explanation only. Never include a failed URL, credential or server error body.
-        webView.loadHTMLString("<html lang='ko'><meta charset='utf-8'><meta name='viewport' content='width=device-width'><body style='background:#191e17;color:#e7e9e3;font:16px system-ui;padding:15vh 10vw'><span id='connection' data-connection-state='unavailable' hidden></span><h1>컴퓨터에 연결할 수 없습니다</h1><p>서버 컴퓨터가 켜져 있는지, 같은 LAN 또는 Tailscale에 연결되어 있는지 확인하세요.</p><p>준비되면 왼쪽 하단 호스트 메뉴에서 ‘현재 컴퓨터 다시 연결’을 눌러 주세요. 호스트 메뉴의 다른 컴퓨터 작업은 계속 사용할 수 있습니다.</p></body></html>", baseURL: nil)
+        webView.loadHTMLString("<html lang='ko'><meta charset='utf-8'><meta name='viewport' content='width=device-width'><body style='background:#191e17;color:#e7e9e3;font:16px system-ui;padding:15vh 10vw'><span id='connection' data-connection-state='unavailable' hidden></span><h1>작업 화면을 열 수 없습니다</h1><p>이 Mac의 Maricode 작업 서버가 아직 준비되지 않았거나 멈췄습니다.</p><p>왼쪽 하단 메뉴에서 ‘작업 화면 다시 연결’을 눌러 주세요.</p></body></html>", baseURL: nil)
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil, let target = navigationAction.request.url,
            target.scheme == "https" || (target.scheme == "http" && target.host == "127.0.0.1" && target.port == 61192) {
-            if target.path == "/workspace", desktopMachineOrigin(target) != nil { openMachine(target) }
-            // Links in replies point at outside sites; open them in the browser instead of replacing the app view.
-            else if target.scheme == "https", desktopMachineOrigin(target) == nil { NSWorkspace.shared.open(target) }
+            // Outside links, including other Maricode servers, open in the browser instead of replacing the app view.
+            if target.scheme == "https" { NSWorkspace.shared.open(target) }
             else { webView.load(navigationAction.request) }
         }
         return nil
@@ -528,14 +475,14 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             panel.showsHiddenFiles = true; panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser; panel.prompt = "이 폴더에서 찾기"
             if panel.runModal() == .OK { selected = panel.url?.path }
         }
-        guard target === webView, activeMachine == "local", target.url == address else { return }
+        guard target === webView, target.url == address else { return }
         let payload: [String: Any] = ["requestId":requestId, "path":selected as Any? ?? NSNull()]
         if let data = try? JSONSerialization.data(withJSONObject: payload), let detail = String(data:data, encoding:.utf8) {
             target.evaluateJavaScript("window.dispatchEvent(new CustomEvent('maricode-claude-source-selected',{detail:\(detail)}))", completionHandler: nil)
         }
     }
     func addProjectFolder() {
-        guard activeMachine == "local", !stopping else { return }
+        guard !stopping else { return }
         let panel = NSOpenPanel(); panel.title = "프로젝트 폴더 추가"
         panel.message = "이 Mac의 기존 폴더를 프로젝트로 등록합니다. Git 브랜치나 AI 세션은 만들지 않습니다."
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false; panel.prompt = "프로젝트 추가"
@@ -681,40 +628,6 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             status.stringValue = p.terminationStatus == 0 ? "원격 주소 설정 저장 완료 · 다음 실행부터 적용됩니다. 실제 HTTPS 연결은 별도 확인이 필요합니다." : "주소 저장 실패 · 경로·인증정보 없는 Tailscale HTTPS 주소인지, 실행 중이거나 설정이 변경됐는지 확인하세요."
         } catch { status.stringValue = "주소 저장 결과를 확인하지 못했습니다. 다시 시도하기 전에 설정을 확인하세요." }
     }
-    func clearCopiedToken() {
-        if let change = copiedTokenChange, NSPasteboard.general.changeCount == change { NSPasteboard.general.clearContents() }
-        copiedTokenChange = nil
-    }
-    @objc func showRemoteInfo() {
-        guard let info = try? RemoteConnection.read(directory: dataDirectory()) else {
-            status.stringValue = "원격 연결 정보가 준비되지 않았습니다. 이 Mac의 AI 작업 설정, 서버 역할, 원격 주소 등록을 확인하세요."; return
-        }
-        let prompt = NSAlert(); prompt.messageText = "이 Mac의 원격 연결 정보"
-        prompt.informativeText = "등록 주소: \(info.address)/workspace\n\nHTTPS 전달과 실제 접속은 별도 확인이 필요합니다. 연결 토큰은 이 서버의 HAPI 로그인에 사용하며 AI 구독 로그인과 다릅니다. 토큰은 화면에 표시하지 않습니다. 복사하면 클립보드에 들어가므로 신뢰하는 기기에만 전달하세요. 앱이 실행 중이면 30초 후 다른 복사 내용으로 바뀌지 않은 토큰을 지웁니다."
-        prompt.addButton(withTitle: "닫기"); prompt.addButton(withTitle: "주소 복사"); prompt.addButton(withTitle: "토큰 복사")
-        let answer = prompt.runModal()
-        if answer == .alertSecondButtonReturn {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(info.address + "/workspace", forType: .string)
-            status.stringValue = "등록 주소를 복사했습니다. 실제 HTTPS 접속 상태는 아직 확인하지 않았습니다."
-        } else if answer == .alertThirdButtonReturn {
-            do {
-                let token = try info.token()
-                let item = NSPasteboardItem()
-                item.setString(token, forType: .string)
-                item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
-                item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
-                NSPasteboard.general.clearContents()
-                guard NSPasteboard.general.writeObjects([item]) else { throw RemoteConnection.Failure.unavailable }
-                let change = NSPasteboard.general.changeCount
-                copiedTokenChange = change
-                DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-                    if self?.copiedTokenChange == change { self?.clearCopiedToken() }
-                }
-                status.stringValue = "연결 토큰을 복사했습니다. 신뢰하는 원격 로그인 화면에 붙여 넣으세요. 앱 실행 중에는 30초 뒤 클립보드에서 지웁니다."
-            } catch { status.stringValue = "토큰을 복사하지 못했습니다. 전용 HAPI를 먼저 준비하고 서버 역할·주소·토큰 파일 권한을 확인하세요. 다른 서버의 토큰은 사용하지 않습니다." }
-        }
-    }
     // Pre-fills the address prompt only; the user still confirms it.
     func tailscaleSelfAddress() -> String? {
         let tool = Process(), out = Pipe()
@@ -728,7 +641,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
     func showPairingQR(_ code: String) {
         guard let info = try? RemoteConnection.read(directory: dataDirectory()) else {
-            status.stringValue = "QR을 만들려면 먼저 메뉴의 ‘서버 주소 설정…’에서 Tailscale 주소를 등록하세요."; return
+            status.stringValue = "QR을 만들려면 먼저 ‘다른 기기 연결’ 창에서 Tailscale 주소를 등록하세요."; return
         }
         guard let link = pairingInstallURL(origin: info.address, code: code), let filter = CIFilter(name: "CIQRCodeGenerator") else { return }
         filter.setValue(Data(link.utf8), forKey: "inputMessage"); filter.setValue("M", forKey: "inputCorrectionLevel")
@@ -737,7 +650,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let view = NSImageView(frame: NSRect(x: 0, y: 0, width: 240, height: 240)); view.image = image; view.imageScaling = .scaleProportionallyUpOrDown
         view.setAccessibilityLabel("다른 기기 연결 QR 코드")
         let prompt = NSAlert(); prompt.messageText = "휴대폰 카메라로 찍어 연결하세요"
-        prompt.informativeText = "\(link)\n\n설치 안내가 열리고 이 코드로 로그인합니다. 코드는 5분 동안 한 번만 쓸 수 있습니다. 같은 Tailscale에 연결된 기기에서만 열립니다." + (remoteStop.isEnabled ? "" : "\n\nHTTPS 전달이 꺼져 있습니다. 메뉴의 ‘HTTPS 전달 시작…’을 먼저 실행하세요.")
+        prompt.informativeText = "\(link)\n\n설치 안내가 열리고 이 코드로 로그인합니다. 코드는 5분 동안 한 번만 쓸 수 있습니다. 같은 Tailscale에 연결된 기기에서만 열립니다." + (remoteStop.isEnabled ? "" : "\n\nHTTPS 전달이 꺼져 있습니다. ‘다른 기기 연결’ 창에서 전달을 먼저 시작하세요.")
         prompt.accessoryView = view
         prompt.addButton(withTitle: "닫기"); prompt.addButton(withTitle: "링크 복사")
         if prompt.runModal() == .alertSecondButtonReturn {
@@ -745,7 +658,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             status.stringValue = "연결 링크를 복사했습니다. 코드가 들어 있으니 신뢰하는 기기에만 보내세요."
         }
     }
-    func applicationWillTerminate(_ notification: Notification) { connectionTimer?.invalidate(); clearCopiedToken() }
+    func applicationWillTerminate(_ notification: Notification) { connectionTimer?.invalidate() }
     @objc func startRemote() {
         guard process != nil, !stopping, let info = try? RemoteConnection.read(directory: dataDirectory()) else {
             status.stringValue = "먼저 Maricode 화면을 시작하고 서버 역할·원격 주소를 설정하세요."; return
@@ -804,10 +717,10 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     self.open.isEnabled = true; self.stop.isEnabled = true; self.connect.isEnabled = true; self.remoteStart.isEnabled = true
                     self.restoreAfterReleaseTransition()
                 }
-                if line == "REMOTE_ON" { self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 실행 중 · 등록 주소로 접속하세요. 원격 로그인은 별도로 필요합니다." }
-                if line == "REMOTE_OFF" { self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "이 앱의 HTTPS 전달을 종료했습니다. 로컬 작업은 유지됩니다." }
-                if line == "REMOTE_FAILED" { self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "전달을 시작하지 못했습니다. Tailscale 연결·기기 주소·서버 역할·기존 Serve 설정을 확인하세요. 기존 설정은 변경하지 않았습니다." }
-                if line == "REMOTE_UNKNOWN" { self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 상태를 확인하지 못했습니다. 전달 종료로 소유 프로세스 정리를 확인하세요. 자동 재시작하지 않습니다." }
+                if line == "REMOTE_ON" { self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 실행 중 · 등록 주소로 접속하세요. 원격 로그인은 별도로 필요합니다."; self.pushRemoteState() }
+                if line == "REMOTE_OFF" { self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "이 앱의 HTTPS 전달을 종료했습니다. 로컬 작업은 유지됩니다."; self.pushRemoteState() }
+                if line == "REMOTE_FAILED" { self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "전달을 시작하지 못했습니다. Tailscale 연결·기기 주소·서버 역할·기존 Serve 설정을 확인하세요. 기존 설정은 변경하지 않았습니다."; self.pushRemoteState() }
+                if line == "REMOTE_UNKNOWN" { self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 상태를 확인하지 못했습니다. 전달 종료로 소유 프로세스 정리를 확인하세요. 자동 재시작하지 않습니다."; self.pushRemoteState() }
                 if line == "CONNECT_READY" && !self.stopping {
                     self.connect.isEnabled = true
                     self.authenticating = true; self.localPageReady = false; self.renderScreen()
@@ -821,7 +734,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     if self.quitting {
                         self.quitting = false
                         if self.webView.url?.path == "/workspace" {
-                            self.selectMachine("local")
+                            self.showLocal()
                             let nonce = UUID().uuidString; self.quitReviewNonce = nonce
                             self.webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('maricode-close-request',{detail:'\(nonce)'}))", completionHandler: nil)
                         } else {
