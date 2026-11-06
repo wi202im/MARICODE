@@ -274,7 +274,14 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         guard desktopWorkspacePath(webView.url?.path) else {
             status.stringValue = "작업 화면이 열린 뒤 다시 시도하세요."; return
         }
-        webView.evaluateJavaScript("window.maricodeOpenPairing?.()") { [weak self] _, _ in self?.pushRemoteState() }
+        // Return a Boolean, not the async handler's Promise (unsupported by evaluateJavaScript).
+        webView.evaluateJavaScript("(() => { if (typeof window.maricodeOpenPairing !== 'function') return false; void window.maricodeOpenPairing(); return true; })()") { [weak self] result, error in
+            guard let self else { return }
+            if error != nil || result as? Bool != true {
+                self.status.stringValue = "연결 창을 열지 못했습니다. 작업 화면 다시 연결 후 시도하세요."; return
+            }
+            self.status.stringValue = ""; self.pushRemoteState()
+        }
     }
     func pushRemoteState() {
         let info = try? RemoteConnection.read(directory: dataDirectory())

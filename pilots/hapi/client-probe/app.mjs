@@ -716,8 +716,18 @@ if(workspaceLayout&&window.webkit?.messageHandlers?.maricode){
   const toggle=$('pairing-forward-toggle');toggle.hidden=!state.address||!state.forwarding&&!state.canStart;toggle.textContent=state.forwarding?'전달 종료':'전달 시작';
   toggle.onclick=()=>bridge.postMessage(state.forwarding?'remote-stop':'remote-start');};
  $('pairing-address-set').onclick=()=>bridge.postMessage('remote-settings');
- // Right after the app restarts, the page may still be reading its settings.
- window.maricodeOpenPairing=async()=>{for(let i=0;i<25&&!pairingEnabled;i++)await new Promise(r=>setTimeout(r,200));if(!pairingEnabled){notice('먼저 이 Mac의 설정에서 ‘다른 기기에서 접속 허용’을 켜세요.');return;}if(!$('pairing-dialog').open)openPairing();};
+ // Settings live in another WebView; returning here does not reload this page's cached config.
+ let pairingOpening=false;
+ window.maricodeOpenPairing=async()=>{
+  if(pairingOpening||$('pairing-dialog').open)return;
+  pairingOpening=true;notice('다른 기기 접속 설정을 확인하고 있습니다.');
+  try{
+   const config=await api('/config');pairingEnabled=config.pairing===true;$('pairing-open').hidden=!pairingEnabled;
+   if(!pairingEnabled){notice('먼저 이 Mac의 설정에서 ‘다른 기기에서 접속 허용’을 켜세요.');return;}
+   notice('');openPairing();
+  }catch{notice('접속 설정을 확인하지 못했습니다. 작업 화면의 연결 상태를 확인한 뒤 다시 시도하세요.');}
+  finally{pairingOpening=false;}
+ };
 }
 if(workspaceLayout){$('pairing-open').onclick=openPairing;$('pairing-new').onclick=()=>pairingAction('issue');$('pairing-cancel').onclick=()=>pairingAction('cancel');$('pairing-close').onclick=()=>$('pairing-dialog').close();}
 async function refreshCatalog(){
