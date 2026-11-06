@@ -55,3 +55,18 @@ test('a worktree request made while the primary is busy runs on a dedicated Runn
  await pool.task(raw,'Bearer x');assert.deepEqual(f.calls.at(-1),['dedicated','task','p1']);
  f.setPlacement('refreshable');await pool.task(raw,'Bearer x',true);assert.deepEqual(f.calls.at(-1),['dedicated','task','p1']);assert.equal(f.made.length,1);
 });
+
+test('an idle dedicated Runner stops after the idle time; a refused stop is retried and a new request restarts the clock',async t=>{
+ const d=await dir(t),f=fixture(t,{placement:'busy'}),config={directory:join(d,'runner'),projectsPath:join(d,'projects.json')};let clock=0;
+ const pool=createRunnerPool(config,{createUnit:f.unit,sessionMachine:lookup({}),resolvePath:async k=>'/x/'+k,now:()=>clock,idleMs:600000,sweepMs:0});
+ await pool.ready('Bearer x','p3','claude');const u=f.made[0];let refuse=true;
+ u.stop=async()=>{if(refuse)throw Object.assign(Error(),{code:'RUNNER_ACTIVE'});f.calls.push(['dedicated','stop']);};
+ const stops=()=>f.calls.filter(c=>c[1]==='stop').length;
+ clock=599999;await pool.sweepIdle();assert.equal(stops(),0);
+ clock=600000;await pool.sweepIdle();assert.equal(stops(),0);
+ refuse=false;clock=660000;await pool.sweepIdle();assert.equal(stops(),1);
+ // The primary Runner is never stopped by the sweep.
+ assert.equal(f.calls.filter(c=>c[0]==='primary'&&c[1]==='stop').length,0);
+ await pool.ready('Bearer x','p3','claude');clock=900000;await pool.sweepIdle();assert.equal(stops(),1);
+ clock=1260000;await pool.sweepIdle();assert.equal(stops(),2);
+});

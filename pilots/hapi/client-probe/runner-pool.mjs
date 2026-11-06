@@ -5,9 +5,11 @@ import {projectRegistry} from './project-registry.mjs';
 // Several HAPI Runners on one Mac. The primary Runner keeps today's behaviour; a folder that would force a
 // restart of a busy primary gets its own Runner (own HAPI_HOME, so its own machine id) instead of waiting.
 // A session stays on the Runner that created it (HAPI resumes only on the same machine), so assignments are durable.
-// shortcut: dedicated Runners run until the app closes; stop idle ones when memory matters.
-export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),sessionMachine,resolvePath}={}){
- const file=config.directory+'.assignments.json',units=new Map();let saving=Promise.resolve();
+// An idle dedicated Runner (no app request for idleMs; its own stop refuses while sessions run) is stopped;
+// the next send or resume starts it again with the same machine id.
+export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),sessionMachine,resolvePath,now=Date.now,idleMs=600000,sweepMs=60000}={}){
+ const file=config.directory+'.assignments.json',units=new Map(),used=new Map();let saving=Promise.resolve(),sweeping=false;
+ const use=u=>{if(u!==primary)used.set(u,now());return u;};
  const pathOf=resolvePath??(async key=>(await projectRegistry(config.projectsPath).get(key)).path);
  const machineOf=sessionMachine??(async id=>{
   const r=await fetch(config.hubUrl+'/api/sessions/'+encodeURIComponent(id),{headers:{authorization:await ownerAuthorization(config)},redirect:'error',signal:AbortSignal.timeout(5000)});
@@ -34,6 +36,17 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
  }
  async function byMachine(id){if(id)for(const u of await all())if(await u.machine()===id)return u;return primary;}
  async function bySession(id){return byMachine(id?await machineOf(id):null);}
+ async function sweepIdle(){
+  if(sweeping)return;sweeping=true;
+  try{for(const u of (await all()).slice(1)){
+   if((await u.status().catch(()=>null))?.phase!=='running'){used.delete(u);continue;}
+   if(!used.has(u))used.set(u,now());
+   if(now()-used.get(u)<idleMs)continue;
+   // Refused (sessions running, unconfirmed requests) or failed: the next sweep tries again.
+   try{await u.stop();used.delete(u);}catch{}
+  }}finally{sweeping=false;}
+ }
+ const timer=sweepMs?setInterval(()=>sweepIdle().catch(()=>{}),sweepMs).unref():null;
  const scoped=scope=>typeof scope==='string'?forRow(scope,undefined,{create:false}):scope?.session?bySession(scope.session):primary;
  const pass=name=>(...args)=>primary[name](...args);
  return {
@@ -43,7 +56,7 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
   async status(scope){return (await scoped(scope)).status();},
   async target(auth,scope){return (await scoped(scope)).target(auth);},
   async localMachine(scope){return (await scoped(scope)).localMachine();},
-  async ready(auth,key,agent){return (await forRow(key,agent)).ready(auth,key,agent);},
+  async ready(auth,key,agent){return use(await forRow(key,agent)).ready(auth,key,agent);},
   async task(raw,auth,check=false){
    const a=await load(),request=raw?.requestId;let u;
    if(request&&a.requests[request])u=unit(a.requests[request]);
@@ -53,7 +66,7 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
     if(await primary.placement(raw.project,raw.agent)==='busy'||await primary.placement('',raw.agent)==='busy'){const id=randomUUID();await update(a=>{a.requests[request]=id;});u=unit(id);}
     else u=primary;
    }else{u=await forRow(raw?.project,raw?.agent);if(u!==primary&&request)await update(a=>{a.requests[request]??=[...units].find(([,v])=>v===u)[0];});}
-   return u.task(raw,auth,check);
+   return use(u).task(raw,auth,check);
   },
   async workspace(auth){const seen=new Set(),out=[];for(const u of await all())for(const s of await u.workspace(auth))if(!seen.has(s.id)){seen.add(s.id);out.push(s);}return out;},
   async navigation(auth){
@@ -67,14 +80,15 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
   async claudeImport(auth,input,action){return (action==='list'?primary:await forRow(input?.project,'claude',{create:action!=='check'})).claudeImport(auth,input,action);},
   async codexImport(auth,input,action){return (action==='list'?primary:await forRow(input?.project,'codex',{create:action!=='check'})).codexImport(auth,input,action);},
   async claudeImportHistory(auth,id,before){return (await bySession(id)).claudeImportHistory(auth,id,before);},
-  async openSessionTerminal(auth,input){return (await bySession(input?.id)).openSessionTerminal(auth,input);},
-  async reconcileResume(id,auth){return (await bySession(id)).reconcileResume(id,auth);},
-  async runSessionMutation(fn,{resume,session}={}){return (resume?await byMachine(resume.metadata?.machineId):session?await bySession(session):primary).runSessionMutation(fn,{resume});},
+  async openSessionTerminal(auth,input){return use(await bySession(input?.id)).openSessionTerminal(auth,input);},
+  async reconcileResume(id,auth){return use(await bySession(id)).reconcileResume(id,auth);},
+  async runSessionMutation(fn,{resume,session}={}){return use(resume?await byMachine(resume.metadata?.machineId):session?await bySession(session):primary).runSessionMutation(fn,{resume});},
+  sweepIdle,
   // A new CLI connection applies to every Runner: dedicated ones stop first (refused while their sessions run).
   async accountProfile(auth,input){
    if(input?.action==='connect')for(const u of (await all()).slice(1))if((await u.status()).phase==='running')await u.stop();
    return primary.accountProfile(auth,input);
   },
-  async close(){const errors=[];for(const u of await all())try{await u.close();}catch(e){errors.push(e);}if(errors.length)throw errors[0];}
+  async close(){clearInterval(timer);const errors=[];for(const u of await all())try{await u.close();}catch(e){errors.push(e);}if(errors.length)throw errors[0];}
  };
 }
