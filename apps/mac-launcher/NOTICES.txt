@@ -1,9 +1,9 @@
-Maricode 1.1.6 — distribution notices
+Maricode 1.1.7 — distribution notices
 
 MARICODE product code: AGPL-3.0-only. Full text: MARICODE-LICENSE.txt
 in the app, LICENSE in the source repository and release attachments.
 Source repository: https://github.com/wi202im/MARICODE
-Release source: MARICODE-1.1.6-source.tar.gz, supplied beside the DMG.
+Release source: MARICODE-1.1.7-source.tar.gz, supplied beside the DMG.
 No warranty is provided; see the respective license texts.
 
 Distribution inventory (paths below are relative to Contents/Resources)
