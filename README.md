@@ -2,9 +2,9 @@
 
 A Mac workspace for Claude and Codex coding sessions, with a remote web client.
 
-**Maricode 1.1.2** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.1.2/MARICODE-1.1.2-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.1.2). HAPI 0.33.3 and Node are included.
+**Maricode 1.1.3** [Download the Apple Silicon Mac DMG](https://github.com/wi202im/MARICODE/releases/download/v1.1.3/MARICODE-1.1.3-arm64.dmg) or see the [release notes, sources and checksums](https://github.com/wi202im/MARICODE/releases/tag/v1.1.3). HAPI 0.33.3 and Node are included.
 
-**1.1.2 update:** Preserves settings, project registrations and conversations created in 1.1.0. This version does not run the 1.1.0 full reset. Finish active work and quit the previous app before replacing it.
+**1.1.3 update:** Preserves settings, project registrations and conversations created in 1.1.0. This version does not run the 1.1.0 full reset. Finish active work and quit the previous app before replacing it.
 
 
 App, menu and Dock names use **Maricode**; the native title bar displays the installed version. HAPI corresponding source is provided as a separate release attachment, with licenses and notices retained inside the app.
@@ -52,7 +52,7 @@ Building the native app also requires Xcode Command Line Tools and the pinned HA
 
 ## Verification and limitations
 
-- Version 1.1.2 includes updated automated and synthetic UI checks; see the release notes for results. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
+- Version 1.1.3 includes updated automated and synthetic UI checks; see the release notes for results. Earlier isolated real-engine tests on the included HAPI/Node versions exercised Claude/Codex responses, permissions, imported-context recall, Claude Bypass retention, Codex conversation branching, handoff and attachment responses. UI checks used headless Chrome at desktop/mobile widths.
 - CLI-only commands open the same HAPI session in an official terminal UI. The previous MCP/plugin/account/diagnostic command cards have been removed. Actual terminal handoff and return still need live verification.
 - No Intel Mac build or App Store release. The app downloads a verified DMG; replacing the installed app is manual and preserves the external data directory.
 - Each AI uses one connected official CLI settings location. Changing that connection is blocked while its sessions are active or unconfirmed.
