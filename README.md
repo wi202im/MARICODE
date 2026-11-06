@@ -21,8 +21,7 @@ App, menu and Dock names use **Maricode**; the native title bar displays the ins
 - Use model/reasoning/access controls, supported Codex Fast/plan options, context usage, command/skill suggestions, conversation search and in-app turn alerts.
 - Connect another device with a short-lived one-time code, without putting a long-lived token in a URL.
 - Attach files or paste images/Finder files, preview them and remove individual attachments.
-- Combine local, server and remote roles. Connect to multiple running computers over LAN or Tailscale.
-- Use the native Mac app locally and a browser or optional PWA remotely.
+- Work on this Mac in the native app. Optionally let other devices in over Tailscale: they use a browser or an installable PWA (one window per server), connected with a QR or one-time code.
 
 ## Install and use
 
