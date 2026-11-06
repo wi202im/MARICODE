@@ -45,6 +45,13 @@ export const scenarios=[
   ['다른 기기 접속 허용 바꾸기',async ui=>{globalThis.uxServerBefore=await ui.evaluate("document.getElementById('server').checked");return ui.click('#server');}],
   ['상태가 바뀌고 안내가 따라감',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([document.getElementById('server').checked,document.getElementById('impact').textContent])"));
    if(r[0]===globalThis.uxServerBefore||r[1].includes('접속 허용')!==r[0])throw Error('상태: '+JSON.stringify(r));return {changes:1};}]]},
+ {name:'Mac 앱에서 다른 기기 연결',goal:'다른 기기 연결 창 한 곳에서 주소·HTTPS 전달·QR을 진행한다',session:ids.claude,steps:[
+  ['Mac 앱 연결 통로로 다시 열기',async ui=>{await ui.send('Page.addScriptToEvaluateOnNewDocument',{source:"window.webkit={messageHandlers:{maricode:{postMessage:m=>{(window.__posted??=[]).push(m)}}}};"});await ui.evaluate("location.reload();true");await ui.wait(1500);await ui.login();await ui.wait(1500);return {changes:1};}],
+  ['메뉴의 다른 기기 연결 (앱이 창을 엶)',async ui=>{await ui.evaluate("window.maricodeOpenPairing();true");await ui.wait(1500);if(!await ui.evaluate("document.getElementById('pairing-dialog').open&&(window.__posted??[]).includes('remote-state')"))throw Error('창이 열리지 않았거나 상태 요청 없음');return {changes:1};}],
+  ['앱이 주소·전달 상태를 알려 줌',async ui=>{await ui.evaluate("window.maricodeRemoteState({address:'https://mini.tail1a2b.ts.net',forwarding:false,canStart:true});true");return ui.expectVisible('#pairing-forward-toggle');}],
+  ['전달 시작',ui=>ui.click('#pairing-forward-toggle')],
+  ['QR로 보기',ui=>ui.click('#pairing-qr')],
+  ['앱에 전달 시작·QR 요청이 감',async ui=>{const posted=await ui.evaluate("JSON.stringify(window.__posted)");if(!posted.includes('remote-start')||!/pairing-qr:[A-Z0-9]{4}-[A-Z0-9]{4}/.test(posted))throw Error('보낸 메시지: '+posted);return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

@@ -705,10 +705,20 @@ async function renderDevices(action){
    revoke.onclick=()=>{revoke.disabled=true;void renderDevices({action:'revoke',id:d.id});};li.append(name,when,revoke);return li;}):[Object.assign(document.createElement('li'),{textContent:'없음'})]));}
  catch{list.replaceChildren(Object.assign(document.createElement('li'),{textContent:'기기 목록을 불러오지 못했습니다.'}));}
 }
-function openPairing(){if(!pairingEnabled)return;$('pairing-dialog').showModal();pairingAction('issue');void renderDevices();}
+function openPairing(){if(!pairingEnabled)return;$('pairing-dialog').showModal();pairingAction('issue');void renderDevices();window.webkit?.messageHandlers?.maricode?.postMessage('remote-state');}
 // In the Mac app the native window draws the QR from the registered Tailscale address and this code.
 async function showPairingQR(){if(!(pairingExpires>Date.now()))await pairingAction('issue');const code=$('pairing-code').textContent;if(pairingExpires>Date.now()&&/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code))window.webkit.messageHandlers.maricode.postMessage('pairing-qr:'+code);}
-if(workspaceLayout&&window.webkit?.messageHandlers?.maricode){$('pairing-qr').hidden=false;$('pairing-qr').onclick=showPairingQR;}
+if(workspaceLayout&&window.webkit?.messageHandlers?.maricode){
+ const bridge=window.webkit.messageHandlers.maricode;$('pairing-qr').hidden=false;$('pairing-qr').onclick=showPairingQR;
+ // The Mac app owns the address and HTTPS forwarding; it reports them here and runs each change after its own confirmation.
+ window.maricodeRemoteState=state=>{$('pairing-remote').hidden=false;$('pairing-address').textContent=state.address??'등록 안 됨';
+  $('pairing-forward').textContent=state.forwarding?'실행 중':state.canStart?'꺼짐':'확인 중';
+  const toggle=$('pairing-forward-toggle');toggle.hidden=!state.address||!state.forwarding&&!state.canStart;toggle.textContent=state.forwarding?'전달 종료':'전달 시작';
+  toggle.onclick=()=>bridge.postMessage(state.forwarding?'remote-stop':'remote-start');};
+ $('pairing-address-set').onclick=()=>bridge.postMessage('remote-settings');
+ // Right after the app restarts, the page may still be reading its settings.
+ window.maricodeOpenPairing=async()=>{for(let i=0;i<25&&!pairingEnabled;i++)await new Promise(r=>setTimeout(r,200));if(!pairingEnabled){notice('먼저 이 Mac의 설정에서 ‘다른 기기에서 접속 허용’을 켜세요.');return;}if(!$('pairing-dialog').open)openPairing();};
+}
 if(workspaceLayout){$('pairing-open').onclick=openPairing;$('pairing-new').onclick=()=>pairingAction('issue');$('pairing-cancel').onclick=()=>pairingAction('cancel');$('pairing-close').onclick=()=>$('pairing-dialog').close();}
 async function refreshCatalog(){
  if(!workspaceLayout||!token||catalogBusy)return;
@@ -1180,7 +1190,7 @@ if(workspaceLayout){
   {group:'동작',label:'AI 계정·로그인 상태',keywords:'account login 계정',run:click('accounts-tab')},
   ...(sessionTerminalEnabled&&sessionId?[{group:'동작',label:'터미널에서 이 세션 이어가기',keywords:'terminal cli 터미널 명령 slash',run:()=>openSessionTerminal()}]:[]),
   {group:'동작',label:'세션 목록 새로고침',keywords:'refresh',run:click('refresh-list')},
-  ...(pairingEnabled?[{group:'동작',label:'다른 기기 연결 코드 만들기',keywords:'pair qr 연결 원격 remote',run:()=>openPairing()}]:[]),
+  ...(pairingEnabled?[{group:'동작',label:'다른 기기 연결',keywords:'pair qr 연결 코드 원격 remote 기기 주소 https',run:()=>openPairing()}]:[]),
   ...trialSessions.map(s=>({group:'대화',label:s.displayName??s.label,detail:[s.agent==='claude'?'Claude':s.agent==='codex'?'Codex':'',s.projectLabel].filter(Boolean).join(' · '),run:()=>selectSession(s.id)})),
   ...shortcuts.map(([k,l])=>({group:'단축키',label:l,hint:k,keywords:'shortcut 단축키',run:()=>{}}))]});
  // Shortcuts only open existing UI; IME composition and modifier-less keys are left alone.
