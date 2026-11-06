@@ -71,3 +71,23 @@ test('the latest-content cue appears only when the conversation is scrolled away
  assert.equal(moreBelow({scrollHeight:1000,scrollTop:420,clientHeight:500}),false);
  assert.equal(moreBelow({scrollHeight:1000,scrollTop:300,clientHeight:500}),true);
 });
+
+test('device selection survives a new app window, remains server scoped, and preserves each open tab',async()=>{
+ const {readWorkspaceSession,saveWorkspaceSession}=await import('./workspace-entry.mjs');
+ const storage=()=>{const m=new Map();return {getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,v)};};
+ const disk=storage(),tab=storage(),other=storage();
+ saveWorkspaceSession(tab,disk,'server-a','two');
+ assert.equal(readWorkspaceSession(storage(),disk,'server-a'),'two');
+ assert.equal(readWorkspaceSession(storage(),disk,'server-b'),null);
+ saveWorkspaceSession(other,disk,'server-a','one');
+ assert.equal(readWorkspaceSession(tab,disk,'server-a'),'two');
+ assert.equal(readWorkspaceSession(storage(),disk,'server-a'),'one');
+ saveWorkspaceSession(tab,disk,'','local');
+ assert.equal(readWorkspaceSession(tab,disk,''),'local');
+ assert.equal(readWorkspaceSession(storage(),disk,''),null);
+ const denied={getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}};
+ assert.doesNotThrow(()=>saveWorkspaceSession(denied,denied,'server-a','two'));
+ assert.equal(readWorkspaceSession(denied,disk,'server-a'),'one');
+ assert.equal(readWorkspaceSession(denied,denied,'server-a'),null);
+ assert.equal(workspaceSelection([{id:'one'},{id:'two'}],'#session=two',readWorkspaceSession(storage(),disk,'server-a')),'two');
+});

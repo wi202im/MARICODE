@@ -7,6 +7,11 @@ async function expectPinnedPrompt(ui){
  if(!visible)throw Error('상단 요약이 보이는 위치에 없음');return {changes:1};
 }
 export const scenarios=[
+ {name:'원격 앱을 다시 열어 같은 대화 읽기',goal:'기기 로그인을 유지한 새 창에서도 마지막 선택한 대화로 돌아온다',steps:[
+  ['기기 로그인으로 작업 화면 열기',async ui=>{const {code}=globalThis.uxPairing.issue();await ui.evaluate(`location.href='/install#code=${code}';true`);await ui.wait(1500);await ui.click('#pair-open');await ui.wait(1500);if(!await ui.evaluate("document.getElementById('login').hidden&&!!localStorage.getItem('merry-device-login-v1')"))throw Error('기기 로그인 실패');return {changes:1};}],
+  ['첫 번째가 아닌 대화 선택',async ui=>{await ui.evaluate(`(()=>{const s=document.getElementById('session-select');s.value=${JSON.stringify(ids.codex)};s.dispatchEvent(new Event('change'));return true;})()`);await ui.wait(1200);if(!await ui.evaluate(`document.getElementById('session-select').value===${JSON.stringify(ids.codex)}`))throw Error('대화 선택 실패');return {changes:1};}],
+  ['앱 창이 사라진 상태로 다시 열기',async ui=>{await ui.evaluate("sessionStorage.clear();location.replace('/workspace');true");await ui.wait(2000);if(!await ui.evaluate(`document.getElementById('login').hidden&&document.getElementById('session-select').value===${JSON.stringify(ids.codex)}`))throw Error('다시 열 때 대상 대화가 변경됨');return {changes:1};}],
+  ['재연결 후에도 같은 대화 유지',async ui=>{await ui.evaluate("document.dispatchEvent(new Event('visibilitychange'));true");await ui.wait(1200);if(!await ui.evaluate(`document.getElementById('session-select').value===${JSON.stringify(ids.codex)}`))throw Error('복귀 시 대상 변경');return {changes:1};}]]},
  {name:'연결하고 대화 열기',goal:'처음 화면에서 로그인하고 원하는 대화를 연다',steps:[
   ['토큰 입력칸 찾기',ui=>ui.click('#token')],['토큰 입력',ui=>ui.type('ux')],['연결 누르기',ui=>ui.click('연결')],
   ['목록에서 “파일 뷰어 탭 만들기” 열기',ui=>ui.click('파일 뷰어 탭 만들기')]]},

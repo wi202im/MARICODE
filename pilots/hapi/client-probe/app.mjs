@@ -21,7 +21,7 @@ import {createPalette,createFind} from './palette.mjs';
 import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,refreshDeviceLogin,readDeviceLogin,deviceLabel,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
-import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
+import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,readWorkspaceSession,saveWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
 import {createReadRecovery,connectionFailure,desktopRelogin} from './reconnect.mjs';
 import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace} from './workspace.mjs';
 import {createHistory} from './history.mjs';
@@ -271,7 +271,7 @@ async function openWorkspace(){
   notice(config.newTask?.generalChat?'프로젝트 작업 또는 일반 대화를 선택하고 AI와 대화를 시작하세요.':'프로젝트를 선택하고 새 세션에서 사용할 AI를 고르세요.');
   if(workspaceLayout){await configureTasks(config);refreshCatalog();}workspaceOpened=true;return;
  }
- let last;try{last=sessionStorage.getItem('hapi-trial-selected-session');}catch{}
+ const last=readWorkspaceSession(sessionStorage,deviceStorage,deviceServerId);
  let restored;try{restored=workspaceSelection(trialSessions,location.hash,last);}catch(error){notice(error.message);throw error;}
  $('login').hidden=true;$('workspace').hidden=false;
  if(restored===sessionId&&actions){$('session-select').value=sessionId;const mine=++epoch;streamController?.abort();await refresh();if(mine===epoch&&token===auth)stream(mine);}else await selectSession(restored);
@@ -303,7 +303,7 @@ $('login-form').addEventListener('submit',async e=>{
 async function selectSession(id){
   rememberChat();importedHistory?.load(id,importHistorySupported);
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
-  try{sessionStorage.setItem('hapi-trial-selected-session',id);}catch{}
+  saveWorkspaceSession(sessionStorage,deviceStorage,deviceServerId,id);
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();fileMentions?.reset();
   if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}

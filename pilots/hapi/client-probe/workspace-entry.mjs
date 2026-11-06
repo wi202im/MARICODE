@@ -50,3 +50,17 @@ export function draftRunnerLabel(runner,agent){
 
 // Within 90px of the end counts as reading the latest output.
 export const moreBelow=s=>s.scrollHeight-s.scrollTop-s.clientHeight>=90;
+
+// A registered device remembers only a navigation ID. Each open tab keeps its own choice.
+const selectionKey=serverId=>serverId?`maricode-selected-session:${serverId}`:'hapi-trial-selected-session';
+export function readWorkspaceSession(tab,device,serverId){
+ const key=selectionKey(serverId);
+ try{const id=tab?.getItem(key);if(id)return id;}catch{}
+ if(serverId)try{return device?.getItem(key)??null;}catch{}
+ return null;
+}
+export function saveWorkspaceSession(tab,device,serverId,id){
+ const key=selectionKey(serverId);
+ try{tab?.setItem(key,id);}catch{}
+ if(serverId)try{device?.setItem(key,id);}catch{}
+}
