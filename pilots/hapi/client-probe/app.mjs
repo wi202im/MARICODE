@@ -688,14 +688,17 @@ async function forkAt(localId){
  }catch(e){if(sessionId===from)notice(`분기하지 못했습니다(${e.message}). 다시 보내기 전에 대화 목록에서 새 세션이 생겼는지 확인하세요.`);await refreshCatalog().catch(()=>{});}
  finally{busy=false;render();}
 }
-let pairingTimer=null,pairingExpires=0;
+let pairingTimer=null,pairingExpires=0,pairingCodeBusy=false;
 function renderPairingExpiry(){const left=Math.max(0,Math.round((pairingExpires-Date.now())/1000));$('pairing-expiry').textContent=pairingExpires?(left?`${Math.floor(left/60)}분 ${left%60}초 남음`:'만료됐습니다. 새 코드를 만드세요.'):'';if(!left){clearInterval(pairingTimer);pairingTimer=null;}}
 async function pairingAction(action){
+ if(pairingCodeBusy)return false;pairingCodeBusy=true;
+ $('pairing-new').disabled=true;$('pairing-cancel').disabled=true;
  try{const r=await api('/api/pairing-code',{method:'POST',body:{action}});
   if(action==='issue'){$('pairing-code').textContent=r.code;pairingExpires=r.expiresAt;clearInterval(pairingTimer);pairingTimer=setInterval(renderPairingExpiry,1000);}
   else{$('pairing-code').textContent='----';pairingExpires=0;clearInterval(pairingTimer);pairingTimer=null;$('pairing-expiry').textContent='코드를 취소했습니다.';return;}
-  renderPairingExpiry();
- }catch{$('pairing-expiry').textContent='코드를 만들지 못했습니다. 이 Mac의 앱에서 로그인한 상태인지 확인하세요.';}
+  renderPairingExpiry();return true;
+ }catch{$('pairing-expiry').textContent='코드를 만들지 못했습니다. 이 Mac의 앱에서 로그인한 상태인지 확인하세요.';return false;}
+ finally{pairingCodeBusy=false;$('pairing-new').disabled=false;$('pairing-cancel').disabled=false;}
 }
 // Devices that stay signed in; revoking ends refresh and the device's current token at this server.
 async function renderDevices(action){
@@ -705,12 +708,35 @@ async function renderDevices(action){
    revoke.onclick=()=>{revoke.disabled=true;void renderDevices({action:'revoke',id:d.id});};li.append(name,when,revoke);return li;}):[Object.assign(document.createElement('li'),{textContent:'없음'})]));}
  catch{list.replaceChildren(Object.assign(document.createElement('li'),{textContent:'기기 목록을 불러오지 못했습니다.'}));}
 }
-function openPairing(){if(!pairingEnabled)return;$('pairing-dialog').showModal();pairingAction('issue');void renderDevices();window.webkit?.messageHandlers?.maricode?.postMessage('remote-state');}
-// In the Mac app the native window draws the QR from the registered Tailscale address and this code.
-async function showPairingQR(){if(!(pairingExpires>Date.now()))await pairingAction('issue');const code=$('pairing-code').textContent;if(pairingExpires>Date.now()&&/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code))window.webkit.messageHandlers.maricode.postMessage('pairing-qr:'+code);}
+let pairingPreparing=false,pairingRequest=null;
+function preparePairingQR(){
+ if(pairingPreparing||pairingCodeBusy)return;
+ pairingPreparing=true;pairingRequest=crypto.randomUUID();$('pairing-qr').disabled=true;
+ clearInterval(pairingTimer);pairingTimer=null;pairingExpires=0;$('pairing-code').textContent='----';
+ $('pairing-new').disabled=true;$('pairing-cancel').disabled=true;
+ $('pairing-expiry').textContent='주소와 HTTPS 전달을 준비하고 있습니다…';
+ window.webkit.messageHandlers.maricode.postMessage('pairing-prepare:'+pairingRequest);
+}
+function openPairing(){
+ if(!pairingEnabled||$('pairing-dialog').open)return;
+ $('pairing-dialog').showModal();void renderDevices();
+ if(window.webkit?.messageHandlers?.maricode)preparePairingQR();else void pairingAction('issue');
+ window.webkit?.messageHandlers?.maricode?.postMessage('remote-state');
+}
+// Issue a fresh code only after the Mac confirms its owned HTTPS forwarding is running.
+async function pairingReady(request,ready){
+ if(request!==pairingRequest||!pairingPreparing||!$('pairing-dialog').open)return;
+ try{
+  if(!ready){$('pairing-expiry').textContent='연결을 준비하지 못했습니다. Tailscale 연결·HTTPS 승인·주소 또는 기존 전달 설정을 확인하세요.';return;}
+  if(!await pairingAction('issue')||request!==pairingRequest||!$('pairing-dialog').open)return;
+  const code=$('pairing-code').textContent;
+  if(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code))window.webkit.messageHandlers.maricode.postMessage('pairing-qr:'+code);
+ }finally{if(request===pairingRequest){pairingPreparing=false;$('pairing-qr').disabled=false;$('pairing-new').disabled=false;$('pairing-cancel').disabled=false;}}
+}
 if(workspaceLayout&&window.webkit?.messageHandlers?.maricode){
- const bridge=window.webkit.messageHandlers.maricode;$('pairing-qr').hidden=false;$('pairing-qr').onclick=showPairingQR;
- // The Mac app owns the address and HTTPS forwarding; it reports them here and runs each change after its own confirmation.
+ const bridge=window.webkit.messageHandlers.maricode;$('pairing-qr').hidden=false;$('pairing-qr').onclick=preparePairingQR;window.maricodePairingReady=pairingReady;
+ $('pairing-dialog').addEventListener('close',()=>{if(pairingRequest)bridge.postMessage('pairing-cancel:'+pairingRequest);pairingRequest=null;pairingPreparing=false;$('pairing-qr').disabled=false;$('pairing-new').disabled=pairingCodeBusy;$('pairing-cancel').disabled=pairingCodeBusy;});
+ // The Mac app owns the address and HTTPS forwarding; it reports them here; opening the dialog prepares a usable QR in one request.
  window.maricodeRemoteState=state=>{$('pairing-remote').hidden=false;$('pairing-address').textContent=state.address??'등록 안 됨';
   $('pairing-forward').textContent=state.forwarding?'실행 중':state.canStart?'꺼짐':'확인 중';
   const toggle=$('pairing-forward-toggle');toggle.hidden=!state.address||!state.forwarding&&!state.canStart;toggle.textContent=state.forwarding?'전달 종료':'전달 시작';

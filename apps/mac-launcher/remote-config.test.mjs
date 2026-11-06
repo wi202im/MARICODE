@@ -67,3 +67,25 @@ test('startup discovers this Mac only when access is enabled and no address deci
   }finally{await runtime?.close();await rm(directory,{recursive:true,force:true});}
  });
 });
+
+test('pairing preparation discovers and starts once after enabling access, preserving unknown forwarding',async t=>{
+ const {startDesktopWeb}=await import('./runtime.mjs');const {createEnvironment}=await import('../../pilots/hapi/client-probe/environment.mjs');const {writeFile}=await import('node:fs/promises');
+ const directory=await mkdtemp(join(tmpdir(),'maricode-pair-ready-'));let runtime,starts=0,phase='stopped',release;
+ const gate=new Promise(r=>release=r),environment=createEnvironment(join(directory,'environment.json'));
+ try{
+  await environment.save({revision:0,roles:{local:true,server:false,remote:false}});
+  await writeFile(join(directory,'backend.json'),JSON.stringify({version:1,binary:'/bin/echo'}));
+  runtime=await startDesktopWeb({directory,port:0,tailscaleStatus:async()=>{await gate;return {BackendState:'Running',Self:{DNSName:'mini.tail123.ts.net.'}};}},{
+   backend:async()=>({upstream:'http://127.0.0.1:1',authenticate:async()=>'fixture',close:async()=>{}}),
+   forward:()=>({get phase(){return phase;},start:async()=>{starts++;phase='running';},stop:async()=>{phase='stopped';}})
+  });
+  await assert.rejects(runtime.prepareRemote());assert.equal(starts,0);
+  await environment.save({revision:1,roles:{local:true,server:true,remote:false}});
+  const preparing=runtime.prepareRemote();await assert.rejects(runtime.prepareRemote());release();await preparing;
+  assert.equal(starts,1);assert.equal(runtime.remotePhase,'running');await runtime.prepareRemote();assert.equal(starts,1);
+  assert.equal(await readRemoteOrigin(directory),'https://mini.tail123.ts.net');
+  phase='unknown';await assert.rejects(runtime.prepareRemote());assert.equal(starts,1);
+  await environment.save({revision:2,roles:{local:true,server:false,remote:false}});
+  phase='running';await assert.rejects(runtime.prepareRemote());assert.equal(starts,1);
+ }finally{release();await runtime?.close();await rm(directory,{recursive:true,force:true});}
+});

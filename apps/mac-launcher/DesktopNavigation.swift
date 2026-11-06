@@ -2,7 +2,7 @@ import Foundation
 
 func desktopCommandAllowed(scheme: String, host: String, port: Int, mainFrame: Bool, action: String) -> Bool {
     mainFrame && scheme == "http" && host == "127.0.0.1" && port == 61192 &&
-        ["quit-ready", "quit-cancelled", "connect", "add-project", "choose-claude-source", "codex", "claude", "configure", "add-agent", "change-project", "remote-settings", "pairing-qr", "remote-start", "remote-stop", "remote-state"].contains(action)
+        ["quit-ready", "quit-cancelled", "connect", "add-project", "choose-claude-source", "codex", "claude", "configure", "add-agent", "change-project", "remote-settings", "pairing-qr", "pairing-prepare", "pairing-cancel", "remote-start", "remote-stop", "remote-state"].contains(action)
 }
 
 // The QR opens the install guide with the one-time pairing code in the fragment, which browsers do not send to the server.

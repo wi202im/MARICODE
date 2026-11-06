@@ -26,7 +26,7 @@ export async function saveRemoteOrigin({directory,origin,expected}){
  }finally{await rm(temp,{force:true});await rm(lock,{recursive:true});}
 }
 
-// Called only while runtime owns web.lock, before its server accepts requests.
+// Called only while runtime owns web.lock, at startup or for an explicit local pairing request.
 // A saved null is an explicit unregister decision and must survive subsequent launches.
 export async function registerStartupOrigin({directory,server,query}){
  const path=join(directory,'remote.json');

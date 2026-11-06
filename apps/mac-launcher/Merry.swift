@@ -39,6 +39,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     let leftPanelButton = NSButton()
     let rightPanelButton = NSButton()
     var utilityViews: [String: WKWebView] = [:]
+    var pairingRequestID: String?
+    var remoteConfirmed = false
     var selectedAgent: String?
     lazy var appUpdater = AppUpdateController(version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0")
 
@@ -285,7 +287,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
     func pushRemoteState() {
         let info = try? RemoteConnection.read(directory: dataDirectory())
-        let state: [String: Any] = ["address": info?.address ?? NSNull(), "forwarding": remoteStop.isEnabled, "canStart": remoteStart.isEnabled]
+        let state: [String: Any] = ["address": info?.address ?? NSNull(), "forwarding": remoteConfirmed, "canStart": remoteStart.isEnabled]
         guard let data = try? JSONSerialization.data(withJSONObject: state), let json = String(data: data, encoding: .utf8) else { return }
         webView.evaluateJavaScript("window.maricodeRemoteState?.(\(json))", completionHandler: nil)
     }
@@ -316,7 +318,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
         guard (message.webView === webView || message.webView === utilityViews["settings"]), let rawAction = message.body as? String else { return }
-        let action = rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("pairing-qr:") ? "pairing-qr" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
+        let action = rawAction.hasPrefix("pairing-prepare:") ? "pairing-prepare" : rawAction.hasPrefix("pairing-cancel:") ? "pairing-cancel" : rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("pairing-qr:") ? "pairing-qr" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
         guard desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
         if action == "quit-cancelled" {
             guard message.webView === webView, let nonce = quitReviewNonce, rawAction == "quit-cancelled:" + nonce else { return }
@@ -327,8 +329,23 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             quitReviewNonce = nil; NSApp.terminate(nil); return
         }
         if action == "add-project" { addProjectFolder(); return }
+        if action == "pairing-prepare" || action == "pairing-cancel" {
+            guard message.webView === webView, desktopWorkspacePath(webView.url?.path),
+                  let request = rawAction.split(separator: ":").last.map(String.init), UUID(uuidString: request) != nil else { return }
+            if action == "pairing-cancel" { if pairingRequestID == request { pairingRequestID = nil }; return }
+            guard process != nil, !stopping, savedRoles()["server"] == true else { reportPairing(request, ready: false); return }
+            if let pending = pairingRequestID { if pending != request { reportPairing(request, ready: false) }; return }
+            pairingRequestID = request; status.stringValue = "주소와 HTTPS 전달 준비 중…"
+            remoteStart.isEnabled = false
+            do {
+                guard let input else { throw RemoteConnection.Failure.unavailable }
+                try input.fileHandleForWriting.write(contentsOf: Data(("remote-prepare " + request + "\n").utf8))
+            } catch { reportPairing(request, ready: false); pairingRequestID = nil; remoteConfirmed = false; remoteStop.isEnabled = true; status.stringValue = "준비 요청 결과가 불확실합니다. 전달 종료로 상태를 확인하세요."; pushRemoteState() }
+            return
+        }
         if action == "pairing-qr" {
             guard message.webView === webView, desktopWorkspacePath(webView.url?.path) else { return }
+            guard remoteConfirmed else { return }
             showPairingQR(String(rawAction.dropFirst("pairing-qr:".count))); return
         }
         if action == "choose-claude-source" {
@@ -646,6 +663,10 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         if tool.isRunning { tool.terminate(); return nil }
         return tailscaleSelfOrigin(out.fileHandleForReading.readDataToEndOfFile())
     }
+    func reportPairing(_ request: String, ready: Bool) {
+        guard UUID(uuidString: request) != nil else { return }
+        webView.evaluateJavaScript("void window.maricodePairingReady?.('\(request)', \(ready ? "true" : "false"))", completionHandler: nil)
+    }
     func showPairingQR(_ code: String) {
         guard let info = try? RemoteConnection.read(directory: dataDirectory()) else {
             status.stringValue = "QR을 만들려면 먼저 ‘다른 기기 연결’ 창에서 Tailscale 주소를 등록하세요."; return
@@ -657,7 +678,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let view = NSImageView(frame: NSRect(x: 0, y: 0, width: 240, height: 240)); view.image = image; view.imageScaling = .scaleProportionallyUpOrDown
         view.setAccessibilityLabel("다른 기기 연결 QR 코드")
         let prompt = NSAlert(); prompt.messageText = "휴대폰 카메라로 찍어 연결하세요"
-        prompt.informativeText = "\(link)\n\n설치 안내가 열리고 이 코드로 로그인합니다. 코드는 5분 동안 한 번만 쓸 수 있습니다. 같은 Tailscale에 연결된 기기에서만 열립니다." + (remoteStop.isEnabled ? "" : "\n\nHTTPS 전달이 꺼져 있습니다. ‘다른 기기 연결’ 창에서 전달을 먼저 시작하세요.")
+        prompt.informativeText = "\(link)\n\n설치 안내가 열리고 이 코드로 로그인합니다. 코드는 5분 동안 한 번만 쓸 수 있습니다. 같은 Tailscale에 연결된 기기에서만 열립니다."
         prompt.accessoryView = view
         prompt.addButton(withTitle: "닫기"); prompt.addButton(withTitle: "링크 복사")
         if prompt.runModal() == .alertSecondButtonReturn {
@@ -706,6 +727,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             if let value = ProcessInfo.processInfo.environment[key], value.hasPrefix("/") || value.hasPrefix("~/") { p.environment?[key] = value }
         }
         p.standardInput = stdin; p.standardOutput = stdout; p.standardError = FileHandle.nullDevice
+        pairingRequestID = nil; remoteConfirmed = false
         received = ""; input = stdin; output = stdout; process = p; stopping = false
         configure.isEnabled = false; addAgent.isEnabled = false; changeProject.isEnabled = false; remoteSettings.isEnabled = false; start.isEnabled = false; status.stringValue = "작업 화면 시작 중…"
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
@@ -724,10 +746,17 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     self.open.isEnabled = true; self.stop.isEnabled = true; self.connect.isEnabled = true; self.remoteStart.isEnabled = true
                     self.restoreAfterReleaseTransition()
                 }
-                if line == "REMOTE_ON" { self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 실행 중 · 등록 주소로 접속하세요. 원격 로그인은 별도로 필요합니다."; self.pushRemoteState() }
-                if line == "REMOTE_OFF" { self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "이 앱의 HTTPS 전달을 종료했습니다. 로컬 작업은 유지됩니다."; self.pushRemoteState() }
-                if line == "REMOTE_FAILED" { self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "전달을 시작하지 못했습니다. Tailscale 연결·기기 주소·서버 역할·기존 Serve 설정을 확인하세요. 기존 설정은 변경하지 않았습니다."; self.pushRemoteState() }
-                if line == "REMOTE_UNKNOWN" { self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 상태를 확인하지 못했습니다. 전달 종료로 소유 프로세스 정리를 확인하세요. 자동 재시작하지 않습니다."; self.pushRemoteState() }
+                if line == "REMOTE_ON" { self.remoteConfirmed = true; self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 실행 중 · 등록 주소로 접속하세요. 원격 로그인은 별도로 필요합니다."; self.pushRemoteState() }
+                if line == "REMOTE_OFF" { self.remoteConfirmed = false; self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "이 앱의 HTTPS 전달을 종료했습니다. 로컬 작업은 유지됩니다."; self.pushRemoteState() }
+                if line == "REMOTE_FAILED" { self.remoteConfirmed = false; self.remoteStart.isEnabled = true; self.remoteStop.isEnabled = false; self.status.stringValue = "전달을 시작하지 못했습니다. Tailscale 연결·기기 주소·서버 역할·기존 Serve 설정을 확인하세요. 기존 설정은 변경하지 않았습니다."; self.pushRemoteState() }
+                if line == "REMOTE_UNKNOWN" { self.remoteConfirmed = false; self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = true; self.status.stringValue = "HTTPS 전달 상태를 확인하지 못했습니다. 전달 종료로 소유 프로세스 정리를 확인하세요. 자동 재시작하지 않습니다."; self.pushRemoteState() }
+                if line.hasPrefix("PAIRING_READY ") || line.hasPrefix("PAIRING_FAILED ") {
+                    let request = String(line.split(separator: " ").last ?? "")
+                    if self.pairingRequestID == request {
+                        self.pairingRequestID = nil
+                        self.reportPairing(request, ready: line.hasPrefix("PAIRING_READY ") && self.remoteConfirmed && self.savedRoles()["server"] == true)
+                    }
+                }
                 if line == "CONNECT_READY" && !self.stopping {
                     self.connect.isEnabled = true
                     self.authenticating = true; self.localPageReady = false; self.renderScreen()
@@ -762,6 +791,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             self.output?.fileHandleForReading.readabilityHandler = nil
             self.runtimeExitIsSafe = p.terminationStatus == 0
             self.process = nil; self.input = nil; self.output = nil; self.url = nil
+            self.remoteConfirmed = false
+            if let request = self.pairingRequestID { self.reportPairing(request, ready: false); self.pairingRequestID = nil }
             self.remoteStart.isEnabled = false; self.remoteStop.isEnabled = false; self.open.isEnabled = false; self.stop.isEnabled = false; self.connect.isEnabled = false; self.start.isEnabled = true; self.configure.isEnabled = true; self.addAgent.isEnabled = true; self.changeProject.isEnabled = true; self.remoteSettings.isEnabled = true
             switch p.terminationStatus {
             case 0: self.status.stringValue = "작업 서버를 종료했습니다."
