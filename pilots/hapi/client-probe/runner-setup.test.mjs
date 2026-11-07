@@ -449,3 +449,27 @@ test('missing original CLI record is a definite account rejection before any res
  await assert.rejects(api.runSessionMutation(async()=>{writes++;},{resume:{id:'10000000-0000-4000-8000-000000000001',active:false,metadata:{machineId:'own',path:root,flavor:'codex',codexSessionId:'missing-native'}}}),e=>e.rejected===true&&e.status===409&&e.reason==='ACCOUNT_MISMATCH');
  assert.equal(writes,0);assert.equal((await api.status()).phase,'running');await assert.rejects(readFile(join(directory,'session-operation.json')));
 });
+
+test('unregistered legacy default folder stays served after a selected workspace prepares the Runner',async t=>{
+ const {readFile}=await import('node:fs/promises'),{createServer}=await import('node:http'),{projectRegistry}=await import('./project-registry.mjs');
+ const root=await mkdtemp(join(tmpdir(),'maricode-legacy-default-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),projectsPath:join(root,'projects'),binary:'/bin/echo',tokenFile:join(root,'token')};
+ const legacy=join(root,'legacy'),selected=join(root,'selected');await mkdir(selected);
+ await writeFile(join(root,'env'),'{"PATH":"/usr/bin:/bin"}');await writeFile(c.accountConfig,JSON.stringify({cwd:legacy,environment:join(root,'env'),binaries:{codex:'/bin/echo'}}));await writeFile(c.tokenFile,'synthetic');
+ const project=await projectRegistry(c.projectsPath).add(selected);
+ const hub=createServer((req,res)=>res.writeHead(req.headers.authorization==='Bearer synthetic'?200:401,{'Content-Type':'application/json'}).end('{"sessions":[]}'));
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
+ const plans=[];
+ const deps={connection:async()=>true,hasActive:async()=>false,launch:async({prepared})=>{const plan=JSON.parse(await readFile(join(prepared,'prepared.json'),'utf8'));plans.push(plan);await mkdir(join(prepared,'runner-home'),{recursive:true});await writeFile(join(prepared,'runner-home/settings.json'),JSON.stringify({machineId:'stable-machine'}));let running=true;return {get running(){return running;},stop:async()=>{running=false;}};}};
+ const api=createRunnerSetup(c,deps);
+ // A missing legacy folder does not block the selected workspace.
+ await api.ready('Bearer synthetic',project.id,'codex');assert.equal(plans.length,1);assert.ok(!plans[0].workspaceRoots.includes(legacy));
+ // Once it exists, the legacy row's request restarts the Runner to serve it instead of reusing the selected folder's roots.
+ await mkdir(legacy);assert.ok((await api.projects('Bearer synthetic')).some(p=>p.key===''&&p.path===legacy));
+ await api.ready('Bearer synthetic','','codex');assert.equal(plans.length,2);assert.ok(plans[1].workspaceRoots.includes(legacy));assert.equal(plans[1].machineId,'stable-machine');
+ // Preparing for the selected workspace again keeps the legacy folder served, as before the selected-folder change.
+ await api.stop();await api.ready('Bearer synthetic',project.id,'codex');assert.equal(plans.length,3);assert.equal(plans[2].cwd,project.path);
+ assert.ok(plans[2].workspaceRoots.includes(legacy));assert.ok(plans[2].workspaceRoots.includes(project.path));
+ await api.ready('Bearer synthetic','','codex');assert.equal(plans.length,3);
+ await api.stop();
+});

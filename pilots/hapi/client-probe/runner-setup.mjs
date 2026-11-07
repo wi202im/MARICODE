@@ -131,15 +131,20 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    const elsewhere=new Set(await config.excludeKeys?.()??[]);
    roots=[];for(const row of rows.filter(r=>!elsewhere.has(r.id))){try{roots.push((await registry.get(row.id)).path);}catch{/* Missing unrelated folders do not block healthy workspaces. */}}
    if(!plan.cwd.endsWith('/local-setup/working-directory'))roots.push(plan.cwd);
+   // A selected workspace may prepare this generation; the account's legacy default folder stays served while it exists.
+   const legacy=await accountDirectory();
+   if(legacy!==plan.cwd&&!legacy.endsWith('/local-setup/working-directory'))try{if((await stat(legacy)).isDirectory())roots.push(legacy);}catch{/* A missing default folder does not block the selected workspace. */}
    if(!roots.length)roots=[plan.cwd];
   }
   if(c.projectsPath&&!config.roots)roots.push(await prepareGeneralDirectory());
   await writeFile(path,JSON.stringify({...plan,workspaceRoots:[...new Set(roots)]})+'\n',{mode:0o600});
   const token=await readFile(c.tokenFile,'utf8');child=await launch({prepared:c.directory,binary:c.binary,hubUrl:c.hubUrl,token});phase='running';
  }
+ async function accountDirectory(){return JSON.parse(await readFile(c.accountConfig,'utf8')).cwd;}
  async function refreshRequired(project,agent){
   const plan=JSON.parse(await readFile(join(c.directory,'prepared.json'),'utf8'));
-  const path=c.projectsPath&&project?(await projectRegistry(c.projectsPath).get(project)).path:plan.cwd;
+  // Without a registered key the request means the account's default folder, not whichever folder prepared this generation.
+  const path=c.projectsPath?project?(await projectRegistry(c.projectsPath).get(project)).path:await accountDirectory():plan.cwd;
   return !(plan.workspaceRoots??[plan.cwd]).includes(path)||(agent!==undefined&&!plan.agents?.includes(agent));
  }
  async function stopOwned(){
