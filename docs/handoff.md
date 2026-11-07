@@ -12,6 +12,10 @@
 
 
 
+## 1.2.2 배포 준비 — 2026-11-07
+
+- 사용자 DMG 배포 요청으로 1.2.2로 올려 구독 사용량 한도 표시를 배포한다. 기존 설정·프로젝트·대화 보존. 서명·공증·번들 실행·공개 다운로드 검증 후 발행 완료를 기록한다.
+
 ## 구독 사용량 한도 표시 — 2026-11-07 (미배포)
 
 - 사용자 요청: Claude·Codex 구독 한도와 초기화 시각 표시. 조사 결과 HAPI 0.33.3은 Claude rate_limit_event를 경고(allowed_warning)·도달(rejected)일 때만 assistant 텍스트 `Claude AI usage limit warning|초|%|종류`로 전달하고 평상시(allowed)는 버린다. Codex `account/rateLimits/updated`는 HAPI가 버린다. Codex CLI는 rollout의 token_count에 `rate_limits`(사용 %, 기간 분, 초기화 초, 요금제, 크레딧)를 기록한다. Claude 평상시 남은 양은 공식 공개 경로를 확인하지 못했고, CLI 내부 인증으로 비공개 조회하는 방식은 택하지 않았다.
