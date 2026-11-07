@@ -443,7 +443,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      const nativeKey=m.flavor==='codex'?'codexSessionId':'claudeSessionId';
      // Resume only a native record in the connected CLI. Removed legacy profiles cannot silently create a fresh conversation.
      const owner=await accountProfiles(c.accountConfig).owner(m.flavor,m[nativeKey]??m.agentSessionId,m.path).catch(()=>null);
-     if(!owner&&(JSON.parse(await readFile(c.accountConfig,'utf8'))).cliConnectionRequired)throw Object.assign(Error('현재 연결한 CLI에서 이 대화의 원본 기록을 찾지 못했습니다. 기존 대화 찾기로 다시 연결하세요.'),{rejected:true,status:409});
+     if(!owner&&(JSON.parse(await readFile(c.accountConfig,'utf8'))).cliConnectionRequired)throw Object.assign(Error('현재 연결한 CLI에서 이 대화의 원본 기록을 찾지 못했습니다. 기존 대화 찾기로 다시 연결하세요.'),{rejected:true,status:409,reason:'ACCOUNT_MISMATCH'});
      pending={id:resume.id,machineId:m.machineId,path:m.path,flavor:m.flavor,nativeKey,nativeId:typeof m[nativeKey]==='string'?m[nativeKey]:null,child,directory:c.directory};
     }
     const marker=join(c.directory,'session-operation.json');let recorded=false;

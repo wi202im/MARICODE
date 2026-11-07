@@ -70,3 +70,13 @@ test('an idle dedicated Runner stops after the idle time; a refused stop is retr
  await pool.ready('Bearer x','p3','claude');clock=900000;await pool.sweepIdle();assert.equal(stops(),1);
  clock=1260000;await pool.sweepIdle();assert.equal(stops(),2);
 });
+
+test('resume preparation follows the session owner even when its folder is assigned elsewhere',async t=>{
+ const d=await dir(t),sessions={old:'m-primary'},f=fixture(t,{placement:'busy',sessions});
+ const pool=createRunnerPool({directory:join(d,'runner'),projectsPath:join(d,'projects.json')},{createUnit:f.unit,sessionMachine:lookup(sessions),resolvePath:async k=>'/x/'+k,sweepMs:0});
+ await pool.ready('Bearer x','p1','codex');assert.equal(f.made.length,1);
+ await pool.ready('Bearer x','p1','codex',{session:'old'});assert.equal(f.calls.at(-1)[0],'primary');
+ sessions.new=f.made[0].machineId;await pool.ready('Bearer x','p1','codex',{session:'new'});assert.equal(f.calls.at(-1)[0],'dedicated');
+ const count=f.calls.length;sessions.lost='unregistered-machine';
+ await assert.rejects(pool.ready('Bearer x','p1','codex',{session:'lost'}));await assert.rejects(pool.ready('Bearer x','p1','codex',{session:'missing'}));assert.equal(f.calls.length,count);assert.equal(f.made.length,1);
+});

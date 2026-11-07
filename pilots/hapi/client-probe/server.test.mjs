@@ -270,9 +270,9 @@ test('offline file reads expose a recoverable runner error without forwarding fi
 
 test('explicit resume prepares only the session project and engine before forwarding',async t=>{
  let starts=0,forwarded=0,prepared;const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.method==='POST'){forwarded++;return res.end(JSON.stringify({sessionId:id}));}res.end(JSON.stringify({session:{active:false,metadata:{machineId:'own',path:'/trial',flavor:'codex'}}}));});await new Promise(r=>hub.listen(0,'127.0.0.1',r));
- const service={workspace:async()=>[{id,project:'/trial'}],projects:async()=>[{key:'project-key',path:'/trial'}],ready:async(...args)=>{starts++;prepared=args;},status:async()=>({workspaceAvailable:starts>0}),runSessionMutation:async(fn)=>{assert.equal(starts,1);return fn();}};
+ const service={workspace:async()=>[{id,project:'/trial'}],projects:async()=>[{key:'project-key',path:'/trial'}],ready:async(...args)=>{starts++;prepared=args;},status:async scope=>{assert.deepEqual(scope,{session:id});return {workspaceAvailable:starts>0};},runSessionMutation:async(fn)=>{assert.equal(starts,1);return fn();}};
  const proxy=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,runnerService:service});await new Promise(r=>proxy.listen(0,'127.0.0.1',r));t.after(()=>{for(const s of [hub,proxy]){s.closeAllConnections();s.close();}});const origin=`http://127.0.0.1:${proxy.address().port}`;
- const r=await fetch(origin+`/api/sessions/${id}/resume`,{method:'POST',headers:{Origin:origin,Authorization:'Bearer synthetic','Content-Type':'application/json'},body:'{}'});assert.equal(r.status,200);assert.deepEqual(prepared,['Bearer synthetic','project-key','codex']);assert.equal(forwarded,1);
+ const r=await fetch(origin+`/api/sessions/${id}/resume`,{method:'POST',headers:{Origin:origin,Authorization:'Bearer synthetic','Content-Type':'application/json'},body:'{}'});assert.equal(r.status,200);assert.deepEqual(prepared,['Bearer synthetic','project-key','codex',{session:id}]);assert.equal(forwarded,1);
 });
 
 test('closing the browser does not cancel or replay an accepted resume',async t=>{
@@ -570,4 +570,28 @@ test('file search for @-mentions accepts only a short query and limit',()=>{
  assert.equal(allowedRoute('GET',url(b+'?query=src%2Fapp&limit=20'),id),true);
  for(const p of [b+'?path=/etc',b+'?query='+'x'.repeat(201),b+'?limit=9999',b+'?limit=-1'])assert.equal(allowedRoute('GET',url(p),id),false,p);
  assert.equal(allowedRoute('POST',url(b),id),false);
+});
+
+test('concurrent resume is rejected while preparation is pending, forwarding only once',async t=>{
+ let entered,release;const seen=new Promise(r=>{entered=r;}),gate=new Promise(r=>{release=r;});let starts=0,forwarded=0;
+ const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.method==='POST'){forwarded++;return res.end(JSON.stringify({sessionId:id}));}res.end(JSON.stringify({session:{id,active:false,metadata:{machineId:'own',path:'/trial',flavor:'codex'}}}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));
+ const service={workspace:async()=>[{id,project:'/trial'}],projects:async()=>[{key:'project',path:'/trial'}],ready:async()=>{starts++;entered();await gate;},status:async()=>({workspaceAvailable:true}),runSessionMutation:async fn=>fn()};
+ const proxy=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,runnerService:service});await new Promise(r=>proxy.listen(0,'127.0.0.1',r));t.after(()=>{release();for(const s of [hub,proxy]){s.closeAllConnections();s.close();}});
+ const origin=`http://127.0.0.1:${proxy.address().port}`,post=()=>fetch(origin+`/api/sessions/${id}/resume`,{method:'POST',headers:{Origin:origin,Authorization:'Bearer synthetic','Content-Type':'application/json'},body:'{}'});
+ const first=post();await seen;const second=await post();assert.equal(second.status,409);assert.equal((await second.json()).rejected,true);assert.equal(starts,1);assert.equal(forwarded,0);release();assert.equal((await first).status,200);assert.equal(forwarded,1);
+});
+
+test('resume preflight and original account failures never forward a resume',async t=>{
+ for(const scenario of ['active','missing-project','different-folder','unconfirmed-cli','missing-native'])await t.test(scenario,async t=>{
+  let starts=0,forwarded=0;
+  const metadata={machineId:'own',path:scenario==='different-folder'?'/other':'/trial',flavor:'codex'};
+  const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.method==='POST'){forwarded++;return res.end(JSON.stringify({sessionId:id}));}res.end(JSON.stringify({session:{id,active:scenario==='active',metadata}}));});await new Promise(r=>hub.listen(0,'127.0.0.1',r));
+  const service={workspace:async()=>[{id,project:'/trial'}],projects:async()=>scenario==='missing-project'?[]:[{key:'project',path:'/trial'}],ready:async()=>{starts++;if(scenario==='unconfirmed-cli')throw Error('CLI connection not confirmed');},status:async()=>({workspaceAvailable:true}),runSessionMutation:async()=>{throw Object.assign(Error('원본 기록을 다시 연결하세요.'),{rejected:true,status:409,reason:'ACCOUNT_MISMATCH'});}};
+  const proxy=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,runnerService:service});await new Promise(r=>proxy.listen(0,'127.0.0.1',r));t.after(()=>{for(const s of [hub,proxy]){s.closeAllConnections();s.close();}});
+  const origin=`http://127.0.0.1:${proxy.address().port}`,r=await fetch(origin+`/api/sessions/${id}/resume`,{method:'POST',headers:{Origin:origin,Authorization:'Bearer synthetic','Content-Type':'application/json'},body:'{}'}),result=await r.json();
+  assert.equal(r.status,409);assert.equal(result.rejected,true);assert.equal(forwarded,0);
+  assert.equal(starts,['unconfirmed-cli','missing-native'].includes(scenario)?1:0);
+  assert.equal(result.reason,scenario==='missing-native'?'ACCOUNT_MISMATCH':'RUNNER_SETUP');if(scenario==='missing-native')assert.equal(result.error,'원본 기록을 다시 연결하세요.');
+ });
 });

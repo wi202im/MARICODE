@@ -580,9 +580,9 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
           resumeSource={...current,id};
           const project=(await runnerService.projects(req.headers.authorization)).find(p=>p.path===m.path&&p.available!==false);
           if(!project)throw Error('Project unavailable');
-          await runnerService.ready(req.headers.authorization,project.key,m.flavor);
+          await runnerService.ready(req.headers.authorization,project.key,m.flavor,{session:id});
           for(let attempt=0;attempt<40;attempt++){
-            if((await runnerService.status(project.key)).workspaceAvailable)break;
+            if((await runnerService.status({session:id})).workspaceAvailable)break;
             if(attempt===39)throw Error('Runner unavailable');
             await new Promise(resolve=>setTimeout(resolve,250));
           }

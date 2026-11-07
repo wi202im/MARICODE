@@ -439,3 +439,13 @@ test('registered workspace restarts after saved default disappears and preserves
  await restarted.stop();
  const fresh=createRunnerSetup({...c,directory:join(root,'fresh')},deps);await fresh.ready('Bearer synthetic',project.id,'codex');assert.equal(plans[2].cwd,project.path);await fresh.stop();
 });
+
+test('missing original CLI record is a definite account rejection before any resume write',async t=>{
+ const {readFile}=await import('node:fs/promises');const root=await mkdtemp(join(tmpdir(),'maricode-resume-owner-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const cfg=join(root,'accounts'),env=join(root,'env'),directory=join(root,'runner');
+ await writeFile(env,JSON.stringify({PATH:'/usr/bin:/bin',HOME:root}));await writeFile(cfg,JSON.stringify({cwd:root,environment:env,binaries:{},cliConnectionRequired:true}));await writeFile(join(root,'token'),'synthetic');
+ const api=createRunnerSetup({directory,accountConfig:cfg,binary:'/bin/echo',hubUrl:'http://127.0.0.1:1',tokenFile:join(root,'token')},{connection:async()=>true,launch:async({prepared})=>{await mkdir(join(prepared,'runner-home'));await writeFile(join(prepared,'runner-home/settings.json'),'{"machineId":"own"}');return {running:true};}});
+ await api.prepare();await api.start();let writes=0;
+ await assert.rejects(api.runSessionMutation(async()=>{writes++;},{resume:{id:'10000000-0000-4000-8000-000000000001',active:false,metadata:{machineId:'own',path:root,flavor:'codex',codexSessionId:'missing-native'}}}),e=>e.rejected===true&&e.status===409&&e.reason==='ACCOUNT_MISMATCH');
+ assert.equal(writes,0);assert.equal((await api.status()).phase,'running');await assert.rejects(readFile(join(directory,'session-operation.json')));
+});

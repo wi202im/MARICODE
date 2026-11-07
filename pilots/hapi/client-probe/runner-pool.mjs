@@ -34,8 +34,8 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
   if(!key||!create||await primary.placement(key,agent)!=='busy')return primary;
   const id=randomUUID();await update(a=>{a.rows[key]??=id;});return unit((await load()).rows[key]);
  }
- async function byMachine(id){if(id)for(const u of await all())if(await u.machine()===id)return u;return primary;}
- async function bySession(id){return byMachine(id?await machineOf(id):null);}
+ async function byMachine(id,{required=false}={}){if(id)for(const u of await all())if(await u.machine()===id)return u;if(required)throw Error('Session Runner unavailable');return primary;}
+ async function bySession(id,options){return byMachine(id?await machineOf(id):null,options);}
  async function sweepIdle(){
   if(sweeping)return;sweeping=true;
   try{for(const u of (await all()).slice(1)){
@@ -56,7 +56,9 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
   async status(scope){return (await scoped(scope)).status();},
   async target(auth,scope){return (await scoped(scope)).target(auth);},
   async localMachine(scope){return (await scoped(scope)).localMachine();},
-  async ready(auth,key,agent){return use(await forRow(key,agent)).ready(auth,key,agent);},
+  // Existing sessions stay on their original machine even if newer work in the
+  // same folder was assigned elsewhere. Never allocate a replacement on resume.
+  async ready(auth,key,agent,scope){return use(scope?.session?await bySession(scope.session,{required:true}):await forRow(key,agent)).ready(auth,key,agent);},
   async task(raw,auth,check=false){
    const a=await load(),request=raw?.requestId;let u;
    if(request&&a.requests[request])u=unit(a.requests[request]);
