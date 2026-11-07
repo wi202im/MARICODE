@@ -8,6 +8,7 @@ import {requestQuestions,questionDecision} from './questions.mjs';
 import {questionForm} from './question-form.mjs';
 import {createAttachmentComposer} from './attachment-composer.mjs';
 import {fitPreviews} from './attachments.mjs';
+import {createUsagePanel} from './usage-panel.mjs';
 import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
@@ -74,6 +75,7 @@ async function api(path,{method='GET',body,signal}={}){
   if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path==='/api/session-terminal'||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.startsWith('/api/branch')||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
+const usagePanel=workspaceLayout?createUsagePanel({root:$('usage-info'),api,messages:()=>messages}):null;
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
 const base=()=>`/api/sessions/${sessionId}`;
 // Pinned sessions: branchTurn marks a sent turn whose end (HAPI 'ready' event after seq) triggers the branch check.
@@ -149,6 +151,7 @@ function render(){
   const scroller=$('conversation-history')??$('messages'),nearBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<90;
   const canFork=workspaceLayout&&session?.metadata?.capabilities?.conversationHistory?.forkAtMessage===true&&session.active&&!session.thinking&&!busy&&!actions?.pending;
   renderConversation($('messages'),messages,{engine:session?.metadata?.flavor==='claude'?'Claude':'Codex',session,onFork:canFork?forkAt:null,onDiff:fileTabs?change=>{fileTabs.openDiff(change);if(compactSidebar.matches)workspacePanel('chat');}:null,onGitReview:workspaceLayout?()=>{revealInPanel('git-review');gitReview?.load?.(true);}:null,queued:{ids:queuedIds,busy:queueBusy,steer:session?.metadata?.flavor==='codex',onCancel:cancelQueued,onSteer:steerQueued,onInterrupt:session?.metadata?.flavor==='claude'?()=>stopTurn('중지를 요청했습니다. 대기 중인 메시지가 바로 이어서 전달됩니다. 이미 바뀐 파일은 되돌리지 않습니다.'):null,stopping}});finder?.refresh();
+  usagePanel?.render();
   if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
    el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
@@ -303,7 +306,7 @@ $('login-form').addEventListener('submit',async e=>{
  }catch(e){if(attempt===epoch)notice(e.message);}finally{button.disabled=false;}
 });
 async function selectSession(id){
-  rememberChat();importedHistory?.load(id,importHistorySupported);
+  rememberChat();usagePanel?.load(false,token);importedHistory?.load(id,importHistorySupported);
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
   saveWorkspaceSession(sessionStorage,deviceStorage,deviceServerId,id);
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
@@ -338,7 +341,7 @@ function clearLogin(message,state='login-needed'){
  clearTimeout(deviceRefreshTimer);
  // Mac app: an expired login (4h) gets a fresh one from the app instead of the login screen; the unsent draft is kept.
  if(state==='expired'&&desktopLogin&&desktopRelogin(sessionStorage)){rememberChat();const d=chatDrafts.read(sessionId);try{if(sessionId&&(d.text||d.note))sessionStorage.setItem('maricode-desktop-draft',JSON.stringify({id:sessionId,...d}));}catch{}recovery?.stop();epoch++;streamController?.abort();token='';notice('로그인이 만료되어 다시 연결합니다.');location.replace('/workspace');return;}
-  sessionTerminalEnabled=false;$('terminal-offer')?.remove();attachmentComposer?.clearAll();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
+  sessionTerminalEnabled=false;$('terminal-offer')?.remove();attachmentComposer?.clearAll();usagePanel?.clear();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
   recovery?.stop();
   saveTabToken(sessionStorage,'',false);clearDeviceLogin(deviceStorage);deviceServerId='';
   catalogSerial++;sessionCards.clear();firstPrompts.clear();catalogChecked=null;cardSignature='';

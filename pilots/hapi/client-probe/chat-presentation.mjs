@@ -1,3 +1,4 @@
+import {messageLimit} from './usage-limits.mjs';
 import {messageView} from './core.mjs';
 import {toolViews} from './workflow.mjs';
 export function formatDuration(ms){if(!Number.isFinite(ms)||ms<0)return '';const s=Math.floor(ms/1000);return s<60?`${s}초`:`${Math.floor(s/60)}분 ${s%60}초`;}
@@ -95,7 +96,9 @@ export function chatTimeline(messages){
   if(m.content?.content?.type==='output'&&Array.isArray(d?.message?.content))for(const b of d.message.content){if(b.type==='tool_use')ids.push({id:b.id});if(b.type==='tool_result')ids.push({id:b.tool_use_id,result:true});}
   const thought=reasoningText(m);if(thought){const last=rows.at(-1);if(last?.kind==='reasoning'&&last.parent===parent)last.text+='\n\n'+thought;else rows.push({kind:'reasoning',key:'reason-'+(m.id??m.seq),parent,at:m.createdAt,text:thought});}
   const command=commandOutput(m);if(command)rows.push({kind:'command',key:m.id??m.seq,parent,at:m.createdAt,...command});
-  const view=command?null:messageView(m);if(view)rows.push({kind:'message',key:m.id??m.seq,localId:typeof m.localId==='string'?m.localId:null,view,parent,at:m.createdAt,attachments:m.content?.content?.attachments??m.content?.meta?.attachments??[]});
+  // HAPI forwards Claude usage-limit events as assistant text; show them as a limit notice instead.
+  const limit=command?null:messageLimit(m);if(limit)rows.push({kind:'limit',key:m.id??m.seq,parent,at:m.createdAt,limit});
+  const view=command||limit?null:messageView(m);if(view)rows.push({kind:'message',key:m.id??m.seq,localId:typeof m.localId==='string'?m.localId:null,view,parent,at:m.createdAt,attachments:m.content?.content?.attachments??m.content?.meta?.attachments??[]});
   for(const ref of ids){
    const tool=tools.get(ref.id);if(!tool)continue;
    if(ref.result)tool.end=m.createdAt;else tool.start=m.createdAt;

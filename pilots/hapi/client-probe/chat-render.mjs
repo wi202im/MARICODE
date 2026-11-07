@@ -2,6 +2,7 @@ import {icon} from './icons.mjs';
 import {chatTimeline,describeTool,editPreview,formatDuration} from './chat-presentation.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {formatSize,sentPreview} from './attachments.mjs';
+import {limitText} from './usage-limits.mjs';
 const node=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
 const readable=v=>typeof v==='string'?v:JSON.stringify(v??null,null,2);
 const rendered=new WeakMap();
@@ -46,6 +47,7 @@ export function renderConversation(container,messages,{engine,session,onFork,que
  const nodes=chatTimeline(messages).map(row=>{
   if(row.kind==='command'){const box=node('section','cli-output'+(row.error?' error':''));box.append(node('small','',row.error?'Claude Code 명령 오류':'Claude Code 명령 결과'),node('pre','',row.text),copyButton(row.text,'명령 결과 복사'));return box;}
   if(row.kind==='duration')return node('p','turn-duration',row.text);
+  if(row.kind==='limit'){const e=row.limit,p=node('p','session-notice usage-limit'+(e.state==='reached'?' error':''),limitText(e));p.title='Claude가 보고한 구독 사용량 한도 알림입니다. 시각은 이 기기 기준으로 표시합니다.';return p;}
   if(row.kind==='notice'){return node('p','session-notice'+(row.error?' error':''),row.text);}
   if(row.kind==='changes'){
    const box=node('section','changes-card'),head=node('header'),added=row.files.reduce((n,f)=>n+f.added,0),removed=row.files.reduce((n,f)=>n+f.removed,0);

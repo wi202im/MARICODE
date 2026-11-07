@@ -8,6 +8,7 @@ import {createRunnerSetup,runnerSetupReason} from './runner-setup.mjs';
 import {machineOptions} from './machine-setup.mjs';
 import {createAccountRegistration} from './account-registration.mjs';
 import {createAccounts} from './accounts.mjs';
+import {createUsageLimits} from './codex-limits.mjs';
 import {settingsView,settingChange} from './settings.mjs';
 import http from 'node:http';
 import {createTasks} from './tasks.mjs';
@@ -54,7 +55,7 @@ export function allowedRoute(method,url,sessionId) {
   if(p!==base+'/messages/queued-state'&&/^\/messages\/[A-Za-z0-9_-]{1,80}(\/steer)?$/.test(p.slice(base.length))&&p.startsWith(base+'/messages/')&&!url.search)return p.endsWith('/steer')?method==='POST':method==='DELETE';
   return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork','/abort'].some(x=>p===base+x);
 }
-export function createServer({cleanStart=false,appReset=null,pairing,deviceLogins,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null}) {
+export function createServer({cleanStart=false,appReset=null,pairing,deviceLogins,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null,usageService=accountConfig?createUsageLimits(accountConfig):null}) {
   if(runnerConfig&&(runnerConfig.accountConfig!==accountConfig||new URL(runnerConfig.hubUrl).origin!==new URL(upstream).origin))throw Error('Runner must use the displayed account configuration and Hub');
   if(runnerConfig&&(handoffTarget||taskTarget))throw Error('Runner workspace cannot use a different fixed task target');
   const environment=environmentPath?createEnvironment(environmentPath):null;
@@ -67,7 +68,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
   const taskConfig=taskTarget??handoffTarget;
   const tasks=taskTarget?createTasks(taskTarget):trialTasks;
   const projectHandoffs=taskTarget?createHandoffs({...taskTarget,directory:taskTarget.directory+'/handoffs'}):null;
-  const assets=new Map([['/manifest.webmanifest','manifest.webmanifest'],['/icon-192.png','icon-192.png'],['/icon-512.png','icon-512.png'],['/install','install.html'],['/install.mjs','install.mjs'],['/','index.html'],['/workspace','workspace/index.html'],['/workspace/','workspace/index.html'],['/workspace/style.css','workspace/style.css'],['/workspace/chat.css','workspace/chat.css'],['/workspace/vscode.css','workspace/vscode.css'],['/workspace.mjs','workspace.mjs'],['/git-status.mjs','git-status.mjs'],['/workspace-entry.mjs','workspace-entry.mjs'],['/panel-layout.mjs','panel-layout.mjs'],['/design','design/index.html'],['/design/','design/index.html'],['/design/style.css','design/style.css'],['/design/app.js','design/app.js'],['/questions.mjs','questions.mjs'],['/question-form.mjs','question-form.mjs'],['/chat-render.mjs','chat-render.mjs'],['/chat-presentation.mjs','chat-presentation.mjs'],['/settings.mjs','settings.mjs'],['/git-review.mjs','git-review.mjs'],['/composer-commands.mjs','composer-commands.mjs'],['/cli-profile-ui.mjs','cli-profile-ui.mjs'],['/command-support.mjs','command-support.mjs'],['/turn-alerts.mjs','turn-alerts.mjs'],['/branch-pin-ui.mjs','branch-pin-ui.mjs'],['/branch-rules.mjs','branch-rules.mjs'],['/file-kinds.mjs','file-kinds.mjs'],['/file-viewer.mjs','file-viewer.mjs'],['/file-tree.mjs','file-tree.mjs'],['/file-mentions.mjs','file-mentions.mjs'],['/vendor/markdown-it.mjs','vendor/markdown-it.mjs'],['/vendor/highlight.mjs','vendor/highlight.mjs'],['/vendor/hljs-github-dark.css','vendor/hljs-github-dark.css'],['/icons.mjs','icons.mjs'],['/vendor/codicons/codicon.css','vendor/codicons/codicon.css'],['/vendor/vscode-elements/bundled.js','vendor/vscode-elements/bundled.js'],['/palette.mjs','palette.mjs'],['/attachments.mjs','attachments.mjs'],['/attachment-composer.mjs','attachment-composer.mjs'],['/app.mjs','app.mjs'],['/composer-input.mjs','composer-input.mjs'],['/claude-import-ui.mjs','claude-import-ui.mjs'],['/markdown.mjs','markdown.mjs'],['/device-login.mjs','device-login.mjs'],['/core.mjs','core.mjs'],['/quit-flow.mjs','quit-flow.mjs'],['/reconnect.mjs','reconnect.mjs'],['/workflow.mjs','workflow.mjs'],['/history.mjs','history.mjs'],['/style.css','style.css']]);
+  const assets=new Map([['/manifest.webmanifest','manifest.webmanifest'],['/icon-192.png','icon-192.png'],['/icon-512.png','icon-512.png'],['/install','install.html'],['/install.mjs','install.mjs'],['/','index.html'],['/workspace','workspace/index.html'],['/workspace/','workspace/index.html'],['/workspace/style.css','workspace/style.css'],['/workspace/chat.css','workspace/chat.css'],['/workspace/vscode.css','workspace/vscode.css'],['/workspace.mjs','workspace.mjs'],['/git-status.mjs','git-status.mjs'],['/workspace-entry.mjs','workspace-entry.mjs'],['/panel-layout.mjs','panel-layout.mjs'],['/design','design/index.html'],['/design/','design/index.html'],['/design/style.css','design/style.css'],['/design/app.js','design/app.js'],['/questions.mjs','questions.mjs'],['/question-form.mjs','question-form.mjs'],['/chat-render.mjs','chat-render.mjs'],['/chat-presentation.mjs','chat-presentation.mjs'],['/settings.mjs','settings.mjs'],['/git-review.mjs','git-review.mjs'],['/composer-commands.mjs','composer-commands.mjs'],['/cli-profile-ui.mjs','cli-profile-ui.mjs'],['/command-support.mjs','command-support.mjs'],['/turn-alerts.mjs','turn-alerts.mjs'],['/branch-pin-ui.mjs','branch-pin-ui.mjs'],['/branch-rules.mjs','branch-rules.mjs'],['/file-kinds.mjs','file-kinds.mjs'],['/file-viewer.mjs','file-viewer.mjs'],['/file-tree.mjs','file-tree.mjs'],['/file-mentions.mjs','file-mentions.mjs'],['/vendor/markdown-it.mjs','vendor/markdown-it.mjs'],['/vendor/highlight.mjs','vendor/highlight.mjs'],['/vendor/hljs-github-dark.css','vendor/hljs-github-dark.css'],['/icons.mjs','icons.mjs'],['/vendor/codicons/codicon.css','vendor/codicons/codicon.css'],['/vendor/vscode-elements/bundled.js','vendor/vscode-elements/bundled.js'],['/palette.mjs','palette.mjs'],['/attachments.mjs','attachments.mjs'],['/usage-limits.mjs','usage-limits.mjs'],['/usage-panel.mjs','usage-panel.mjs'],['/attachment-composer.mjs','attachment-composer.mjs'],['/app.mjs','app.mjs'],['/composer-input.mjs','composer-input.mjs'],['/claude-import-ui.mjs','claude-import-ui.mjs'],['/markdown.mjs','markdown.mjs'],['/device-login.mjs','device-login.mjs'],['/core.mjs','core.mjs'],['/quit-flow.mjs','quit-flow.mjs'],['/reconnect.mjs','reconnect.mjs'],['/workflow.mjs','workflow.mjs'],['/history.mjs','history.mjs'],['/style.css','style.css']]);
   const server=http.createServer(async(req,res)=>{
     const host=req.headers.host;
     const allowedOrigins=new Set(origins);
@@ -359,8 +360,10 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
       const creationTarget=personalCreation?{...taskTarget,project:creation.project}:handoffTarget?{...handoffTarget,project:creation?.project??handoffTarget.project}:null;
       const creationHandoffs=creationTarget?createHandoffs({...creationTarget,directory:personalCreation?taskTarget.directory+'/handoffs':handoffTarget.directory}):null;
       const accountsRoute=accountsService&&(handoffTarget||runnerWorkspace)&&!u.search&&((req.method==='GET'&&u.pathname==='/api/accounts')||(req.method==='POST'&&/^\/api\/accounts\/(claude|codex)\/login$/.test(u.pathname)));
+      // Usage limits share the account route's Hub authorization; read-only, no parameters.
+      const usageRoute=usageService&&(handoffTarget||runnerWorkspace)&&!u.search&&req.method==='GET'&&u.pathname==='/api/usage-limits';
       const projectsRoute=tasks&&req.method==='GET'&&u.pathname==='/api/projects'&&!u.search;
-      if(!accountsRoute&&!projectsRoute&&!taskRoute&&!creation&&!allowedRoute(req.method,u,available.map(s=>s.id))){res.writeHead(403).end();return;}
+      if(!accountsRoute&&!usageRoute&&!projectsRoute&&!taskRoute&&!creation&&!allowedRoute(req.method,u,available.map(s=>s.id))){res.writeHead(403).end();return;}
       // Credentials are supplied by the client. This proxy has no stored Hub token.
       if(u.pathname!=='/api/auth'&&!req.headers.authorization?.startsWith('Bearer ')){res.writeHead(401).end();return;}
       const controller=new AbortController();res.on('close',()=>controller.abort());
@@ -400,7 +403,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
         }catch{res.writeHead(502,{'Content-Type':'application/json'}).end('{"error":"Upload result unconfirmed"}');}
         return;
       }
-      if(accountsRoute){
+      if(accountsRoute||usageRoute){
         const localLogin=isLocal&&!['x-forwarded-for','x-forwarded-host','x-forwarded-proto','tailscale-user-login'].some(h=>req.headers[h])&&(!req.headers.origin||req.headers.origin===`http://${host}`)&&['127.0.0.1','::ffff:127.0.0.1','::1'].includes(req.socket.remoteAddress);
         if(req.method==='POST'&&!localLogin){res.writeHead(403).end();return;}
         if(req.method==='POST'&&body.toString()!=='{}'){res.writeHead(400).end();return;}
@@ -412,6 +415,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
         m=(await access.json()).session?.metadata;
         if(m?.machineId!==handoffTarget.machineId||m?.path!==handoffTarget.project){res.writeHead(403).end();return;}
         }
+        if(usageRoute){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({codex:await usageService.codex()}));return;}
         const result=req.method==='POST'?await accountsService.start(u.pathname.split('/')[3]):{host:m.host??'실행 머신',localLogin,providers:await Promise.all(['claude','codex'].map(async agent=>({agent,...await accountsService.status(agent)})))};
         if(req.method==='GET'&&localLogin&&runnerService?.status){try{const r=await runnerService.status();result.runner={phase:r.phase,hub:r.hub,agents:r.agents};}catch{result.runner={phase:'unknown'};}}
         res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));return;

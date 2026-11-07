@@ -23,7 +23,9 @@ function claudeMessages(path){return [
  msg(5,'agent',out([{type:'tool_use',id:'t2',name:'Edit',input:{file_path:path+'/src/file-viewer.mjs',old_string:'const maxTabs=8;',new_string:'// Center file tabs\nconst maxTabs=12;'}},{type:'tool_use',id:'t3',name:'Write',input:{file_path:path+'/docs/viewer.md',content:'# 파일 뷰어\n\n가운데 탭으로 열립니다.'}}]),40),
  msg(6,'agent',out([{type:'tool_result',tool_use_id:'t2',content:'ok'},{type:'tool_result',tool_use_id:'t3',content:'ok'}].map(x=>x)),41),
  msg(7,'agent',out([{type:'text',text:'파일 탭을 추가했습니다. 핵심은 `src/file-viewer.mjs:2`, 문서는 `docs/` 폴더에 있습니다.\n\n- 코드는 색 구분, 마크다운은 보기 모드\n- 이미지·영상·PDF는 바로 표시\n\n```js\nfileTabs.open(path,{size});\n```'}]),70),
- msg(8,'agent',{type:'event',data:{type:'ready'}},71)];}
+ msg(8,'agent',{type:'event',data:{type:'ready'}},71),
+ // HAPI forwards Claude rate_limit_event (warning) as assistant text.
+ msg(9,'agent',out([{type:'text',text:`Claude AI usage limit warning|${Math.round(Date.now()/1000)+3*3600}|85|seven_day`}]),72)];}
 function busyMessages(path){return [
  msg(1,'user',{type:'text',text:'릴리스 노트를 정리하고 검사를 돌려줘'},0),
  msg(2,'agent',out([{type:'text',text:'변경 내역을 확인하고 검사를 실행하겠습니다.'}]),10),

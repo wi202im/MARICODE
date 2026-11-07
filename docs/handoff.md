@@ -12,6 +12,16 @@
 
 
 
+## 구독 사용량 한도 표시 — 2026-11-07 (미배포)
+
+- 사용자 요청: Claude·Codex 구독 한도와 초기화 시각 표시. 조사 결과 HAPI 0.33.3은 Claude rate_limit_event를 경고(allowed_warning)·도달(rejected)일 때만 assistant 텍스트 `Claude AI usage limit warning|초|%|종류`로 전달하고 평상시(allowed)는 버린다. Codex `account/rateLimits/updated`는 HAPI가 버린다. Codex CLI는 rollout의 token_count에 `rate_limits`(사용 %, 기간 분, 초기화 초, 요금제, 크레딧)를 기록한다. Claude 평상시 남은 양은 공식 공개 경로를 확인하지 못했고, CLI 내부 인증으로 비공개 조회하는 방식은 택하지 않았다.
+- Claude: 채팅에 원문 대신 ‘Claude 주간 한도 85% 사용 · 초기화 …’/‘…에 도달했습니다’ 알림을 표시한다. 세션 정보의 ‘구독 사용량 한도’에 이 대화의 마지막 알림과 받은 시각을 표시하고, 알림이 없으면 경고·도달 때만 알려 준다고 안내한다(0%로 표시하지 않음).
+- Codex: `GET /api/usage-limits`(계정 경로와 같은 Hub 인증, 인자 없음, 읽기 전용). 연결 확인된 Codex CLI 설정 폴더의 최신 rollout(최근 8개 파일 끝 2MiB, 심볼릭 링크 제외)에서 마지막 유효 한도만 정규화해 반환하며 경로·대화 원문은 내보내지 않는다. 화면에 기록 시각·요금제를 함께 표시하고, 초기화 시각이 지난 값은 ‘지금 사용량은 확인 안 됨’으로 표시한다. 연결 미확인·기록 없음·조회 실패를 구분한다. 결과는 같은 로그인에서 60초 재사용, ‘Codex 한도 다시 확인’으로 갱신.
+- **된다 — 자동:** 모듈 없음 실패 후 구현(`.runtime/usage-limits-red.log`), 전체 414개 통과(`.runtime/usage-limits-tests.log`).
+- **된다 — 합성 UI:** 실제 앱 서버+헤드리스 Chrome+합성 Hub에서 한도 알림 문구·원문 미노출·세션 정보 패널 2단계 통과(`.runtime/ux/2026-11-07T12-25-58/report.md`). 이 환경엔 계정 설정이 없어 Codex는 ‘확인 안 함’ 표시를 확인했다. 전체 UX의 기존 2건 실패는 변경 전과 같다(`.runtime/ux/2026-11-07T12-26-21/report.md`).
+- **된다 — 실제 읽기 전용:** 설치 앱의 연결된 Codex 설정으로 조회해 주간 한도 %·초기화 시각·요금제를 정상 해석했다(`.runtime/usage-limits-live-readonly.log`). 파일 쓰기·AI 호출 없음.
+- **확인 안 함:** 실제 Claude 경고/도달 이벤트 수신(HAPI 형식은 소스로만 확인), 설치 앱 화면에서의 표시. Codex 값은 마지막 Codex 사용 시점 기준이며 실시간 조회가 아니다. DMG·릴리스 미발행.
+
 ## 1.2.1 공증 공개 완료 — 2026-11-07
 
 - 사용자 DMG 배포 요청으로 1.2.1로 올려 보낸 질문의 첨부 이미지 썸네일 기능을 공개했다. 아래 ‘미배포’는 이전 상태이며 이번 릴리스에 포함된다. 빌드/태그 `d8416a8663f7a69b5c6a3aee2916c90628e527c6`, https://github.com/wi202im/MARICODE/releases/tag/v1.2.1 가 latest다.
