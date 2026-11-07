@@ -58,3 +58,13 @@ test('snapshot records source revision and registered executable paths',async t=
  const c=JSON.parse(await readFile(config,'utf8'));c.cwd=tmpdir();await writeFile(config,JSON.stringify(c));
  assert.notEqual(result.sourceRevision,await accountRevision(config));
 });
+
+test('selected working folder prepares without the missing saved default and never rewrites configuration',async t=>{
+ const f=await fixture(t),config=await initializeMachine(f),c=JSON.parse(await readFile(config,'utf8'));
+ c.cwd=join(f.root,'removed-default');await writeFile(config,JSON.stringify(c));const before=await readFile(config,'utf8');
+ await assert.rejects(prepareRunner(config,join(f.root,'default')));
+ const result=await prepareRunner(config,join(f.root,'selected'),{cwd:f.root});assert.equal(result.cwd,f.root);
+ assert.equal(await readFile(config,'utf8'),before);
+ await assert.rejects(prepareRunner(config,join(f.root,'missing'),{cwd:join(f.root,'missing-folder')}));
+ await assert.rejects(stat(join(f.root,'missing')));
+});

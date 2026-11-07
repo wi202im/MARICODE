@@ -150,14 +150,14 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   try{await child.stop();await writeFile(join(c.directory,'runner-stopped.json'),'{}',{mode:0o600,flag:'wx'});phase='exited';}
   catch{phase='unknown';throw Error('Stop unconfirmed');}
  }
- async function prepareNext(){
+ async function prepareNext(options){
   const prior=await state();if(!['prepared','exited'].includes(prior))throw Error('Cannot replace this generation');
   let id;
   if(await exists(join(c.directory,'runner-home'))){if(await unresolvedTasks()||await hasActive(c))throw Error('Active or unconfirmed sessions remain');id=await machineId(c);}
   else{id=JSON.parse(await readFile(join(c.directory,'prepared.json'),'utf8')).machineId;}
   const next=slot+'.generation-'+randomUUID();phase='preparing';
   try{
-   await prepare(c.accountConfig,next);
+   await prepare(c.accountConfig,next,options);
    if(id){const path=join(next,'prepared.json'),plan=JSON.parse(await readFile(path,'utf8'));await writeFile(path,JSON.stringify({...plan,machineId:id})+'\n',{mode:0o600});}
    const temp=slot+'.current.'+randomUUID()+'.tmp';await writeFile(temp,JSON.stringify({directory:next}),{mode:0o600,flag:'wx'});await rename(temp,slot+'.current.json');
    c.directory=next;child=null;phase='prepared';
@@ -166,19 +166,20 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  async function ensureReady(authorization,project,agent){
     // Validate the registered folder before stopping or preparing anything.
     if(project!==undefined&&typeof project!=='string')throw Error('Invalid project');
-    if(project){if(!c.projectsPath)throw Error('Projects unavailable');await projectRegistry(c.projectsPath).get(project);}
+    let preparation;
+    if(project){if(!c.projectsPath)throw Error('Projects unavailable');preparation={cwd:(await projectRegistry(c.projectsPath).get(project)).path};}
     if(agent!==undefined&&!['codex','claude'].includes(agent))throw Error('Invalid agent');
     const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
     if(cfg.cliConnectionRequired){const links=await accountProfiles(c.accountConfig).list();if(agent?!links[agent]?.confirmed:!Object.values(links).some(p=>p.confirmed))throw Object.assign(Error('AI 연결에서 기존 CLI 설정 위치를 먼저 연결하세요.'),{rejected:true,status:409});}
     const before=await state();
     if(before==='running'){
      if(!await refreshRequired(project,agent))return;
-     await stopOwned();await prepareNext();
+     await stopOwned();await prepareNext(preparation);
     }else{
      if(!['unprepared','prepared','exited'].includes(before))throw Error('Runner state requires review');
-     if(before==='exited')await prepareNext();
-     if(before==='unprepared'){phase='preparing';try{await prepare(c.accountConfig,c.directory);phase='prepared';}catch{phase='unknown';throw Error('Preparation unconfirmed');}}
-     if(before==='prepared'&&(await snapshot()).configuration!=='matched')await prepareNext();
+     if(before==='exited')await prepareNext(preparation);
+     if(before==='unprepared'){phase='preparing';try{await prepare(c.accountConfig,c.directory,preparation);phase='prepared';}catch{phase='unknown';throw Error('Preparation unconfirmed');}}
+     if(before==='prepared'&&((await snapshot()).configuration!=='matched'||preparation&&(await snapshot()).project!==preparation.cwd))await prepareNext(preparation);
     }
     if((await snapshot()).configuration!=='matched')throw Error('Configuration changed');
     phase='starting';try{await launchCurrent(project);}catch{phase='unknown';throw Error('Start unconfirmed');}

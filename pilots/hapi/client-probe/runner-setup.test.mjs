@@ -420,3 +420,22 @@ test('runner readiness failures keep the specific reason so the user sees why a 
  assert.equal(runnerSetupReason(Object.assign(Error('x'),{code:'RUNNER_UNCONFIRMED'})),'RUNNER_UNCONFIRMED');
  assert.equal(runnerSetupReason(Error('connection')),'RUNNER_SETUP');
 });
+
+test('registered workspace restarts after saved default disappears and preserves machine identity',async t=>{
+ const {readFile}=await import('node:fs/promises'),{createServer}=await import('node:http'),{projectRegistry}=await import('./project-registry.mjs');
+ const root=await mkdtemp(join(tmpdir(),'maricode-missing-default-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),projectsPath:join(root,'projects'),binary:'/bin/echo',tokenFile:join(root,'token')};
+ const old=join(root,'old');await mkdir(old);await writeFile(join(root,'env'),'{"PATH":"/usr/bin:/bin"}');await writeFile(c.accountConfig,JSON.stringify({cwd:old,environment:join(root,'env'),binaries:{codex:'/bin/echo'}}));await writeFile(c.tokenFile,'synthetic');
+ const project=await projectRegistry(c.projectsPath).add(root);
+ const hub=createServer((req,res)=>res.writeHead(req.headers.authorization==='Bearer synthetic'?200:401,{'Content-Type':'application/json'}).end('{"sessions":[]}'));
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();});c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
+ let starts=0;const plans=[];
+ const deps={connection:async()=>true,hasActive:async()=>false,launch:async({prepared})=>{const plan=JSON.parse(await readFile(join(prepared,'prepared.json'),'utf8'));plans.push(plan);starts++;await mkdir(join(prepared,'runner-home'));await writeFile(join(prepared,'runner-home/settings.json'),JSON.stringify({machineId:plan.machineId??'stable-machine'}));let running=true;return {get running(){return running;},stop:async()=>{running=false;}};}};
+ const first=createRunnerSetup(c,deps);await first.prepare();await first.start();await first.stop();await rm(old,{recursive:true});
+ const before=await readFile(c.accountConfig,'utf8'),restarted=createRunnerSetup(c,deps);
+ await assert.rejects(restarted.ready('Bearer synthetic','unknown','codex'));assert.equal(starts,1);
+ await restarted.ready('Bearer synthetic',project.id,'codex');assert.equal(starts,2);assert.equal(plans[1].cwd,project.path);assert.equal(plans[1].machineId,'stable-machine');
+ await restarted.ready('Bearer synthetic',project.id,'codex');assert.equal(starts,2);assert.equal(await readFile(c.accountConfig,'utf8'),before);
+ await restarted.stop();
+ const fresh=createRunnerSetup({...c,directory:join(root,'fresh')},deps);await fresh.ready('Bearer synthetic',project.id,'codex');assert.equal(plans[2].cwd,project.path);await fresh.stop();
+});

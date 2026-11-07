@@ -48,7 +48,7 @@ export async function accountRevision(configPath){
  const connections=c.cliConnectionRequired?await accountProfiles(configPath).list():null;
  return createHash('sha256').update(JSON.stringify([raw,environment,paths,connections])).digest('hex');
 }
-export async function prepareRunner(configPath,directory){
+export async function prepareRunner(configPath,directory,{cwd}={}){
  requirePath(configPath);requirePath(directory);if(directory.includes(':'))throw Error('Invalid PATH directory');
  // Shares registration's lock. No registered path can change while its snapshot is prepared.
  const lock=configPath+'.register-lock';await mkdir(lock,{mode:0o700});
@@ -57,7 +57,8 @@ export async function prepareRunner(configPath,directory){
   const sourceRevision=await accountRevision(configPath);
   const config=JSON.parse(await readFile(configPath,'utf8'));
   if(!config||!config.binaries||Array.isArray(config.binaries)||typeof config.binaries!=='object'||Object.keys(config.binaries).some(a=>!agents.includes(a)))throw Error('Invalid AI configuration');
-  requirePath(config.cwd);if(!(await stat(config.cwd)).isDirectory())throw Error('Invalid working directory');
+  const workingDirectory=cwd===undefined?config.cwd:cwd;
+  requirePath(workingDirectory);if(!(await stat(workingDirectory)).isDirectory())throw Error('Invalid working directory');
   const env=await environmentAt(config.environment),binaries={},connections=config.cliConnectionRequired?await accountProfiles(configPath).list():null;
   for(const agent of agents){
    const path=config.binaries[agent];if(path===undefined||connections&&!connections[agent]?.confirmed)continue;
@@ -72,7 +73,7 @@ export async function prepareRunner(configPath,directory){
   const environment=join(directory,'environment.private.json');
   await privateFile(environment,{...env,PATH:bin+':'+env.PATH,HAPI_CLAUDE_PATH:join(bin,'claude')});
   if(await accountRevision(configPath)!==sourceRevision)throw Error('Account configuration changed during preparation');
-  const result={environment,cwd:config.cwd,agents:Object.keys(binaries),binaries,sourceRevision};
+  const result={environment,cwd:workingDirectory,agents:Object.keys(binaries),binaries,sourceRevision};
   await privateFile(join(directory,'prepared.json'),result);
   return result;
  }catch(e){if(created)await rm(directory,{recursive:true,force:true});throw e;}
