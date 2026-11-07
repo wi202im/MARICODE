@@ -28,8 +28,12 @@ async function config(path,agent){
  if(![c.environment,c.directory,c.cwd,c.binaries[agent]].every(p=>typeof p==='string'&&isAbsolute(p)&&!p.includes('\0')))throw Error('Account configuration invalid');
  const env=JSON.parse(await readFile(c.environment,'utf8'));
  if(!env||Array.isArray(env)||typeof env!=='object'||Object.values(env).some(v=>typeof v!=='string'))throw Error('Account environment invalid');
- if(!(await stat(c.cwd)).isDirectory())throw Error('Account working directory invalid');
- return {...c,env};
+ // Login belongs to the configured CLI profile, not a project that may have been removed.
+ // Preserve the original cwd when available; only absence permits the existing account directory.
+ let cwd=c.cwd;
+ try{if(!(await stat(cwd)).isDirectory())throw Error('Account working directory invalid');}
+ catch(error){if(error.code!=='ENOENT')throw error;cwd=c.directory;if(!(await stat(cwd)).isDirectory())throw Error('Account directory invalid');}
+ return {...c,cwd,env};
 }
 const statusArgs=agent=>agent==='claude'?['auth','status','--json']:['login','status'];
 export function createAccounts(configPath,{run=runStatus,open=openTerminal}={}){

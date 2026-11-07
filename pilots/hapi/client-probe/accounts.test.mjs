@@ -49,6 +49,8 @@ test('one configured AI works independently and missing or invalid configuration
  await writeFile(environment,'{"TOKEN":42}');
  assert.equal((await accounts.start('codex')).state,'configuration-error');assert.equal(opens,0);
  await writeFile(environment,'{}');await writeFile(configPath,JSON.stringify({...base,cwd:join(root,'missing')}));
+ assert.equal((await accounts.status('codex')).state,'connected');
+ await writeFile(configPath,JSON.stringify({...base,cwd:environment}));
  assert.equal((await accounts.status('codex')).state,'configuration-error');
 });
 
@@ -56,4 +58,16 @@ test('new CLI connection must be confirmed before status or login executes any i
  const root=await mkdtemp(join(tmpdir(),'cli-consent-'));t.after(()=>rm(root,{recursive:true,force:true}));const configPath=join(root,'accounts.json');await writeFile(join(root,'env'),JSON.stringify({CODEX_HOME:root,PATH:'/bin'}));await writeFile(configPath,JSON.stringify({environment:join(root,'env'),directory:root,cwd:root,binaries:{codex:'/bin/echo'},cliConnectionRequired:true}));let calls=0;
  const accounts=createAccounts(configPath,{run:async()=>{calls++;return {code:1,stderr:'Not logged in'};},open:async()=>{calls++;}});
  assert.equal((await accounts.start('codex')).state,'connection-required');assert.equal(calls,0);
+});
+
+test('account authentication survives a removed default project without changing CLI environment or saved configuration',async t=>{
+ const {readFile}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'account-no-project-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const path=join(root,'accounts.json'),env={CODEX_HOME:join(root,'profile'),CUSTOM:'preserved'};
+ await writeFile(join(root,'env.json'),JSON.stringify(env));
+ const original=JSON.stringify({environment:join(root,'env.json'),directory:root,cwd:join(root,'removed-project'),binaries:{codex:'/fake/codex'}});await writeFile(path,original);
+ let calls=0,opens=0;const accounts=createAccounts(path,{run:async(binary,args,options)=>{calls++;assert.equal(options.cwd,root);assert.deepEqual(options.env,env);return {code:1,stderr:'Not logged in'};},open:async()=>{opens++;}});
+ assert.equal((await accounts.status('codex')).state,'signed-out');
+ assert.equal((await accounts.start('codex')).loginPending,true);assert.equal(opens,1);assert.equal(calls,2);
+ assert.equal(await readFile(path,'utf8'),original);
 });

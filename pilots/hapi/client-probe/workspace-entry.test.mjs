@@ -47,6 +47,7 @@ test('connected AI hides setup actions; missing, signed-out and unknown remain a
  assert.equal(draftAccountView({state:'not-installed'},{local:false}).setup,false);
  assert.equal(draftAccountView({state:'signed-out'},{local:true,localLogin:true}).login,true);
  assert.equal(draftAccountView({state:'signed-out',loginPending:true},{local:true,localLogin:true}).login,false);
+ assert.match(draftAccountView({state:'configuration-error'}).label,/AI 연결 설정/);
  assert.equal(draftAccountView({state:'unknown'},{local:true}).check,true);
  assert.equal(draftAccountView({state:'unknown'},{local:true}).setup,true);
  assert.equal(draftAccountView({state:'unknown'},{local:false}).setup,false);
