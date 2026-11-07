@@ -7,6 +7,7 @@ import {createQuitFlow} from './quit-flow.mjs';
 import {requestQuestions,questionDecision} from './questions.mjs';
 import {questionForm} from './question-form.mjs';
 import {createAttachmentComposer} from './attachment-composer.mjs';
+import {fitPreviews} from './attachments.mjs';
 import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
@@ -385,7 +386,7 @@ $('send-form').addEventListener('submit',async e=>{
      if(!resumed){notice('세션 재개를 아직 확인하지 못해 메시지는 보내지 않았습니다. 입력은 그대로 있습니다. 상태를 확인한 뒤 다시 보내 주세요.');return;}
     }
     if(!session.active||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
-    const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;if(branchPin?.pinned)branchTurn={id:sessionId,seq:Math.max(0,...messages.map(m=>m.seq??0))};const result=actions.send(text,attachments);render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
+    const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;if(branchPin?.pinned)branchTurn={id:sessionId,seq:Math.max(0,...messages.map(m=>m.seq??0))};const result=actions.send(text,fitPreviews(text,attachments));render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
   }catch(e){if(mine===epoch)notice(submitted&&!actions.pending?'서버 이력에서 전송을 확인했습니다.':e.message+' 전송은 자동 재시도하지 않습니다.');}finally{busy=false;render();}
 });
 $('retry-message').onclick=async()=>{
@@ -394,7 +395,7 @@ $('retry-message').onclick=async()=>{
   try{
     await refresh();if(mine!==epoch||!connected||!session?.active||session.thinking||Object.keys(session.agentState?.requests??{}).length)return;
     if(!actions.pending){notice('서버 이력에서 접수를 확인했습니다. 다시 보내지 않았습니다.');return;}
-    await actions.retry(text,attachmentComposer?.metadata()??[]);if(mine!==epoch)return;
+    await actions.retry(text,fitPreviews(text,attachmentComposer?.metadata()??[]));if(mine!==epoch)return;
     if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}
     await refresh();
   }catch(e){if(mine===epoch)notice(e.message+' 자동 재전송하지 않습니다.');}finally{busy=false;render();}

@@ -76,7 +76,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
     if(isLocal)allowedOrigins.add(`http://${host}`);
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','no-referrer');
-    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob: data:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
     let u,mutationId;
     try{u=new URL(req.url,'http://local');}catch{res.writeHead(400).end();return;}
     try {

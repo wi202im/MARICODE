@@ -35,7 +35,8 @@ const codexMessages=()=>[msg(1,'user',{type:'text',text:'결제 API의 오류 �
  msg(3,'agent',{type:'codex',data:{type:'message',message:'오류 처리를 한 곳으로 모았습니다.'}},30),msg(4,'agent',{type:'event',data:{type:'ready'}},31)];
 
 export async function startFakeHub({project,port=0}){
- const hits=[];let queued=new Set(['queued-1']);
+ const hits=[],sent=new Map(),posted=[];let queued=new Set(['queued-1']);
+ const text=async req=>{let b='';for await(const c of req)b+=c;return b;};
  let question={q1:{tool:'AskUserQuestion',arguments:{questions:[{question:'어디에 배포할까요?',header:'배포',multiSelect:false,options:[{label:'스테이징',description:'먼저 확인'},{label:'운영'}]}]},createdAt:Date.now()}};
  const flavor=id=>id===ids.codex?'codex':'claude';
  const session=id=>({id,active:true,activeAt:Date.now(),updatedAt:Date.now(),thinking:id===ids.busy,metadata:{path:project,flavor:flavor(id),machineId:'ux-mac',host:'ux-mac',name:sessionList.find(s=>s.id===id)?.label},
@@ -51,8 +52,10 @@ export async function startFakeHub({project,port=0}){
    let m=/^\/api\/sessions\/([^/]+)(\/.*)?$/.exec(u.pathname);if(!m)return send({});
    const [,id,rest='']=m;
    if(!rest)return send({session:session(id)});
-   if(rest==='/messages'&&req.method==='GET')return send({messages:messages(id),page:{hasMore:false}});
-   if(rest==='/messages'&&req.method==='POST')return send({ok:true});
+   if(rest==='/messages'&&req.method==='GET')return send({messages:[...messages(id),...(sent.get(id)??[])],page:{hasMore:false}});
+   // Messages with attachments are echoed back so the sent bubble (thumbnail) can be checked.
+   if(rest==='/messages'&&req.method==='POST'){const body=JSON.parse(await text(req));if(body.attachments){const list=sent.get(id)??[];list.push(msg(100+list.length,'user',{type:'text',text:body.text,attachments:body.attachments},900,{localId:body.localId}));sent.set(id,list);posted.push(body);}return send({ok:true});}
+   if(rest==='/upload'&&req.method==='POST'){const body=JSON.parse(await text(req));return send({success:true,path:'/ux-uploads/'+body.filename});}
    if(rest==='/messages/queued-state')return send({queuedLocalIds:[...queued],indeterminateLocalIds:[],invokedLocalMessages:[]});
    if(req.method==='DELETE'&&rest.startsWith('/messages/')){queued=new Set();return send({status:'cancelled',localId:'queued-1'});}
    if(rest==='/abort')return send({ok:true});
@@ -70,5 +73,5 @@ export async function startFakeHub({project,port=0}){
   }catch{res.writeHead(404).end('{}');}
  });
  await new Promise(r=>server.listen(port,'127.0.0.1',r));
- return {url:`http://127.0.0.1:${server.address().port}`,hits,close:()=>{server.closeAllConnections();server.close();}};
+ return {url:`http://127.0.0.1:${server.address().port}`,hits,posted,close:()=>{server.closeAllConnections();server.close();}};
 }

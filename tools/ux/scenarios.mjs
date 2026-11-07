@@ -91,6 +91,13 @@ export const scenarios=[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],
   ['거절이 전달됨',async ui=>{for(let t=0;t<20;t++){if(await ui.evaluate("document.body.innerText.includes('거절을 전달했습니다')"))return {changes:1};await ui.wait(200);}throw Error('거절 전달 안내가 보이지 않음');}]]},
+ {name:'이미지 붙여넣어 질문하기',goal:'클립보드 이미지를 붙여넣어 미리 보고, 보낸 질문에서도 썸네일로 확인한다',session:ids.codex,steps:[
+  ['입력창에 이미지 붙여넣기',async ui=>{await ui.click('#prompt');await ui.evaluate("(async()=>{const c=document.createElement('canvas');c.width=1200;c.height=800;const x=c.getContext('2d');x.fillStyle='#1769aa';x.fillRect(0,0,1200,800);x.fillStyle='#ffc107';x.beginPath();x.arc(600,400,300,0,7);x.fill();const blob=await new Promise(r=>c.toBlob(r,'image/png'));const dt=new DataTransfer();dt.items.add(new File([blob],'image.png',{type:'image/png'}));document.getElementById('prompt').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));return true;})()");await ui.expectVisible('.attachment-chip img');return {changes:1};}],
+  ['질문 쓰고 보내기',async ui=>{await ui.type('이 화면에서 무엇이 문제야?');return ui.click('#send');}],
+  ['보낸 질문에서 썸네일 확인',async ui=>{await ui.expectVisible('.bubble.user .sent-image img',4000);
+   const shown=await ui.evaluate("(()=>{const i=[...document.querySelectorAll('.bubble.user .sent-image img')].at(-1);return i.complete&&i.naturalWidth>0&&i.naturalWidth<=320&&i.src.startsWith('data:image/jpeg;base64,');})()");if(!shown)throw Error('썸네일 이미지가 표시되지 않음');
+   const a=globalThis.uxHub.posted.at(-1)?.attachments?.[0];if(!a||a.path!=='/ux-uploads/image.png'||!(a.previewUrl?.length<=9000))throw Error('전송 메타데이터에 작은 썸네일·업로드 경로가 없음');
+   if(await ui.evaluate("!document.querySelector('.attachment-list').hidden"))throw Error('보낸 뒤 첨부 초안이 남음');return {changes:1};}]]},
  {name:'파일을 지정해 요청하기',goal:'입력창에서 @로 파일을 골라 요청에 넣는다',session:ids.claude,steps:[
   ['입력창 누르기',ui=>ui.click('#prompt')],['“@app” 입력',ui=>ui.type('이 파일 봐줘 @app')],['Enter로 후보 고르기',ui=>ui.key('Enter')]]},
  {name:'CLI 명령 쓰기',goal:'/config 같은 명령을 쓰려 한다',session:ids.claude,steps:[

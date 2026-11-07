@@ -20,7 +20,7 @@ const stamp=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
 const outDir=join(root,'.runtime','ux',stamp);await mkdir(outDir,{recursive:true});
 const temp=await realpath(await mkdtemp(join(tmpdir(),'maricode-ux-')));
 const project=await createProject(join(temp,'project'));
-const hub=await startFakeHub({project});
+const hub=globalThis.uxHub=await startFakeHub({project});
 // A device login needs a JWT-shaped token with an expiry; the fake Hub never checks it.
 const b64=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),fakeJwt=`${b64({alg:'none'})}.${b64({exp:Math.floor(Date.now()/1000)+3600})}.x`;
 const pairing=globalThis.uxPairing=createPairing({authenticate:async()=>fakeJwt});

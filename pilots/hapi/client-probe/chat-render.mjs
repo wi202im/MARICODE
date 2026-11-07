@@ -1,7 +1,7 @@
 import {icon} from './icons.mjs';
 import {chatTimeline,describeTool,editPreview,formatDuration} from './chat-presentation.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
-import {formatSize} from './attachments.mjs';
+import {formatSize,sentPreview} from './attachments.mjs';
 const node=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
 const readable=v=>typeof v==='string'?v:JSON.stringify(v??null,null,2);
 const rendered=new WeakMap();
@@ -69,7 +69,12 @@ export function renderConversation(container,messages,{engine,session,onFork,que
   const el=node('div',`bubble ${row.view.role}${row.parent?' child-message':''}`),label=node('small','message-byline',row.view.role==='user'?'나':row.parent?'하위 에이전트':engine??'에이전트');
   if(Number.isFinite(row.at)){const time=node('time','',new Date(row.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));time.title=new Date(row.at).toLocaleString('ko-KR');label.append(time);}
   el.append(label,row.view.role==='agent'?renderMarkdown(row.view.text):node('span','',row.view.text));
-  if(Array.isArray(row.attachments))for(const a of row.attachments)el.append(node('span','sent-attachment',`▧ ${a.filename??'첨부파일'}${a.size?` · ${formatSize(a.size)}`:''}`));
+  if(Array.isArray(row.attachments))for(const a of row.attachments){
+   const label=`${a?.filename??'첨부파일'}${a?.size?` · ${formatSize(a.size)}`:''}`,preview=sentPreview(a);
+   if(!preview){el.append(node('span','sent-attachment',`▧ ${label}`));continue;}
+   const figure=node('figure','sent-attachment sent-image'),image=node('img');image.src=preview;image.alt=a.filename??'첨부 이미지';image.loading='lazy';image.decoding='async';
+   figure.append(image,node('figcaption','',label));el.append(figure);
+  }
   if(row.view.text)el.append(copyButton(row.view.text,row.view.role==='user'?'메시지 복사':'답변 복사'));
   if(onFork&&row.view.role==='user'&&row.localId&&!row.parent&&!queued?.ids?.has(row.key))el.append(forkButton(row.localId,onFork));
   if(row.view.role==='user'&&queued?.ids?.has(row.key)){el.classList.add('queued');const bar=node('div','queue-bar'),busy=queued.busy?.has(row.key);bar.append(node('span','queue-label','대기 중 · 지금 작업이 끝나면 전달됩니다'));

@@ -1,6 +1,6 @@
 import {icon} from './icons.mjs';
-import {selectedFiles,validateFiles,fileBase64,attachmentMetadata,formatSize} from './attachments.mjs';
-export function createAttachmentComposer({form,prompt,context,upload,changed,notice}){
+import {selectedFiles,validateFiles,fileBase64,attachmentMetadata,formatSize,imageThumbnail} from './attachments.mjs';
+export function createAttachmentComposer({form,prompt,context,upload,changed,notice,thumbnail=imageThumbnail}){
  const drafts=new Map(),list=document.createElement('div'),picker=document.createElement('input'),button=document.createElement('button');let renderedKey='';
  list.className='attachment-list';list.setAttribute('aria-label','전송할 첨부파일');picker.type='file';picker.multiple=true;picker.hidden=true;
  button.type='button';button.className='attach-button';button.append(icon('attach',document));button.title='파일 첨부 · 이미지/파일 붙여넣기 · 끌어놓기';button.setAttribute('aria-label','파일 첨부');
@@ -36,7 +36,10 @@ export function createAttachmentComposer({form,prompt,context,upload,changed,not
    for(const entry of selected){
     if(context().id!==id)throw Error('전송 대상이 바뀌었습니다.');if(entry.state==='ready')continue;if(entry.state!=='local')throw Error('첨부 결과가 미확인입니다. 자동으로 다시 업로드하지 않습니다.');
     entry.state='uploading';render();
-    try{const content=await fileBase64(entry.file);const result=await upload(id,{requestId:entry.id,filename:entry.name,mimeType:entry.type,content});entry.metadata=attachmentMetadata(entry,result);entry.state='ready';}
+    try{const content=await fileBase64(entry.file);const result=await upload(id,{requestId:entry.id,filename:entry.name,mimeType:entry.type,content});entry.metadata=attachmentMetadata(entry,result);
+     // Thumbnail is display-only; a decode failure still sends the attachment without it.
+     if(entry.preview){try{const previewUrl=await thumbnail(entry.file);if(previewUrl)entry.metadata.previewUrl=previewUrl;}catch{}}
+     entry.state='ready';}
     catch(e){entry.state='unknown';throw e;}finally{render();}
    }
    return selected.map(e=>e.metadata);
