@@ -44,7 +44,7 @@ let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JS
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
 let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null,pairingEnabled=false;
-let sessionTerminalEnabled=false,terminalBusy=false,pinnedPrompt=null;
+let fileEditEnabled=false,sessionTerminalEnabled=false,terminalBusy=false,pinnedPrompt=null;
 let commandSuggest=null,fileMentions=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
 let deviceServerId='';
 let token='',sessionId='',session=null,messages=[],actions,streamController,connected=false,paused=false,epoch=0,refreshSerial=0,fileSerial=0,refreshTimer,directory='',selectedFile='',fileLoaded=false,lastFileRequest=null,busy=false,trialSessions=[],permissionActions,history=createHistory(),loadingHistory=false,handoffEnabled=false,handoffState=null;
@@ -72,7 +72,7 @@ async function api(path,{method='GET',body,signal}={}){
   const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')||path.includes('/command-cards')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401&&path!=='/api/pair'){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path==='/api/session-terminal'||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.startsWith('/api/branch')||path.endsWith('/settings')||path.endsWith('/archive')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path==='/api/session-terminal'||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.startsWith('/api/branch')||path.endsWith('/settings')||path.endsWith('/archive')||path.endsWith('/file-save')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const usagePanel=workspaceLayout?createUsagePanel({root:$('usage-info'),api,messages:()=>messages}):null;
@@ -80,7 +80,7 @@ const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-
 const base=()=>`/api/sessions/${sessionId}`;
 // Pinned sessions: branchTurn marks a sent turn whose end (HAPI 'ready' event after seq) triggers the branch check.
 const branchPin=workspaceLayout&&$('branch-pin')?createBranchPin({api,section:$('branch-pin'),banner:$('branch-banner'),changed:()=>refreshCatalog().catch(()=>{}),shown:()=>renderProjects()}):null;let branchTurn=null;
-const fileTabs=workspaceLayout&&$('center-tabs')?createFileTabs({api,base,strip:$('center-tabs'),view:$('file-view'),host:document.querySelector('.conversation'),notice}):null;
+const fileTabs=workspaceLayout&&$('center-tabs')?createFileTabs({api,base,strip:$('center-tabs'),view:$('file-view'),host:document.querySelector('.conversation'),notice,editable:()=>fileEditEnabled,save:(path,content,expectedHash)=>api(base()+'/file-save',{method:'POST',body:{path,content,expectedHash}})}):null;
 const fileTree=fileTabs?createFileTree({api,base,list:$('entries'),open:(path,size)=>openFile(path,size),error:e=>fileError(e),active:()=>fileTabs.active}):null;
 if(fileTree)$('up').hidden=true;
 // Commands the chat cannot carry run in the official CLI on the same session (HAPI `resume`): Claude moves there until
@@ -267,7 +267,7 @@ async function stream(authEpoch){
   }
 }
 async function openWorkspace(){
- const auth=token;const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;pairingEnabled=config.pairing===true;if(workspaceLayout)$('pairing-open').hidden=!pairingEnabled;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
+ const auth=token;const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;fileEditEnabled=config.fileEdit===true;if(!auth||token!==auth)return;importHistorySupported=config.claudeImport===true;pairingEnabled=config.pairing===true;if(workspaceLayout)$('pairing-open').hidden=!pairingEnabled;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);navigationEnabled=!!config.navigation;if($('restore-navigation'))$('restore-navigation').hidden=!navigationEnabled;handoffEnabled=!!config.newHandoff;$('new-handoff').hidden=!handoffEnabled&&!(runnerHandoff=!!config.newTask&&!config.newHandoff);
  $('session-select').replaceChildren(...trialSessions.map(s=>{const option=document.createElement('option');option.value=s.id;option.textContent=s.label;return option;}));
  if(!trialSessions.length){
   rememberChat();$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();
@@ -306,6 +306,7 @@ $('login-form').addEventListener('submit',async e=>{
  }catch(e){if(attempt===epoch)notice(e.message);}finally{button.disabled=false;}
 });
 async function selectSession(id){
+  if(id!==sessionId&&fileTabs&&!fileTabs.confirmDiscard()){if($('session-select'))$('session-select').value=sessionId;return;}
   rememberChat();usagePanel?.load(false,token);importedHistory?.load(id,importHistorySupported);
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
   saveWorkspaceSession(sessionStorage,deviceStorage,deviceServerId,id);
@@ -341,7 +342,7 @@ function clearLogin(message,state='login-needed'){
  clearTimeout(deviceRefreshTimer);
  // Mac app: an expired login (4h) gets a fresh one from the app instead of the login screen; the unsent draft is kept.
  if(state==='expired'&&desktopLogin&&desktopRelogin(sessionStorage)){rememberChat();const d=chatDrafts.read(sessionId);try{if(sessionId&&(d.text||d.note))sessionStorage.setItem('maricode-desktop-draft',JSON.stringify({id:sessionId,...d}));}catch{}recovery?.stop();epoch++;streamController?.abort();token='';notice('로그인이 만료되어 다시 연결합니다.');location.replace('/workspace');return;}
-  sessionTerminalEnabled=false;$('terminal-offer')?.remove();attachmentComposer?.clearAll();usagePanel?.clear();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
+  sessionTerminalEnabled=false;fileEditEnabled=false;$('terminal-offer')?.remove();attachmentComposer?.clearAll();usagePanel?.clear();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
   recovery?.stop();
   saveTabToken(sessionStorage,'',false);clearDeviceLogin(deviceStorage);deviceServerId='';
   catalogSerial++;sessionCards.clear();firstPrompts.clear();catalogChecked=null;cardSignature='';
@@ -531,7 +532,7 @@ async function prepareNewHandoff(checkOnly=false){
   handoffState=result.state;
   if(result.state!=='created'){notice('생성 결과 ID를 아직 확인할 수 없습니다. 새 세션을 만들지 않았습니다.');return;}
   if(mine!==epoch)return;
-  const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;if(mine!==epoch)return;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
+  const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;fileEditEnabled=config.fileEdit===true;if(mine!==epoch)return;allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
   $('session-select').replaceChildren(...trialSessions.map(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.label;return o;}));
   const target=result.session,text=buildHandoff(source,target,original,{hasOlder,limited});
   await selectSession(target.id);if(sessionId!==target.id||!token)return;
@@ -765,7 +766,7 @@ async function refreshCatalog(){
  if(!workspaceLayout||!token||catalogBusy)return;
  const mine=++catalogSerial,usedToken=token;catalogBusy=true;renderWorkspace();
  try{
-  const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;
+  const config=await api('/config');sessionTerminalEnabled=config.sessionTerminal===true;fileEditEnabled=config.fileEdit===true;
   const results=await Promise.allSettled(config.sessions.map(c=>api(`/api/sessions/${c.id}`)));
   if(mine!==catalogSerial||usedToken!==token)return;
   allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
@@ -1423,3 +1424,6 @@ if($('jump-latest')){const s=$('conversation-history');s.addEventListener('scrol
  // Cards and streamed replies grow the content without a scroll event.
  const grow=new ResizeObserver(updateJumpLatest);grow.observe($('messages'));grow.observe(s);
  $('jump-latest').onclick=()=>s.scrollTo({top:s.scrollHeight,behavior:'smooth'});}
+
+// Unsaved file edits: the browser asks before the page goes away (closing, reloading).
+addEventListener('beforeunload',e=>{if(fileTabs?.unsaved){e.preventDefault();e.returnValue='';}});

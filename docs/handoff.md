@@ -12,6 +12,16 @@
 
 
 
+## 파일 탭 편집(.env·소스) — 2026-11-08 (미배포)
+
+- 사용자 요청·결정: `.env`와 일반 소스를 Maricode에서 편집. 이 Mac의 로컬 화면에서만 허용, 편집기는 CodeMirror 6, AI 실행 중에도 저장하되 불러온 뒤 바뀐 파일은 덮어쓰지 않는다(goals 반영). 2026-11-04 ‘파일 탭 읽기 전용’ 결정을 이 범위에서 대체한다.
+- HAPI 0.33.3 실행기에는 해시 확인 writeFile RPC가 있으나 Hub가 웹 API로 노출하지 않고 경로 검사가 문자열 비교뿐이라 사용하지 않았다. Maricode 서버에 `POST /api/sessions/:id/file-save`를 추가했다: Hub 인증, 같은 컴퓨터의 loopback·Origin 일치(원격·전달 헤더는 403, `/config.fileEdit`도 로컬에서만 true), 세션 머신·프로젝트 확인, 기존 파일 읽기와 같은 실제 경로 검사(프로젝트 밖 심볼릭 링크 거절), 기존 UTF-8 텍스트·1MB 이하만, 불러온 바이트의 SHA-256 불일치 시 409, 같은 파일 동시 저장 차단, 같은 폴더 임시 파일→권한 복사→직전 해시 재확인→rename. 결과 미확인은 자동 재전송하지 않으며, 수동 재저장도 해시 확인으로 이중 덮어쓰기를 막는다. 새 파일·삭제·이름 변경 없음.
+- 화면: 텍스트 파일 탭의 ‘편집’ → CodeMirror(줄 번호·되돌리기·찾기·언어별 색, ⌘S 저장, 편집 끝내기). CRLF/LF 형식 유지, 섞인 파일은 편집 거절. 저장하지 않은 변경은 탭 닫기·편집 끝내기·세션 전환·페이지 이탈 전에 확인한다. 로그인 만료 같은 강제 초기화와 Mac 앱 종료 흐름에는 별도 확인이 없다.
+- CodeMirror 6: 31개 npm 패키지(모두 MIT)를 `tools/vendor-codemirror.mjs`로 고정 버전·sha512 무결성 확인 후 vendor(39개 파일, `vendor/codemirror/manifest.json`), 패키지 import를 상대 경로로 바꾸고 미해결 import가 있으면 실패. 앱 CSP(style-src 'self')가 `<style>` 주입을 막아 style-mod를 문서에서도 constructable stylesheet를 쓰도록 한 줄 수정(도구가 정확한 위치에서만 적용, 고지에 기록). 번들러·npm 설치 없음.
+- **된다 — 자동:** 저장·경로·권한·충돌 및 편집 화면 실패 검사 후 구현(`.runtime/file-edit-red.log`), 전체 424개 통과(`.runtime/file-edit-tests.log`). vendor 39개 모듈 Node 로드 확인, 개발 빌드에 편집 모듈·vendor 포함 확인.
+- **된다 — 합성 UI:** 실제 앱 서버+헤드리스 Chrome+합성 Hub(로컬 파일 대상 별도 서버)에서 CRLF `.env` 열기→편집기 스타일 적용 확인→수정 후 ⌘S 저장(디스크 CRLF 유지)→외부 변경 후 저장 거절·원본 유지→변경 버리기 확인 5단계 통과, CSP 오류 없음(`.runtime/ux/2026-11-08T13-50-04/report.md`). 전체 UX 기존 2건 실패는 변경 전과 같다(`.runtime/ux/2026-11-08T13-55-21/report.md`).
+- **확인 안 함:** Mac WKWebView 실제 편집·한글 IME 입력·⌘S, 실행기(runner) 모드 세션의 실제 저장, 큰 파일 성능. DMG·릴리스 미발행.
+
 ## 1.2.2 공증 공개 완료 — 2026-11-07
 
 - 사용자 DMG 배포 요청으로 1.2.2로 올려 구독 사용량 한도 표시를 공개했다. 아래 ‘미배포’는 이전 상태이며 이번 릴리스에 포함된다. 빌드/태그 `584bdae7828cd9ce4ee6de350df509e775e292dc`, https://github.com/wi202im/MARICODE/releases/tag/v1.2.2 가 latest다.

@@ -19,7 +19,7 @@ const filter=process.argv[2]??'';
 const stamp=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
 const outDir=join(root,'.runtime','ux',stamp);await mkdir(outDir,{recursive:true});
 const temp=await realpath(await mkdtemp(join(tmpdir(),'maricode-ux-')));
-const project=await createProject(join(temp,'project'));
+const project=globalThis.uxProject=await createProject(join(temp,'project'));
 const hub=globalThis.uxHub=await startFakeHub({project});
 // A device login needs a JWT-shaped token with an expiry; the fake Hub never checks it.
 const b64=v=>Buffer.from(JSON.stringify(v)).toString('base64url'),fakeJwt=`${b64({alg:'none'})}.${b64({exp:Math.floor(Date.now()/1000)+3600})}.x`;
@@ -28,6 +28,10 @@ const environmentPath=join(temp,'environment.json');await createEnvironment(envi
 const deviceLogins=createDeviceLogins({path:join(temp,'device-logins.json'),authenticate:async()=>`${b64({alg:'none'})}.${b64({exp:Math.floor(Date.now()/1000)+3600,n:Math.random()})}.x`});
 const app=createServer({upstream:hub.url,sessionId:ids.claude,sessions:sessionList,pairing,deviceLogins,environmentPath});await new Promise(r=>app.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${app.address().port}`;
+// Scenarios marked localFiles get a server whose sessions run on this Mac in the fixture project,
+// so file reads/saves go through the local checks. Kept separate: it also changes the project list.
+let localBase=null;
+async function localFilesBase(){if(localBase)return localBase;const local=createServer({upstream:hub.url,sessionId:ids.claude,sessions:sessionList,environmentPath,handoffTarget:{directory:join(temp,'records'),machineId:'ux-mac',project}});await new Promise(r=>local.listen(0,'127.0.0.1',r));globalThis.uxLocalServer=local;return localBase=`http://127.0.0.1:${local.address().port}`;}
 const chrome=await launchChrome({profile:join(temp,'chrome'),port:9400+Math.floor(Math.random()*400)});
 const results=[];
 try{
@@ -36,7 +40,7 @@ try{
   if(sc.needs){results.push({name:sc.name,goal:sc.goal,skipped:sc.needs,steps:[],findings:[],logs:[]});process.stdout.write(`- ${sc.name} (건너뜀: ${sc.needs})\n`);continue;}
   const page=await openPage(chrome),record={name:sc.name,goal:sc.goal,steps:[],findings:[],logs:[]};
   try{
-   await page.goto(base+'/workspace');
+   await page.goto((sc.localFiles?await localFilesBase():base)+'/workspace');
    if(sc.session!==undefined){
     await page.evaluate(`sessionStorage.setItem('hapi-trial-selected-session',${JSON.stringify(sc.session)});true`);await page.login();await page.wait(1200);
    }
@@ -52,7 +56,7 @@ try{
   record.logs=[...page.logs];await page.close();results.push(record);
   process.stdout.write(`${record.steps.every(s=>s.ok)&&!record.error?'✔':'✖'} ${sc.name}\n`);
  }
-}finally{await chrome.close();app.closeAllConnections();app.close();hub.close();await rm(temp,{recursive:true,force:true,maxRetries:5,retryDelay:300});}
+}finally{await chrome.close();app.closeAllConnections();app.close();globalThis.uxLocalServer?.closeAllConnections();globalThis.uxLocalServer?.close();hub.close();await rm(temp,{recursive:true,force:true,maxRetries:5,retryDelay:300});}
 
 const lines=[`# 사용성 점검 ${stamp}`,'',`합성 Hub(예시 데이터) + 앱 서버 + 헤드리스 Chrome. 클릭 = 실제 마우스 입력, 반응 = 1.5초 안의 화면 변화.`,'',
  '| 과업 | 단계 | 실패 | 반응 없음 | 화면 문제 | 오류 |','|---|---|---|---|---|---|',

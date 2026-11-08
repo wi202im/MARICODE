@@ -64,3 +64,61 @@ test('a change from the chat opens as its own read-only diff tab beside the file
  assert.deepEqual(s.inView(n=>n.className==='diff-view').children.map(c=>[c.className,c.textContent]),[['diff-hunk','@@ 변경 @@'],['diff-del','-x=1'],['diff-add','+x=2']]);
  s.tabs.openDiff({path:'src/a.mjs',diff:'@@ 변경 @@\n+y',label:'x'});await settle();assert.equal(s.tabs.paths.length,1);
 });
+
+// Editing: the real editor (CodeMirror) is replaced by a fake that exposes its text and callbacks.
+async function sha(text){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
+function editSetup(files,{editable=true,saveResult}={}){
+ const doc=fakeDocument(),host=doc.createElement('section'),strip=doc.createElement('div'),view=doc.createElement('section'),saves=[],asks=[];let editor=null,answer=false;
+ const api=async path=>{const p=decodeURIComponent(path.split('path=')[1]);if(!(p in files))throw Error('파일 없음');return {success:true,content:b64(files[p]),size:Buffer.byteLength(files[p])};};
+ const libs={highlight:async()=>({getLanguage:()=>false,registerLanguage(){}}),grammar:async()=>{throw Error('none');},markdown:async()=>class{render(t){return t;}},
+  editor:async()=>({create:o=>{editor={...o,text:o.text,focused:false,destroyed:false};return {get text(){return editor.text;},focus(){editor.focused=true;},destroy(){editor.destroyed=true;}};}})};
+ const save=async(path,content,expectedHash)=>{saves.push({path,content,expectedHash});return saveResult?saveResult(path,content,expectedHash):{success:true,hash:'h'+saves.length};};
+ const tabs=createFileTabs({api,base:()=>'/api/sessions/s',strip,view,host,document:doc,libs,editable:()=>editable,save,confirm:m=>{asks.push(m);return answer;}});
+ const deep=(n,f)=>f(n)?n:n.children?.map(c=>deep(c,f)).find(Boolean);
+ return {tabs,saves,asks,view,get editor(){return editor;},set answer(v){answer=v;},button:text=>deep(view,n=>n.tag==='button'&&n.textContent===text),inView:f=>deep(view,f)};
+}
+test('editing is offered only on this Mac for existing UTF-8 text files',async()=>{
+ let s=editSetup({'a.js':'x'},{editable:false});s.tabs.open('a.js');await settle();assert.equal(s.button('편집'),undefined);
+ s=editSetup({'a.js':'x','bin.dat':'a\0b','mixed.txt':'a\r\nb\nc'});
+ s.tabs.open('a.js');await settle();assert.ok(s.button('편집'));
+ s.tabs.open('bin.dat');await settle();assert.equal(s.button('편집'),undefined);
+ s.tabs.open('big.log',{size:2*1024*1024});await settle();assert.equal(s.button('편집'),undefined);
+ s.tabs.open('mixed.txt');await settle();s.button('편집').onclick();await settle();assert.equal(s.editor,null);assert.match(s.inView(n=>n.tag==='p'&&/줄바꿈/.test(n.textContent??'')).textContent,/줄바꿈/);
+ s.tabs.openDiff({path:'a.js',diff:'+x',label:'x'});await settle();assert.equal(s.button('편집'),undefined);
+});
+test('saving sends the loaded hash, keeps line endings and chains the new hash',async()=>{
+ const s=editSetup({'.env':'A=1\r\nB=2\r\n'});s.tabs.open('.env');await settle();
+ s.button('편집').onclick();await settle();
+ assert.equal(s.editor.text,'A=1\r\nB=2\r\n');assert.equal(s.editor.lineSeparator,'\r\n');assert.equal(s.editor.path,'.env');assert.equal(s.editor.focused,true);
+ assert.equal(s.button('저장').disabled,true);
+ s.editor.text='A=1\r\nB=3\r\n';s.editor.onChange();assert.equal(s.button('저장').disabled,false);assert.equal(s.tabs.unsaved,true);
+ await s.editor.onSave();await settle();
+ assert.deepEqual(s.saves[0],{path:'.env',content:'A=1\r\nB=3\r\n',expectedHash:await sha('A=1\r\nB=2\r\n')});
+ assert.equal(s.tabs.unsaved,false);assert.equal(s.button('저장').disabled,true);assert.match(s.inView(n=>n.className==='file-edit-state').textContent,/저장했습니다/);
+ s.editor.text='A=2\r\nB=3\r\n';s.editor.onChange();s.button('저장').onclick();await settle();assert.equal(s.saves[1].expectedHash,'h1');
+});
+test('a conflicting or unconfirmed save keeps the edits and never retries by itself',async()=>{
+ let calls=0;const s=editSetup({'a.js':'one'},{saveResult:()=>{calls++;if(calls===1){const e=Error('불러온 뒤 다른 곳에서 파일이 바뀌어 저장하지 않았습니다.');e.reason='FILE_CHANGED';throw e;}throw Error('network');}});
+ s.tabs.open('a.js');await settle();s.button('편집').onclick();await settle();
+ s.editor.text='mine';s.editor.onChange();await s.editor.onSave();await settle();
+ assert.match(s.inView(n=>n.className==='file-edit-state error').textContent,/다른 곳에서 파일이 바뀌어/);assert.equal(s.editor.text,'mine');assert.equal(s.tabs.unsaved,true);
+ await s.editor.onSave();await settle();assert.match(s.inView(n=>n.className==='file-edit-state error').textContent,/저장 결과를 확인하지 못했습니다/);
+ await settle(30);assert.equal(calls,2,'no automatic retry');
+});
+test('unsaved edits are not dropped by closing, reloading or leaving edit mode without asking',async()=>{
+ const s=editSetup({'a.js':'one'});s.tabs.open('a.js');await settle();s.button('편집').onclick();await settle();
+ s.editor.text='two';s.editor.onChange();
+ s.answer=false;s.tabs.closeActive?.();
+ const close=s.button('편집 끝내기');close.onclick();await settle();assert.equal(s.asks.length,1);assert.equal(s.editor.destroyed,false);
+ assert.equal(s.tabs.confirmDiscard(),false);assert.equal(s.asks.length,2);assert.deepEqual(s.tabs.paths,['a.js']);
+ s.answer=true;close.onclick();await settle();assert.equal(s.editor.destroyed,true);assert.equal(s.tabs.unsaved,false);assert.ok(s.button('편집'));
+});
+test('editor languages follow the file name; unknown files edit as plain text',async()=>{
+ const {editorLanguage}=await import('./editor-languages.mjs');
+ assert.deepEqual(editorLanguage('src/App.tsx'),{kind:'lezer',module:'lang-javascript',fn:'javascript',options:{jsx:true,typescript:true}});
+ for(const [p,m] of [['.env','legacy-properties'],['app/.env.local','legacy-properties'],['prod.env','legacy-properties'],['Dockerfile','legacy-dockerfile'],['run.sh','legacy-shell'],['a/b.py','lang-python'],['c.yml','lang-yaml'],['Cargo.toml','legacy-toml'],['x.md','lang-markdown']])assert.equal(editorLanguage(p)?.module,m,p);
+ for(const p of ['LICENSE','notes.txt','a.unknown','','.'])assert.equal(editorLanguage(p),null,p);
+ const files=new Set((await import('node:fs')).readdirSync(new URL('./vendor/codemirror/',import.meta.url)));
+ for(const p of ['a.js','a.json','a.css','a.html','a.md','a.py','a.yaml','a.sh','.env','a.toml','a.go','a.rs','a.swift','a.sql','Dockerfile']){const l=editorLanguage(p);assert.ok(files.has(l.module+'.js'),p);
+  const m=await import(`./vendor/codemirror/${l.module}.js`);assert.equal(typeof m[l.kind==='lezer'?l.fn:l.name]==='function'||typeof m[l.name]==='object',true,p);}
+});

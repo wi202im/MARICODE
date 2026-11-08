@@ -8,7 +8,7 @@ export const sessionList=[{id:ids.claude,label:'파일 뷰어 탭 만들기'},{i
 
 export async function createProject(root){
  const files={'src/app.mjs':"import {open} from './file-viewer.mjs';\nexport function start(){\n  open('README.md');\n}\n",'src/file-viewer.mjs':"// Center file tabs\nconst maxTabs=12;\nexport function open(path){ return path; }\n",
-  'docs/viewer.md':'# 파일 뷰어\n\n가운데 탭으로 열립니다.\n\n- 코드 색 구분\n- 마크다운 보기\n','README.md':'# 예시 프로젝트\n\n[뷰어 문서](docs/viewer.md)\n\n```js\nstart();\n```\n','package.json':'{"name":"demo","version":"1.0.0"}\n'};
+  'docs/viewer.md':'# 파일 뷰어\n\n가운데 탭으로 열립니다.\n\n- 코드 색 구분\n- 마크다운 보기\n','README.md':'# 예시 프로젝트\n\n[뷰어 문서](docs/viewer.md)\n\n```js\nstart();\n```\n','package.json':'{"name":"demo","version":"1.0.0"}\n','.env':'API_URL=http://localhost:3000\r\nTOKEN=abc\r\n'};
  for(const [p,c] of Object.entries(files)){await mkdir(join(root,p,'..'),{recursive:true});await writeFile(join(root,p),c);}
  return root;
 }

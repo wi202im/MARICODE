@@ -14,7 +14,7 @@ import http from 'node:http';
 import {createTasks} from './tasks.mjs';
 import {projectFilePath} from './files.mjs';
 import {createFileLinks} from './file-stream.mjs';
-import {listDirectory,readProjectFile} from './local-files.mjs';
+import {listDirectory,readProjectFile,saveProjectFile} from './local-files.mjs';
 import {projectChoices,selectProject} from './projects.mjs';
 import {createHandoffs} from './handoff.mjs';
 import { readFile,realpath } from 'node:fs/promises';
@@ -68,7 +68,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
   const taskConfig=taskTarget??handoffTarget;
   const tasks=taskTarget?createTasks(taskTarget):trialTasks;
   const projectHandoffs=taskTarget?createHandoffs({...taskTarget,directory:taskTarget.directory+'/handoffs'}):null;
-  const assets=new Map([['/manifest.webmanifest','manifest.webmanifest'],['/icon-192.png','icon-192.png'],['/icon-512.png','icon-512.png'],['/install','install.html'],['/install.mjs','install.mjs'],['/','index.html'],['/workspace','workspace/index.html'],['/workspace/','workspace/index.html'],['/workspace/style.css','workspace/style.css'],['/workspace/chat.css','workspace/chat.css'],['/workspace/vscode.css','workspace/vscode.css'],['/workspace.mjs','workspace.mjs'],['/git-status.mjs','git-status.mjs'],['/workspace-entry.mjs','workspace-entry.mjs'],['/panel-layout.mjs','panel-layout.mjs'],['/design','design/index.html'],['/design/','design/index.html'],['/design/style.css','design/style.css'],['/design/app.js','design/app.js'],['/questions.mjs','questions.mjs'],['/question-form.mjs','question-form.mjs'],['/chat-render.mjs','chat-render.mjs'],['/chat-presentation.mjs','chat-presentation.mjs'],['/settings.mjs','settings.mjs'],['/git-review.mjs','git-review.mjs'],['/composer-commands.mjs','composer-commands.mjs'],['/cli-profile-ui.mjs','cli-profile-ui.mjs'],['/command-support.mjs','command-support.mjs'],['/turn-alerts.mjs','turn-alerts.mjs'],['/branch-pin-ui.mjs','branch-pin-ui.mjs'],['/branch-rules.mjs','branch-rules.mjs'],['/file-kinds.mjs','file-kinds.mjs'],['/file-viewer.mjs','file-viewer.mjs'],['/file-tree.mjs','file-tree.mjs'],['/file-mentions.mjs','file-mentions.mjs'],['/vendor/markdown-it.mjs','vendor/markdown-it.mjs'],['/vendor/highlight.mjs','vendor/highlight.mjs'],['/vendor/hljs-github-dark.css','vendor/hljs-github-dark.css'],['/icons.mjs','icons.mjs'],['/vendor/codicons/codicon.css','vendor/codicons/codicon.css'],['/vendor/vscode-elements/bundled.js','vendor/vscode-elements/bundled.js'],['/palette.mjs','palette.mjs'],['/attachments.mjs','attachments.mjs'],['/usage-limits.mjs','usage-limits.mjs'],['/usage-panel.mjs','usage-panel.mjs'],['/attachment-composer.mjs','attachment-composer.mjs'],['/app.mjs','app.mjs'],['/composer-input.mjs','composer-input.mjs'],['/claude-import-ui.mjs','claude-import-ui.mjs'],['/markdown.mjs','markdown.mjs'],['/device-login.mjs','device-login.mjs'],['/core.mjs','core.mjs'],['/quit-flow.mjs','quit-flow.mjs'],['/reconnect.mjs','reconnect.mjs'],['/workflow.mjs','workflow.mjs'],['/history.mjs','history.mjs'],['/style.css','style.css']]);
+  const assets=new Map([['/manifest.webmanifest','manifest.webmanifest'],['/icon-192.png','icon-192.png'],['/icon-512.png','icon-512.png'],['/install','install.html'],['/install.mjs','install.mjs'],['/','index.html'],['/workspace','workspace/index.html'],['/workspace/','workspace/index.html'],['/workspace/style.css','workspace/style.css'],['/workspace/chat.css','workspace/chat.css'],['/workspace/vscode.css','workspace/vscode.css'],['/workspace.mjs','workspace.mjs'],['/git-status.mjs','git-status.mjs'],['/workspace-entry.mjs','workspace-entry.mjs'],['/panel-layout.mjs','panel-layout.mjs'],['/design','design/index.html'],['/design/','design/index.html'],['/design/style.css','design/style.css'],['/design/app.js','design/app.js'],['/questions.mjs','questions.mjs'],['/question-form.mjs','question-form.mjs'],['/chat-render.mjs','chat-render.mjs'],['/chat-presentation.mjs','chat-presentation.mjs'],['/settings.mjs','settings.mjs'],['/git-review.mjs','git-review.mjs'],['/composer-commands.mjs','composer-commands.mjs'],['/cli-profile-ui.mjs','cli-profile-ui.mjs'],['/command-support.mjs','command-support.mjs'],['/turn-alerts.mjs','turn-alerts.mjs'],['/branch-pin-ui.mjs','branch-pin-ui.mjs'],['/branch-rules.mjs','branch-rules.mjs'],['/file-kinds.mjs','file-kinds.mjs'],['/file-viewer.mjs','file-viewer.mjs'],['/file-tree.mjs','file-tree.mjs'],['/file-mentions.mjs','file-mentions.mjs'],['/vendor/markdown-it.mjs','vendor/markdown-it.mjs'],['/vendor/highlight.mjs','vendor/highlight.mjs'],['/vendor/hljs-github-dark.css','vendor/hljs-github-dark.css'],['/icons.mjs','icons.mjs'],['/vendor/codicons/codicon.css','vendor/codicons/codicon.css'],['/vendor/vscode-elements/bundled.js','vendor/vscode-elements/bundled.js'],['/palette.mjs','palette.mjs'],['/attachments.mjs','attachments.mjs'],['/usage-limits.mjs','usage-limits.mjs'],['/usage-panel.mjs','usage-panel.mjs'],['/code-editor.mjs','code-editor.mjs'],['/editor-languages.mjs','editor-languages.mjs'],['/attachment-composer.mjs','attachment-composer.mjs'],['/app.mjs','app.mjs'],['/composer-input.mjs','composer-input.mjs'],['/claude-import-ui.mjs','claude-import-ui.mjs'],['/markdown.mjs','markdown.mjs'],['/device-login.mjs','device-login.mjs'],['/core.mjs','core.mjs'],['/quit-flow.mjs','quit-flow.mjs'],['/reconnect.mjs','reconnect.mjs'],['/workflow.mjs','workflow.mjs'],['/history.mjs','history.mjs'],['/style.css','style.css']]);
   const server=http.createServer(async(req,res)=>{
     const host=req.headers.host;
     const allowedOrigins=new Set(origins);
@@ -103,6 +103,8 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
     const grammar=/^\/vendor\/hljs-languages\/([a-z0-9-]{1,40})\.mjs$/.exec(u.pathname);
     if(grammar&&req.method==='GET'&&!u.search){try{const code=await readFile(new URL(`vendor/hljs-languages/${grammar[1]}.mjs`,import.meta.url));res.setHeader('Content-Type','text/javascript');res.end(code);}catch{res.writeHead(404).end();}return;}
     if(u.pathname==='/vendor/codicons/codicon.ttf'&&req.method==='GET'&&!u.search){res.setHeader('Content-Type','font/ttf');res.setHeader('Cache-Control','max-age=86400');res.end(await readFile(new URL('vendor/codicons/codicon.ttf',import.meta.url)));return;}
+    const editorModule=/^\/vendor\/codemirror\/([a-z0-9-]{1,60})\.js$/.exec(u.pathname);
+    if(editorModule&&req.method==='GET'&&!u.search){try{const code=await readFile(new URL(`vendor/codemirror/${editorModule[1]}.js`,import.meta.url));res.setHeader('Content-Type','text/javascript');res.setHeader('Cache-Control','max-age=86400');res.end(code);}catch{res.writeHead(404).end();}return;}
     const fileIcon=/^\/vendor\/(file-icons)\/([a-z0-9_-]{1,40})\.svg$/.exec(u.pathname);
     if(fileIcon&&req.method==='GET'&&!u.search){try{const svg=await readFile(new URL(`vendor/${fileIcon[1]}/${fileIcon[2]}.svg`,import.meta.url));res.setHeader('Content-Type','image/svg+xml');res.setHeader('Cache-Control','max-age=86400');res.end(svg);}catch{res.writeHead(404).end();}return;}
     if(req.headers.origin&&!allowedOrigins.has(req.headers.origin)){res.writeHead(403).end();return;}
@@ -341,7 +343,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
           res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
         }catch(error){res.writeHead([400,401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:error.rejected===true,reason:error.reason,error:error.reason==='RUNNER_ACTIVE'?'작업 폴더 선택은 보존했습니다. 새 프로젝트 폴더를 쓰려면 실행기를 다시 시작해야 하는데, 이 컴퓨터에서 실행 중인 세션이 있어 시작하지 않았습니다. 실행 중인 세션을 종료한 뒤 생성 결과 확인을 누르면 같은 요청으로 계속합니다.':error.reason==='RUNNER_UNCONFIRMED'?'작업 폴더 선택은 보존했습니다. 이전 세션 생성 결과를 먼저 확인해 주세요.':error.reason==='RUNNER_SETUP'?'작업 폴더 선택은 보존했습니다. 실행 환경 준비를 확인하지 못했습니다. 생성 결과 확인을 눌러 같은 요청으로 계속하세요.':error.rejected?error.message:'결과를 확인하지 못했습니다. 같은 요청의 결과 확인을 눌러 주세요.'}));}return;
       }
-      if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,pairing:localImport&&!!pairing&&(!environment||(await environment.read()).roles.server===true),sessionTerminal:localImport&&!!runnerService?.openSessionTerminal,claudeImport:localImport&&!!runnerService?.claudeImport,codexImport:localImport&&!!runnerService?.codexImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{generalChat:!!runnerService.generalChat,workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
+      if(req.method==='GET'&&u.pathname==='/config') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessionId:available[0]?.id??null,sessions:available,pairing:localImport&&!!pairing&&(!environment||(await environment.read()).roles.server===true),sessionTerminal:localImport&&!!runnerService?.openSessionTerminal,claudeImport:localImport&&!!runnerService?.claudeImport,codexImport:localImport&&!!runnerService?.codexImport,fileRead:runnerWorkspace?!!runnerService.target:!!handoffTarget,fileEdit:localImport&&(runnerWorkspace?!!runnerService.target:!!handoffTarget),newHandoff:!runnerWorkspace&&!!handoffs,navigation:!!runnerService?.manage,newTask:runnerWorkspace&&runnerService.target?{generalChat:!!runnerService.generalChat,workspaceChoices:!!runnerService.workspaceChoices,project:runnerService.projects?'':(await runnerService.target(req.headers.authorization)).project}:!runnerWorkspace&&tasks?{project:taskConfig.project}:null}));return;}
       if(req.method==='GET'&&assets.has(u.pathname)) {
         const name=assets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.webmanifest')?'application/manifest+json':name.endsWith('.png')?'image/png':name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');
         let asset=await readPresentationAsset(name);
@@ -361,9 +363,12 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
       const creationHandoffs=creationTarget?createHandoffs({...creationTarget,directory:personalCreation?taskTarget.directory+'/handoffs':handoffTarget.directory}):null;
       const accountsRoute=accountsService&&(handoffTarget||runnerWorkspace)&&!u.search&&((req.method==='GET'&&u.pathname==='/api/accounts')||(req.method==='POST'&&/^\/api\/accounts\/(claude|codex)\/login$/.test(u.pathname)));
       // Usage limits share the account route's Hub authorization; read-only, no parameters.
+      // Saving a file from the file tab: this Mac's own screen only, for a session that runs on this Mac.
+      const fileSaveRoute=req.method==='POST'&&!u.search&&/^\/api\/sessions\/[^/]+\/file-save$/.test(u.pathname)&&!!(handoffTarget||runnerWorkspace&&runnerService.target);
       const usageRoute=usageService&&(handoffTarget||runnerWorkspace)&&!u.search&&req.method==='GET'&&u.pathname==='/api/usage-limits';
       const projectsRoute=tasks&&req.method==='GET'&&u.pathname==='/api/projects'&&!u.search;
-      if(!accountsRoute&&!usageRoute&&!projectsRoute&&!taskRoute&&!creation&&!allowedRoute(req.method,u,available.map(s=>s.id))){res.writeHead(403).end();return;}
+      if(fileSaveRoute&&(!localImport||req.headers.origin!==`http://${host}`)){res.writeHead(403).end();return;}
+      if(!fileSaveRoute&&!accountsRoute&&!usageRoute&&!projectsRoute&&!taskRoute&&!creation&&!allowedRoute(req.method,u,available.map(s=>s.id))){res.writeHead(403).end();return;}
       // Credentials are supplied by the client. This proxy has no stored Hub token.
       if(u.pathname!=='/api/auth'&&!req.headers.authorization?.startsWith('Bearer ')){res.writeHead(401).end();return;}
       const controller=new AbortController();res.on('close',()=>controller.abort());
@@ -371,8 +376,26 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
       let body;
       if(req.method==='POST') {
         const parts=[];let length=0;
-        for await(const chunk of req){length+=chunk.length;if(length>(u.pathname.endsWith('/upload')?7*1024*1024+2048:65536)){res.writeHead(413).end();return;}parts.push(chunk);}
+        for await(const chunk of req){length+=chunk.length;if(length>(u.pathname.endsWith('/upload')?7*1024*1024+2048:fileSaveRoute?7*1024*1024:65536)){res.writeHead(413).end();return;}parts.push(chunk);}
         body=Buffer.concat(parts);JSON.parse(body.toString());headers['Content-Type']='application/json';
+      }
+      if(fileSaveRoute){
+        const reply=(status,value)=>res.writeHead(status,{'Content-Type':'application/json'}).end(JSON.stringify(value));
+        let input;try{input=JSON.parse(body.toString());}catch{reply(400,{rejected:true,reason:'INVALID',error:'잘못된 저장 요청입니다. 저장하지 않았습니다.'});return;}
+        if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['path','content','expectedHash'].includes(k))||typeof input.path!=='string'||!input.path||typeof input.content!=='string'||typeof input.expectedHash!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedHash)){reply(400,{rejected:true,reason:'INVALID',error:'잘못된 저장 요청입니다. 저장하지 않았습니다.'});return;}
+        const id=u.pathname.split('/')[3];let fileTarget;
+        try{fileTarget=runnerWorkspace?(runnerService.localMachine?{machineId:await runnerService.localMachine({session:id})}:await runnerService.target(req.headers.authorization,{session:id})):handoffTarget;}
+        catch(error){reply(error.status===401?401:409,{rejected:true,reason:'RUNNER_OFFLINE',error:'이 컴퓨터의 실행 환경을 확인하지 못했습니다. 저장하지 않았습니다.'});return;}
+        const check=await fetch(new URL(`/api/sessions/${id}`,target),{headers,signal:controller.signal,redirect:'error'});
+        if(!check.ok){res.writeHead(check.status).end();return;}
+        const m=(await check.json()).session?.metadata;
+        if(m?.machineId!==fileTarget.machineId||m?.path!==(available.find(s=>s.id===id)?.project??fileTarget.project)){reply(403,{rejected:true,reason:'FORBIDDEN',error:'이 Mac의 세션 파일만 저장할 수 있습니다. 저장하지 않았습니다.'});return;}
+        let rel;try{rel=await projectFilePath(m.path,input.path);}catch{reply(403,{rejected:true,reason:'FORBIDDEN',error:'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다. 저장하지 않았습니다.'});return;}
+        let result;try{result=await saveProjectFile(await realpath(m.path),rel,input.content,input.expectedHash);}
+        catch{reply(500,{rejected:false,error:'저장 결과를 확인하지 못했습니다. 파일을 다시 열어 내용을 확인하세요. 자동으로 다시 저장하지 않습니다.'});return;}
+        if(result.success){reply(200,result);return;}
+        const failure={FILE_CHANGED:[409,'불러온 뒤 다른 곳에서 파일이 바뀌어 저장하지 않았습니다. 새로고침으로 최신 내용을 확인하세요.'],BUSY:[409,'같은 파일을 저장하는 중입니다.'],TOO_LARGE:[413,'1MB를 넘는 파일은 편집할 수 없습니다.'],NOT_TEXT:[415,'UTF-8 텍스트 파일만 저장할 수 있습니다.'],NOT_FILE:[404,'기존 파일만 저장할 수 있습니다.']}[result.reason]??[409,'저장하지 않았습니다.'];
+        reply(failure[0],{success:false,rejected:true,reason:result.reason,error:failure[1]});return;
       }
       const sessionRead=req.method==='GET'&&/^\/api\/sessions\/([^/]+)$/.exec(u.pathname);
       const changingSession=req.method==='POST'&&/^\/api\/sessions\/([^/]+)\/(messages|upload|resume|archive|fork|settings|permissions\/[^/]+\/(approve|deny))$/.exec(u.pathname);
