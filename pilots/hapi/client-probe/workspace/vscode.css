@@ -108,10 +108,12 @@ textarea{font-size:13px}
 .sidebar-bottom #open-accounts,.sidebar-bottom #pairing-open{width:28px;height:28px;min-height:28px;padding:5px;flex-shrink:0}
 
 /* Shared desktop geometry, including the browser workspace. */
-.sidebar,.live-inspector{position:relative}
-.panel-resizer{position:absolute;top:0;bottom:0;width:6px;z-index:36;cursor:col-resize;touch-action:none;outline:none}
-.panel-resizer-left{right:0}.panel-resizer-right{left:0}
-.panel-resizer::after{content:"";position:absolute;inset:0 2px;background:transparent}
+.shell,.workspace,.sidebar,.live-inspector{position:relative}
+/* 10px grab area centred on the border line, so aiming at the line itself catches it. */
+.panel-resizer{position:absolute;top:0;bottom:0;width:10px;z-index:36;cursor:col-resize;touch-action:none;outline:none}
+.panel-resizer-left{left:calc(var(--sidebar-width) - 5px)}.panel-resizer-right{right:calc(var(--inspector-width) - 5px)}
+.sidebar-collapsed .panel-resizer-left,.workspace:not(.inspector-visible)>.panel-resizer-right{display:none}
+.panel-resizer::after{content:"";position:absolute;inset:0 4px;background:transparent}
 .panel-resizer:hover::after,.panel-resizer:focus-visible::after{background:var(--focus)}
 .resizing-panels,.resizing-panels *{cursor:col-resize!important;user-select:none!important}
 .resizing-panels .panel-resizer::after{background:var(--focus)}
