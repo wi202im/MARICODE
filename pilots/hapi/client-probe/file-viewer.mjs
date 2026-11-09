@@ -3,7 +3,8 @@ import {diffLines} from './git-status.mjs';
 import {fileKind,mediaType,highlightLanguage,highlightLimit,textReadLimit} from './file-kinds.mjs';
 // Center file tabs: chat stays the first tab, files open beside it.
 // Text comes through the Hub file read; media through a short-lived link streamed by this server.
-// On this Mac's own screen an existing UTF-8 text file can be edited (CodeMirror) and saved through
+// On this Mac's own screen an existing UTF-8 text file opens directly in the editor (CodeMirror; markdown
+// after choosing 원본) and is saved through
 // the server, which refuses the save when the file changed since it was loaded (hash of the loaded bytes).
 const defaultLibs={
  markdown:()=>import('/vendor/markdown-it.mjs').then(m=>m.default),
@@ -86,8 +87,13 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   const bytes=Uint8Array.from(atob(f.content),c=>c.charCodeAt(0));t.size=f.size??bytes.length;
   if(bytes.subarray(0,8000).includes(0))return el('p','텍스트가 아닌 파일이라 미리보기를 지원하지 않습니다.','file-view-note');
   t.text=new TextDecoder().decode(bytes);t.hash=editable()&&save&&bytes.length<=editLimit?await sha256(bytes):null;
-  return kind==='markdown'&&t.mode!=='source'?markdownView(t.text,t):codeView(t.text,t.path);
+  if(kind==='markdown'&&t.mode!=='source')return markdownView(t.text,t);
+  if(canEdit(t)&&!mixedLineEnds(t.text))return null; // shown in the editor by load()
+  return codeView(t.text,t.path);
  }
+ // Mixed CRLF/LF would be normalised by the editor, so such files stay read-only.
+ const mixedLineEnds=text=>/\r(?!\n)/.test(text)||text.includes('\r\n')&&/(^|[^\r])\n/.test(text);
+ const canEdit=t=>editable()&&!!save&&t.diff===undefined&&typeof t.hash==='string';
  async function load(t){
   const mine=++serial;t.loading=mine;
   const head=el('div',undefined,'file-pane-head'),title=el('strong',t.label??t.path),meta=el('small',t.size?formatBytes(t.size):'');title.title=t.path;head.append(title,meta);
@@ -95,16 +101,19 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   const reload=el('button','새로고침');reload.type='button';reload.onclick=()=>load(t);head.append(reload);
   const content=el('div',undefined,'file-pane-body');content.append(el('p','불러오는 중…','file-view-note'));
   t.pane.replaceChildren(head,content);t.content=content;
-  try{const b=await body(t);if(t.loading!==mine)return;meta.textContent=t.size?formatBytes(t.size):'';content.replaceChildren(b);
-   if(t.diff===undefined&&typeof t.hash==='string'&&editable()){const edit=el('button','편집');edit.type='button';edit.title='이 Mac에서 파일을 편집합니다';edit.onclick=()=>startEdit(t);head.insertBefore?head.insertBefore(edit,reload):head.append(edit);}}
+  try{const b=await body(t);if(t.loading!==mine)return;if(b===null)return startEdit(t);meta.textContent=t.size?formatBytes(t.size):'';
+   if(canEdit(t)&&fileKind(t.path)!=='markdown'||canEdit(t)&&t.mode==='source')content.replaceChildren(el('p','줄바꿈 형식(CRLF·LF)이 섞인 파일이라 형식이 바뀌지 않도록 읽기 전용으로 엽니다.','file-view-note'),b);else content.replaceChildren(b);}
   catch(e){if(t.loading!==mine)return;content.replaceChildren(el('p',e.message.includes('(403)')?'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다.':e.message.includes('(415)')?'이 형식은 바로 재생할 수 없습니다.':e.message,'file-view-note error'));}
  }
  async function startEdit(t){
   const text=t.text,crlf=text.includes('\r\n');
-  if(/\r(?!\n)/.test(text)||crlf&&/(^|[^\r])\n/.test(text)){t.content?.replaceChildren(el('p','줄바꿈 형식(CRLF·LF)이 섞인 파일은 편집할 수 없습니다. 형식을 바꾸지 않도록 읽기 전용으로 둡니다.','file-view-note error'));return;}
   const mine=++serial;t.loading=mine;t.editing=true;t.dirty=false;
-  const head=el('div',undefined,'file-pane-head'),title=el('strong',t.path),state=el('small','','file-edit-state'),saveButton=el('button','저장'),done=el('button','편집 끝내기');
-  title.title=t.path;saveButton.type=done.type='button';saveButton.title='저장 (⌘S)';saveButton.disabled=true;head.append(title,state,saveButton,done);
+  const head=el('div',undefined,'file-pane-head'),title=el('strong',t.path),state=el('small','','file-edit-state'),saveButton=el('button','저장'),reload=el('button','새로고침');
+  title.title=t.path;saveButton.type=reload.type='button';saveButton.title='저장 (⌘S)';reload.title='디스크의 최신 내용으로 다시 엽니다';saveButton.disabled=true;head.append(title,state,saveButton);
+  // Leaving the editor (markdown view, reload) asks first when there are unsaved edits.
+  const leave=next=>{if(t.dirty&&!ask(discard))return;t.editor?.destroy();t.editor=null;t.editing=false;t.dirty=false;next();load(t);};
+  if(fileKind(t.path)==='markdown'){const view=el('button','보기');view.type='button';view.onclick=()=>leave(()=>{t.mode='view';});head.append(view);}
+  head.append(reload);
   const content=el('div',undefined,'file-pane-body file-editor');t.pane.replaceChildren(head,content);
   const status=(text,error=false)=>{state.textContent=text;state.className='file-edit-state'+(error?' error':'');};
   const sync=()=>{saveButton.disabled=!t.dirty||!!t.saving;};
@@ -117,15 +126,15 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
    finally{t.saving=false;sync();}
   }
   saveButton.onclick=()=>write();
-  done.onclick=()=>{if(t.dirty&&!ask(discard))return;t.editor?.destroy();t.editor=null;t.editing=false;t.dirty=false;load(t);};
+  reload.onclick=()=>leave(()=>{});
   try{const lib=await libs.editor();if(t.loading!==mine)return;
-   t.editor=lib.create({parent:content,text,path:t.path,lineSeparator:crlf?'\r\n':'\n',onChange:changed,onSave:write,document:doc});t.editor.focus();}
-  catch{t.editing=false;content.replaceChildren(el('p','편집기를 불러오지 못했습니다.','file-view-note error'));}
+   t.editor=lib.create({parent:content,text,path:t.path,lineSeparator:crlf?'\r\n':'\n',onChange:changed,onSave:write,document:doc});}
+  catch{t.editing=false;content.replaceChildren(el('p','편집기를 불러오지 못했습니다. 새로고침으로 다시 열어 주세요.','file-view-note error'));}
  }
  function open(path,{size}={}){
   let t=tabs.find(x=>x.path===path);
   if(!t){t={path,size,mode:'view',pane:el('div',undefined,'file-pane')};tabs.push(t);if(tabs.length>maxTabs)closeTab(tabs.find(x=>x!==t));load(t);}
-  show(t);notice(editable()?'파일 보기 · 텍스트 파일은 편집할 수 있습니다':'읽기 전용 파일 보기');return t;
+  show(t);notice(editable()?'이 Mac에서는 텍스트 파일을 바로 편집합니다 · ⌘S로 저장':'읽기 전용 파일 보기');return t;
  }
  // A change from the chat: the diff the AI's edit made, read-only, in its own tab beside the file itself.
  function openDiff({path,diff,label,key='diff:'+path,title=`${name(path)} · 변경`}){
