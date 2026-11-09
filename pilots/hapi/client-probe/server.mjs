@@ -304,10 +304,10 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
           res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(result));
         }catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,error:error.message}));}return;
       }
-      if(runnerWorkspace&&runnerService.branches&&['/api/branches','/api/branch-pin'].includes(u.pathname)){
+      if(runnerWorkspace&&runnerService.branches&&['/api/branches','/api/branch-pin','/api/branch-remote','/api/branch-pull'].includes(u.pathname)){
         try{let result;
-          if(req.method==='GET'&&u.pathname==='/api/branches'){const id=u.searchParams.get('session');if([...u.searchParams.keys()].some(k=>k!=='session')||!/^[a-f0-9-]{36}$/.test(id??'')){res.writeHead(400).end();return;}result=await runnerService.branches(req.headers.authorization,id);}
-          else if(req.method==='POST'&&u.pathname==='/api/branch-pin'&&!u.search){let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>2048){res.writeHead(413).end();return;}}result=await runnerService.branchPin(req.headers.authorization,JSON.parse(raw));}
+          if(req.method==='GET'&&['/api/branches','/api/branch-remote'].includes(u.pathname)){const id=u.searchParams.get('session');if([...u.searchParams.keys()].some(k=>k!=='session')||!/^[a-f0-9-]{36}$/.test(id??'')){res.writeHead(400).end();return;}result=await (u.pathname==='/api/branches'?runnerService.branches(req.headers.authorization,id):runnerService.branchRemote(req.headers.authorization,id));}
+          else if(req.method==='POST'&&['/api/branch-pin','/api/branch-pull'].includes(u.pathname)&&!u.search){let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>4096){res.writeHead(413).end();return;}}result=await (u.pathname==='/api/branch-pin'?runnerService.branchPin:runnerService.branchPull)(req.headers.authorization,JSON.parse(raw));}
           else{res.writeHead(405).end();return;}
           res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify(result));
         }catch(error){res.writeHead([401,403].includes(error.status)?error.status:409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,error:error.message}));}return;

@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,rm,writeFile,symlink} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {execFileSync} from 'node:child_process';
-import {repoStates,pinMismatches,newBranches,pinFrom,validPin,validBranch} from './branch-pin.mjs';
+import {repoStates,pinMismatches,newBranches,pinFrom,validPin,validBranch,remoteState,pullFastForward} from './branch-pin.mjs';
 import {pinSummary} from './branch-rules.mjs';
 
 const g=(cwd,...args)=>execFileSync('git',args,{cwd,stdio:'pipe',env:{...process.env,GIT_AUTHOR_NAME:'t',GIT_AUTHOR_EMAIL:'t@t',GIT_COMMITTER_NAME:'t',GIT_COMMITTER_EMAIL:'t@t'}});
@@ -37,4 +37,37 @@ test('sidebar summary lists shared branches once and otherwise per repository',(
  assert.equal(pinSummary({repos:{kona:['feature/a','feature/a-1'],rails:['feature/a-1','feature/a']}}),'feature/a, feature/a-1');
  assert.equal(pinSummary({repos:{kona:['feature/a'],rails:['main'],'.':[]}}),'kona: feature/a · rails: main · 이 폴더: 없음');
  assert.equal(pinSummary(null),'');
+});
+
+// A bare origin, a working clone pinned to main, and a second clone that pushes new work.
+async function remotes(t){
+ const root=await mkdtemp(join(tmpdir(),'pin-remote-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const origin=join(root,'origin.git'),seed=join(root,'seed'),work=join(root,'work'),other=join(root,'other');
+ g(root,'init','-q','--bare','-b','main',origin);await repo(seed,'main');g(seed,'remote','add','origin',origin);g(seed,'push','-q','origin','main');
+ g(root,'clone','-q',origin,work);g(root,'clone','-q',origin,other);
+ const push=async(name,body='x')=>{await writeFile(join(other,name),body);g(other,'add',name);g(other,'commit','-qm',name);g(other,'push','-q','origin','main');};
+ return {work,other,push};
+}
+test('a pinned branch behind its remote is found after fetching, and a fast-forward pull brings it up to date',async t=>{
+ const {work,push}=await remotes(t);let clock=0;
+ assert.deepEqual(await remoteState(work,{now:()=>clock}),{upstream:'origin/main',ahead:0,behind:0});
+ await push('b');await push('c');
+ // Fetching is throttled per repository; local refs stay as they were until the next fetch.
+ clock+=60000;assert.equal((await remoteState(work,{now:()=>clock})).behind,0);
+ clock+=5*60000;assert.deepEqual(await remoteState(work,{now:()=>clock}),{upstream:'origin/main',ahead:0,behind:2});
+ assert.deepEqual(await pullFastForward(work),{ok:true});
+ assert.deepEqual(await remoteState(work,{now:()=>clock}),{upstream:'origin/main',ahead:0,behind:0});
+ assert.equal(g(work,'log','-1','--format=%s').toString().trim(),'c');
+});
+test('a diverged branch or a local change the pull would overwrite is never merged; no upstream is reported as such',async t=>{
+ const {work,push}=await remotes(t);
+ await push('b');g(work,'fetch','-q');
+ await writeFile(join(work,'b'),'mine');
+ const blocked=await pullFastForward(work);assert.equal(blocked.ok,false);assert.match(blocked.error,/b/);
+ assert.equal((await remoteState(work,{now:()=>1e12})).behind,1);
+ await rm(join(work,'b'));await writeFile(join(work,'d'),'d');g(work,'add','d');g(work,'commit','-qm','d');
+ assert.deepEqual(await remoteState(work,{now:()=>2e12}),{upstream:'origin/main',ahead:1,behind:1});
+ const diverged=await pullFastForward(work);assert.equal(diverged.ok,false);assert.match(diverged.error,/갈라/);
+ assert.equal(g(work,'log','-1','--format=%s').toString().trim(),'d');
+ g(work,'checkout','-q','-b','local-only');assert.deepEqual(await remoteState(work,{now:()=>3e12}),{upstream:null});
 });

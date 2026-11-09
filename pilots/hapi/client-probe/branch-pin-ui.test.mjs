@@ -41,3 +41,25 @@ test('other branches sit folded behind an empty choice; the current off-list bra
  current='main';await ui.load(sid);pick=doc.nodes.findLast(n=>n.tag==='select');more=doc.nodes.findLast(n=>n.tag==='details');
  assert.equal(pick.value,'main');assert.equal(more.open,true);assert.equal(find(doc,'추가').disabled,false);
 });
+test('a pinned branch behind its remote asks before sending; pulling sends only when every pull succeeded',async()=>{
+ const doc=fakeDocument(),posts=[];let remote=[{repo:'api',branch:'main',upstream:'origin/main',ahead:0,behind:3}],pullResult=[{repo:'api',ok:true}];
+ const api=async(path,o)=>{if(path.startsWith('/api/branch-remote'))return remote;if(path==='/api/branch-pull'){posts.push(o.body);return pullResult;}return {pin:{repos:{api:['main']}},repos:[{repo:'api',current:'main',branches:['main']}],mismatches:[]};};
+ const section=doc.createElement('section'),banner=doc.createElement('div'),ui=createBranchPin({api,section,banner,document:doc});
+ let pending=ui.beforeSend(sid);await new Promise(r=>setTimeout(r));
+ assert.ok(doc.nodes.some(n=>n.textContent==='api 저장소 main이(가) 최신이 아닙니다 · origin/main에 새 커밋 3개'));
+ find(doc,'당겨오고 보내기').onclick();assert.equal(await pending,'send');assert.deepEqual(posts,[{id:sid,repos:['api']}]);
+ pullResult=[{repo:'api',ok:false,error:'Your local changes would be overwritten'}];
+ pending=ui.beforeSend(sid);await new Promise(r=>setTimeout(r));find(doc,'당겨오고 보내기').onclick();
+ assert.equal(await pending,'cancel');assert.equal(banner.hidden,false);assert.ok(doc.nodes.some(n=>n.textContent==='api · Your local changes would be overwritten'));
+ // Diverged: no pull is offered; sending anyway is still possible.
+ remote=[{repo:'api',branch:'main',upstream:'origin/main',ahead:1,behind:2}];posts.length=0;
+ pending=ui.beforeSend(sid);await new Promise(r=>setTimeout(r));
+ assert.deepEqual(banner.children.at(-1).children.map(b=>b.textContent),['그냥 보내기','취소']);
+ find(doc,'그냥 보내기').onclick();assert.equal(await pending,'send');assert.deepEqual(posts,[]);
+});
+test('an up-to-date branch or a remote that cannot be checked sends without asking',async()=>{
+ const doc=fakeDocument();let fail=false;
+ const api=async path=>{if(path.startsWith('/api/branch-remote')){if(fail)throw Error('offline');return [{repo:'api',branch:'main',upstream:'origin/main',ahead:0,behind:0}];}return {pin:{repos:{api:['main']}},repos:[{repo:'api',current:'main',branches:['main']}],mismatches:[]};};
+ const banner=doc.createElement('div'),ui=createBranchPin({api,section:doc.createElement('section'),banner,document:doc});
+ assert.equal(await ui.beforeSend(sid),'send');fail=true;assert.equal(await ui.beforeSend(sid),'send');assert.equal(banner.children.length,0);
+});

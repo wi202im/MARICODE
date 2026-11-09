@@ -414,6 +414,31 @@ test('branch pin is kept per registered session and checks the repositories dire
  r=await service.branchPin('Bearer synthetic',{id:sid,action:'remove',repo:'api',branch:'feature/x'});assert.deepEqual(r.pin,{repos:{api:['main']}});
  r=await service.branchPin('Bearer synthetic',{id:sid,action:'disable'});assert.equal(r.pin,null);assert.equal((await service.workspace('Bearer synthetic'))[0].branchPin,undefined);
 });
+test('a pinned session checks its remote and pulls fast-forward only when no session in that folder is working',async t=>{
+ const {createServer}=await import('node:http'),{projectRegistry}=await import('./project-registry.mjs'),{execFileSync}=await import('node:child_process');
+ const root=await mkdtemp(join(tmpdir(),'maricode-pull-'));const source=join(root,'source'),api=join(source,'api'),origin=join(root,'origin.git'),other=join(root,'other');await mkdir(source,{recursive:true});
+ const directory=join(root,'runner');await mkdir(join(directory,'runner-home'),{recursive:true});
+ const g=(cwd,...a)=>execFileSync('git',a,{cwd,stdio:'pipe',env:{...process.env,GIT_AUTHOR_NAME:'t',GIT_AUTHOR_EMAIL:'t@t',GIT_COMMITTER_NAME:'t',GIT_COMMITTER_EMAIL:'t@t'}});
+ g(root,'init','-q','--bare','-b','main',origin);g(root,'clone','-q',origin,other);await writeFile(join(other,'a'),'a');g(other,'add','a');g(other,'commit','-qm','a');g(other,'push','-q','origin','main');g(root,'clone','-q',origin,api);
+ await writeFile(join(other,'b'),'b');g(other,'add','b');g(other,'commit','-qm','b');g(other,'push','-q','origin','main');
+ const projectsPath=join(root,'projects'),project=await projectRegistry(projectsPath).add(source),accountConfig=join(root,'account');
+ await writeFile(accountConfig,JSON.stringify({cwd:project.path}));await writeFile(join(directory,'prepared.json'),JSON.stringify({cwd:project.path}));await writeFile(join(directory,'runner-home/settings.json'),JSON.stringify({machineId:'own'}));
+ const sid='11111111-1111-4111-8111-111111111111',peer='33333333-3333-4333-8333-333333333333';let peerThinking=true;
+ const hub=createServer((req,res)=>{if(req.headers.authorization!=='Bearer synthetic'){res.writeHead(401).end();return;}res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessions:[{id:sid,active:true,metadata:{machineId:'own',path:project.path,flavor:'claude'}},{id:peer,active:true,thinking:peerThinking,metadata:{machineId:'own',path:project.path,flavor:'codex'}}]}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ const service=createRunnerSetup({directory,accountConfig,projectsPath,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:`http://127.0.0.1:${hub.address().port}`});
+ // Not pinned: nothing is checked or pulled.
+ assert.deepEqual(await service.branchRemote('Bearer synthetic',sid),[]);
+ await service.branchPin('Bearer synthetic',{id:sid,action:'enable'});
+ assert.deepEqual(await service.branchRemote('Bearer synthetic',sid),[{repo:'api',branch:'main',upstream:'origin/main',ahead:0,behind:1}]);
+ // Another session working in the same folder blocks the pull; the files stay as they were.
+ await assert.rejects(service.branchPull('Bearer synthetic',{id:sid,repos:['api']}),/작업 중/);assert.equal(g(api,'log','-1','--format=%s').toString().trim(),'a');
+ await assert.rejects(service.branchPull('Bearer synthetic',{id:sid,repos:['../etc']}),/저장소/);
+ peerThinking=false;
+ assert.deepEqual(await service.branchPull('Bearer synthetic',{id:sid,repos:['api']}),[{repo:'api',ok:true}]);
+ assert.equal(g(api,'log','-1','--format=%s').toString().trim(),'b');
+ await assert.rejects(service.branchRemote('Bearer wrong',sid),e=>e.status===401);
+});
 test('runner readiness failures keep the specific reason so the user sees why a new folder was not applied',async()=>{
  const {runnerSetupReason}=await import('./runner-setup.mjs');
  assert.equal(runnerSetupReason(Object.assign(Error('x'),{code:'RUNNER_ACTIVE'})),'RUNNER_ACTIVE');

@@ -15,7 +15,7 @@ import {accountProfiles} from './account-profiles.mjs';
 import {createSessionTerminal,terminalPending} from './session-terminal.mjs';
 import {discoverClaudeSource,discoverCliSource} from './claude-source.mjs';
 import {homedir} from 'node:os';
-import {repoStates,pinMismatches,pinFrom,validBranch} from './branch-pin.mjs';
+import {repoStates,pinMismatches,pinFrom,validBranch,remoteState,pullFastForward} from './branch-pin.mjs';
 export async function ownerAuthorization(config){
  const token=await readFile(config.tokenFile,'utf8');
  const auth=await fetch(config.hubUrl+'/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({accessToken:token}),redirect:'error',signal:AbortSignal.timeout(3000)});
@@ -204,6 +204,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   if(!p?.active||!owner?.active||owner.removed)throw Object.assign(Error('이 세션의 원래 계정으로 전환하고 세션 기록을 확인하세요. 다른 계정의 설정은 변경하지 않습니다.'),{rejected:true});
   return {sessionId:id,agent:m.flavor,cwd:project.path,accountId:p.active,alias:owner.alias,revision:await accountRevision(c.accountConfig)};
  }
+ const pulling=new Set();
  const plans=c.projectsPath?createWorkspacePlans({directory:shared+'.workspace-plans',worktreeDirectory:shared+'.worktrees',registry:projectRegistry(c.projectsPath)}):null;
  const api={status,projects,
   // Placement for the Runner pool: 'ready' needs no restart, 'refreshable' may restart now, 'busy' cannot restart (running work).
@@ -347,6 +348,26 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    const s=(await api.workspace(authorization)).find(x=>x.id===id);if(!s)throw Error('이 컴퓨터의 등록된 세션을 선택하세요.');
    const pin=(await projectRegistry(c.projectsPath).navigation()).sessions[id]?.branchPin??null,repos=await repoStates(s.project);
    return {pin,repos,mismatches:pinMismatches(pin,repos)};
+  },
+  // Pinned repositories on a branch, with how far each is from its upstream (fetching at most every 5 minutes).
+  async branchRemote(authorization,id){
+   const now=await api.branches(authorization,id),s=(await api.workspace(authorization)).find(x=>x.id===id);if(!now.pin)return [];
+   return Promise.all(now.repos.filter(r=>r.current&&Array.isArray(now.pin.repos[r.repo])).map(async r=>({repo:r.repo,branch:r.current,...await remoteState(r.repo==='.'?s.project:join(s.project,r.repo))})));
+  },
+  // After the user confirms: fast-forward the named pinned repositories, once, while no session in the folder is working.
+  async branchPull(authorization,input){
+   if(!input||Object.keys(input).some(k=>!['id','repos'].includes(k))||!Array.isArray(input.repos)||!input.repos.length||input.repos.length>50)throw Error('당겨올 저장소를 확인하세요.');
+   if(pulling.has(input.id))throw Error('이미 당겨오는 중입니다.');
+   pulling.add(input.id);
+   try{
+    const now=await api.branches(authorization,input.id),s=(await api.workspace(authorization)).find(x=>x.id===input.id);
+    const repos=input.repos.map(name=>now.repos.find(r=>r.repo===name&&r.current&&now.pin?.repos[name]));
+    if(repos.some(r=>!r))throw Error('고정한 저장소만 당겨올 수 있습니다.');
+    const data=await authorize(authorization);
+    if(data.sessions.some(x=>x.metadata?.path===s.project&&(x.thinking||Object.keys(x.agentState?.requests??{}).length)))throw Error('이 폴더에서 AI가 작업 중입니다. 작업이 끝난 뒤 다시 시도하세요.');
+    const out=[];for(const r of repos)out.push({repo:r.repo,...await pullFastForward(r.repo==='.'?s.project:join(s.project,r.repo))});
+    return out;
+   }finally{pulling.delete(input.id);}
   },
   async branchPin(authorization,input){
    if(!input||Object.keys(input).some(k=>!['id','action','repo','branch'].includes(k))||!['enable','disable','add','remove'].includes(input.action))throw Error('브랜치 고정 요청을 확인하세요.');

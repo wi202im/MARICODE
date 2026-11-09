@@ -595,3 +595,16 @@ test('resume preflight and original account failures never forward a resume',asy
   assert.equal(result.reason,scenario==='missing-native'?'ACCOUNT_MISMATCH':'RUNNER_SETUP');if(scenario==='missing-native')assert.equal(result.error,'원본 기록을 다시 연결하세요.');
  });
 });
+test('branch remote check and pull reach the session Runner with only the session and repository names',async t=>{
+ const calls=[],sid='11111111-1111-4111-8111-111111111111';
+ const runnerService={workspace:async()=>[{id:sid}],branches:async()=>({}),branchRemote:async(auth,id)=>{calls.push(['remote',auth,id]);return [{repo:'api',behind:1}];},branchPull:async(auth,input)=>{calls.push(['pull',auth,input]);return [{repo:'api',ok:true}];}};
+ const server=createServer({upstream:'http://127.0.0.1:1',sessionId:sid,runnerService});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});
+ const url=`http://127.0.0.1:${server.address().port}`,auth={authorization:'Bearer synthetic'};
+ assert.equal((await fetch(url+'/api/branch-remote?session=nope',{headers:auth})).status,400);
+ assert.equal((await fetch(url+`/api/branch-remote?session=${sid}&path=/etc`,{headers:auth})).status,400);
+ assert.deepEqual(await (await fetch(url+`/api/branch-remote?session=${sid}`,{headers:auth})).json(),[{repo:'api',behind:1}]);
+ const pull=await fetch(url+'/api/branch-pull',{method:'POST',headers:{...auth,origin:url,'content-type':'application/json'},body:JSON.stringify({id:sid,repos:['api']})});
+ assert.deepEqual(await pull.json(),[{repo:'api',ok:true}]);
+ assert.equal((await fetch(url+'/api/branch-pull',{method:'POST',headers:{...auth,origin:'https://evil.example','content-type':'application/json'},body:'{}'})).status,403);
+ assert.deepEqual(calls,[['remote','Bearer synthetic',sid],['pull','Bearer synthetic',{id:sid,repos:['api']}]]);
+});
