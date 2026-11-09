@@ -6,6 +6,8 @@ function fakeDocument(){const nodes=[];return {nodes,createElementNS(ns,tag){ret
  append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},setAttribute(k,v){this.attrs[k]=v;},getAttribute(k){return this.attrs[k];},removeAttribute(k){delete this.attrs[k];if(k==='src')delete this.src;},
  querySelectorAll(){return [];}};nodes.push(n);return n;}};}
 const settle=()=>new Promise(r=>setTimeout(r,5));
+// Waits for an async result (hashing, editor load) instead of a fixed delay; fails after 2s.
+async function waitFor(check){for(let i=0;i<400;i++){if(check())return;await new Promise(r=>setTimeout(r,5));}throw Error('timed out');}
 const b64=s=>Buffer.from(s).toString('base64');
 function setup(files){
  const doc=fakeDocument(),calls=[],host=doc.createElement('section'),strip=doc.createElement('div'),view=doc.createElement('section');
@@ -78,47 +80,47 @@ function editSetup(files,{editable=true,saveResult}={}){
  return {tabs,saves,asks,view,get editor(){return editor;},set answer(v){answer=v;},button:text=>deep(view,n=>n.tag==='button'&&n.textContent===text),inView:f=>deep(view,f)};
 }
 test('on this Mac existing UTF-8 text files open straight in the editor; everything else stays read-only',async()=>{
- let s=editSetup({'a.js':'x'},{editable:false});s.tabs.open('a.js');await settle();assert.equal(s.editor,null);assert.ok(s.inView(n=>n.tag==='code'));
+ let s=editSetup({'a.js':'x'},{editable:false});s.tabs.open('a.js');await waitFor(()=>s.inView(n=>n.tag==='code'));assert.equal(s.editor,null);
  s=editSetup({'a.js':'x','bin.dat':'a\0b','mixed.txt':'a\r\nb\nc'});
- s.tabs.open('a.js');await settle();assert.equal(s.editor.path,'a.js');assert.equal(s.editor.text,'x');assert.equal(s.editor.focused,false,'opening does not grab the keyboard');
+ s.tabs.open('a.js');await waitFor(()=>s.editor);assert.equal(s.editor.path,'a.js');assert.equal(s.editor.text,'x');assert.equal(s.editor.focused,false,'opening does not grab the keyboard');
  assert.equal(s.inView(n=>n.tag==='code'),undefined);assert.equal(s.button('편집'),undefined);
  const opened=s.editor;
- s.tabs.open('bin.dat');await settle();assert.equal(s.editor,opened);assert.match(s.inView(n=>n.tag==='p').textContent,/텍스트가 아닌/);
+ s.tabs.open('bin.dat');await waitFor(()=>/텍스트가 아닌/.test(s.inView(n=>n.tag==='p')?.textContent??''));assert.equal(s.editor,opened);assert.match(s.inView(n=>n.tag==='p').textContent,/텍스트가 아닌/);
  s.tabs.open('big.log',{size:2*1024*1024});await settle();assert.equal(s.editor,opened);
- s.tabs.open('mixed.txt');await settle();assert.equal(s.editor,opened);assert.match(s.inView(n=>n.tag==='p').textContent,/줄바꿈/);assert.ok(s.inView(n=>n.tag==='code'));
+ s.tabs.open('mixed.txt');await waitFor(()=>s.inView(n=>n.tag==='code'));assert.equal(s.editor,opened);assert.match(s.inView(n=>n.tag==='p').textContent,/줄바꿈/);assert.ok(s.inView(n=>n.tag==='code'));
  s.tabs.openDiff({path:'a.js',diff:'+x',label:'x'});await settle();assert.equal(s.editor,opened);assert.ok(s.inView(n=>n.className==='diff-view'));
 });
 test('markdown opens in reading view; 원본 goes straight to the editor and 보기 asks before dropping edits',async()=>{
- const s=editSetup({'README.md':'# Hi'});s.tabs.open('README.md');await settle();
+ const s=editSetup({'README.md':'# Hi'});s.tabs.open('README.md');await waitFor(()=>s.inView(n=>n.className==='markdown-view'));
  assert.equal(s.editor,null);assert.ok(s.inView(n=>n.className==='markdown-view'));
- s.button('원본').onclick();await settle();assert.equal(s.editor.text,'# Hi');
+ s.button('원본').onclick();await waitFor(()=>s.editor);assert.equal(s.editor.text,'# Hi');
  s.editor.text='# Hello';s.editor.onChange();s.answer=false;s.button('보기').onclick();await settle();assert.equal(s.asks.length,1);assert.equal(s.editor.destroyed,false);
- s.answer=true;s.button('보기').onclick();await settle();assert.equal(s.editor.destroyed,true);assert.ok(s.inView(n=>n.className==='markdown-view'));
+ s.answer=true;s.button('보기').onclick();await waitFor(()=>s.inView(n=>n.className==='markdown-view'));assert.equal(s.editor.destroyed,true);assert.ok(s.inView(n=>n.className==='markdown-view'));
 });
 test('saving sends the loaded hash, keeps line endings and chains the new hash',async()=>{
- const s=editSetup({'.env':'A=1\r\nB=2\r\n'});s.tabs.open('.env');await settle();
+ const s=editSetup({'.env':'A=1\r\nB=2\r\n'});s.tabs.open('.env');await waitFor(()=>s.editor);
  assert.equal(s.editor.text,'A=1\r\nB=2\r\n');assert.equal(s.editor.lineSeparator,'\r\n');assert.equal(s.editor.path,'.env');
  assert.equal(s.button('저장').disabled,true);
  s.editor.text='A=1\r\nB=3\r\n';s.editor.onChange();assert.equal(s.button('저장').disabled,false);assert.equal(s.tabs.unsaved,true);
- await s.editor.onSave();await settle();
+ await s.editor.onSave();
  assert.deepEqual(s.saves[0],{path:'.env',content:'A=1\r\nB=3\r\n',expectedHash:await sha('A=1\r\nB=2\r\n')});
  assert.equal(s.tabs.unsaved,false);assert.equal(s.button('저장').disabled,true);assert.match(s.inView(n=>n.className==='file-edit-state').textContent,/저장했습니다/);
- s.editor.text='A=2\r\nB=3\r\n';s.editor.onChange();s.button('저장').onclick();await settle();assert.equal(s.saves[1].expectedHash,'h1');
+ s.editor.text='A=2\r\nB=3\r\n';s.editor.onChange();s.button('저장').onclick();await waitFor(()=>s.saves.length===2);assert.equal(s.saves[1].expectedHash,'h1');
 });
 test('a conflicting or unconfirmed save keeps the edits and never retries by itself',async()=>{
  let calls=0;const s=editSetup({'a.js':'one'},{saveResult:()=>{calls++;if(calls===1){const e=Error('불러온 뒤 다른 곳에서 파일이 바뀌어 저장하지 않았습니다.');e.reason='FILE_CHANGED';throw e;}throw Error('network');}});
- s.tabs.open('a.js');await settle();
+ s.tabs.open('a.js');await waitFor(()=>s.editor);
  s.editor.text='mine';s.editor.onChange();await s.editor.onSave();await settle();
  assert.match(s.inView(n=>n.className==='file-edit-state error').textContent,/다른 곳에서 파일이 바뀌어/);assert.equal(s.editor.text,'mine');assert.equal(s.tabs.unsaved,true);
  await s.editor.onSave();await settle();assert.match(s.inView(n=>n.className==='file-edit-state error').textContent,/저장 결과를 확인하지 못했습니다/);
  await settle();assert.equal(calls,2,'no automatic retry');
 });
 test('unsaved edits are not dropped by closing, reloading or switching away without asking',async()=>{
- const s=editSetup({'a.js':'one'});s.tabs.open('a.js');await settle();const first=s.editor;
+ const s=editSetup({'a.js':'one'});s.tabs.open('a.js');await waitFor(()=>s.editor);const first=s.editor;
  s.editor.text='two';s.editor.onChange();s.answer=false;
  s.button('새로고침').onclick();await settle();assert.equal(s.asks.length,1);assert.equal(first.destroyed,false);
  assert.equal(s.tabs.confirmDiscard(),false);assert.equal(s.asks.length,2);assert.deepEqual(s.tabs.paths,['a.js']);
- s.answer=true;s.button('새로고침').onclick();await settle();assert.equal(first.destroyed,true);assert.notEqual(s.editor,first);assert.equal(s.editor.text,'one');assert.equal(s.tabs.unsaved,false);
+ s.answer=true;s.button('새로고침').onclick();await waitFor(()=>s.editor!==first);assert.equal(first.destroyed,true);assert.notEqual(s.editor,first);assert.equal(s.editor.text,'one');assert.equal(s.tabs.unsaved,false);
 });
 test('editor languages follow the file name; unknown files edit as plain text',async()=>{
  const {editorLanguage}=await import('./editor-languages.mjs');

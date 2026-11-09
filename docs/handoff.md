@@ -20,7 +20,7 @@
 - CodeMirror 6: 31개 npm 패키지(모두 MIT)를 `tools/vendor-codemirror.mjs`로 고정 버전·sha512 무결성 확인 후 vendor(39개 파일, `vendor/codemirror/manifest.json`), 패키지 import를 상대 경로로 바꾸고 미해결 import가 있으면 실패. 앱 CSP(style-src 'self')가 `<style>` 주입을 막아 style-mod를 문서에서도 constructable stylesheet를 쓰도록 한 줄 수정(도구가 정확한 위치에서만 적용, 고지에 기록). 번들러·npm 설치 없음.
 - **된다 — 자동:** 저장·경로·권한·충돌 및 편집 화면 실패 검사 후 구현(`.runtime/file-edit-red.log`), 전체 424개 통과(`.runtime/file-edit-tests.log`). vendor 39개 모듈 Node 로드 확인, 개발 빌드에 편집 모듈·vendor 포함 확인.
 - **된다 — 합성 UI:** 실제 앱 서버+헤드리스 Chrome+합성 Hub(로컬 파일 대상 별도 서버)에서 CRLF `.env` 열기→편집기 스타일 적용 확인→수정 후 ⌘S 저장(디스크 CRLF 유지)→외부 변경 후 저장 거절·원본 유지→변경 버리기 확인 5단계 통과, CSP 오류 없음(`.runtime/ux/2026-11-08T13-50-04/report.md`). 전체 UX 기존 2건 실패는 변경 전과 같다(`.runtime/ux/2026-11-08T13-55-21/report.md`).
-- **된다 — 바로 편집 전환(2026-11-09):** 편집 화면 검사 갱신 후 전체 424개 통과(`.runtime/file-edit-direct-tests.log`), 합성 UI 5단계(바로 편집기·포커스 없음·⌘S 저장·충돌 거절·새로고침 전 확인) 통과(`.runtime/ux/2026-11-09T00-18-14/report.md`).
+- **된다 — 바로 편집 전환(2026-11-09):** 편집 화면 검사 갱신 후 전체 425개 통과(직전 커밋은 고정 5ms 대기 검사가 전체 실행 부하에서 1건 실패한 상태로 push됨 → 조건 대기로 수정, 연속 3회 통과)(`.runtime/file-edit-direct-tests.log`), 합성 UI 5단계(바로 편집기·포커스 없음·⌘S 저장·충돌 거절·새로고침 전 확인) 통과(`.runtime/ux/2026-11-09T00-18-14/report.md`).
 - **확인 안 함:** Mac WKWebView 실제 편집·한글 IME 입력·⌘S, 실행기(runner) 모드 세션의 실제 저장, 큰 파일 성능. DMG·릴리스 미발행.
 
 ## 1.2.2 공증 공개 완료 — 2026-11-07
