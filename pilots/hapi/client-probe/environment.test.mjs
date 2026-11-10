@@ -41,8 +41,8 @@ test('proxy requires setup, gates local/remote traffic and keeps settings local'
   assert.equal((await fetch(base+asset)).status,200);
   assert.equal((await remote(asset)).status,200);
  }
- const config=await(await fetch(base+'/api/environment')).json();assert.equal(config.aiConfigurationRegistered,false);
- const save=(revision,roles,extra={})=>fetch(base+'/api/environment',{method:'POST',headers:{origin:base,'content-type':'application/json','x-setup-nonce':config.nonce,...extra},body:JSON.stringify({revision,roles})});
+ const config=await(await fetch(base+'/api/environment',{headers:{'x-setup-nonce':s.setupKey}})).json();assert.equal(config.aiConfigurationRegistered,false);
+ const save=(revision,roles,extra={})=>fetch(base+'/api/environment',{method:'POST',headers:{origin:base,'content-type':'application/json','x-setup-nonce':s.setupKey,...extra},body:JSON.stringify({revision,roles})});
  assert.equal((await save(0,{local:true,server:false,remote:false},{'x-setup-nonce':'bad'})).status,403);
  assert.equal((await save(0,{local:true,server:false,remote:false})).status,200);
  assert.equal((await fetch(base+'/config')).status,200);
@@ -77,7 +77,7 @@ test('initial AI setup needs local role and nonce, cannot change an existing log
  const {createServer}=await import('./server.mjs');const dir=await mkdtemp(join(tmpdir(),'mari-ai-'));let starts=0;
  const s=createServer({upstream:'http://127.0.0.1:1',sessionId:'00000000-0000-0000-0000-000000000000',environmentPath:join(dir,'machine.json'),accountsService:{status:async()=>({state:'connected',loginPending:false}),start:async()=>{starts++;return {state:'connected'};}}});
  await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{s.closeAllConnections();s.close();return rm(dir,{recursive:true,force:true});});const base=`http://127.0.0.1:${s.address().port}`;
- const state=await(await fetch(base+'/api/environment')).json();assert.equal(state.aiConfigurationRegistered,true);const headers={origin:base,'content-type':'application/json','x-setup-nonce':state.nonce};
+ const state=await(await fetch(base+'/api/environment',{headers:{'x-setup-nonce':s.setupKey}})).json();assert.equal(state.aiConfigurationRegistered,true);const headers={origin:base,'content-type':'application/json','x-setup-nonce':s.setupKey};
  assert.equal((await fetch(base+'/api/environment/accounts',{headers})).status,403);
  await fetch(base+'/api/environment',{method:'POST',headers,body:JSON.stringify({revision:0,roles:{local:true,server:false,remote:false}})});
  assert.equal((await fetch(base+'/api/environment/accounts')).status,403);
@@ -117,7 +117,7 @@ test('CLI registration requires local role, setup nonce and same origin without 
  const {createServer}=await import('./server.mjs');const dir=await mkdtemp(join(tmpdir(),'mari-registration-'));let writes=0,logins=0;
  const s=createServer({upstream:'http://127.0.0.1:1',sessionId:'00000000-0000-0000-0000-000000000000',environmentPath:join(dir,'env.json'),registrationService:{list:async()=>({providers:[]}),register:async()=>{writes++;return {registered:true};}},accountsService:{start:async()=>{logins++;}}});
  await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{s.closeAllConnections();s.close();return rm(dir,{recursive:true,force:true});});
- const base=`http://127.0.0.1:${s.address().port}`,state=await(await fetch(base+'/api/environment')).json(),url=base+'/api/environment/accounts/registration',headers={origin:base,'Content-Type':'application/json','X-Setup-Nonce':state.nonce};
+ const base=`http://127.0.0.1:${s.address().port}`,state=await(await fetch(base+'/api/environment',{headers:{'x-setup-nonce':s.setupKey}})).json(),url=base+'/api/environment/accounts/registration',headers={origin:base,'Content-Type':'application/json','X-Setup-Nonce':s.setupKey};
  assert.equal((await fetch(url,{headers})).status,403);
  await fetch(base+'/api/environment',{method:'POST',headers,body:JSON.stringify({revision:0,roles:{local:true,server:false,remote:false}})});
  for(const extra of [{'X-Setup-Nonce':''},{origin:'https://evil.example'},{'x-forwarded-for':'10.0.0.2'}])assert.equal((await fetch(url,{method:'POST',headers:{...headers,...extra},body:'{}'})).status,403);
@@ -129,7 +129,7 @@ test('Runner setup actions require local role, nonce and same origin and accept 
  const {createServer}=await import('./server.mjs');const dir=await mkdtemp(join(tmpdir(),'mari-runner-route-'));let starts=0;
  const s=createServer({upstream:'http://127.0.0.1:1',sessionId:'00000000-0000-0000-0000-000000000000',environmentPath:join(dir,'env.json'),runnerService:{status:async()=>({phase:'prepared'}),start:async()=>{starts++;}}});
  await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{s.closeAllConnections();s.close();return rm(dir,{recursive:true,force:true});});
- const base=`http://127.0.0.1:${s.address().port}`,state=await(await fetch(base+'/api/environment')).json(),url=base+'/api/environment/runner',headers={origin:base,'Content-Type':'application/json','X-Setup-Nonce':state.nonce};
+ const base=`http://127.0.0.1:${s.address().port}`,state=await(await fetch(base+'/api/environment',{headers:{'x-setup-nonce':s.setupKey}})).json(),url=base+'/api/environment/runner',headers={origin:base,'Content-Type':'application/json','X-Setup-Nonce':s.setupKey};
  const post=(body={action:'start'},extra={})=>fetch(url,{method:'POST',headers:{...headers,...extra},body:JSON.stringify(body)});
  assert.equal((await post()).status,403);await fetch(base+'/api/environment',{method:'POST',headers,body:JSON.stringify({revision:0,roles:{local:true,server:false,remote:false}})});
  for(const extra of [{'X-Setup-Nonce':''},{origin:'https://evil.example'},{'x-forwarded-for':'10.0.0.1'}])assert.equal((await post(undefined,extra)).status,403);
@@ -174,4 +174,19 @@ test('Runner file reads keep the project realpath boundary',async t=>{
  await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{for(const a of [s,hub]){a.closeAllConnections();a.close();}return rm(root,{recursive:true,force:true});});
  const base=`http://127.0.0.1:${s.address().port}/api/sessions/${id}/file?path=`,headers={origin:`http://127.0.0.1:${s.address().port}`,authorization:'Bearer synthetic'};
  assert.equal((await fetch(base+'inside',{headers})).status,200);assert.equal((await fetch(base+'outside',{headers})).status,403);
+});
+
+test('the setup key is never handed out over HTTP; setup reads and writes need it',async t=>{
+ const {createServer}=await import('./server.mjs');const dir=await mkdtemp(join(tmpdir(),'mari-setup-key-'));
+ const s=createServer({upstream:'http://127.0.0.1:1',sessionId:'00000000-0000-0000-0000-000000000000',environmentPath:join(dir,'env.json')});
+ await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{s.closeAllConnections();s.close();return rm(dir,{recursive:true,force:true});});
+ const base=`http://127.0.0.1:${s.address().port}`;
+ assert.match(s.setupKey,/^[a-f0-9]{64}$/);
+ assert.equal((await fetch(base+'/api/environment')).status,403,'a local process without the key learns nothing');
+ assert.equal((await fetch(base+'/api/environment',{headers:{'x-setup-nonce':'0'.repeat(64)}})).status,403);
+ const r=await fetch(base+'/api/environment',{headers:{'x-setup-nonce':s.setupKey}});assert.equal(r.status,200);
+ const text=await r.text();assert.ok(!text.includes(s.setupKey));assert.equal(JSON.parse(text).nonce,undefined);
+ assert.equal((await fetch(base+'/setup')).status,200,'the static page itself stays public on this Mac');
+ const fixed=createServer({upstream:'http://127.0.0.1:1',sessionId:'00000000-0000-0000-0000-000000000000',environmentPath:join(dir,'env2.json'),setupKey:'a'.repeat(64)});assert.equal(fixed.setupKey,'a'.repeat(64));
+ assert.throws(()=>createServer({upstream:'http://127.0.0.1:1',sessionId:'00000000-0000-0000-0000-000000000000',environmentPath:join(dir,'env3.json'),setupKey:'short'}));
 });

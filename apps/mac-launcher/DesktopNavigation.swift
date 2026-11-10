@@ -53,3 +53,30 @@ func desktopConnectionTone(_ state: String?) -> String {
     default: return "gray"
     }
 }
+
+// The local setup page needs the per-launch key printed on the launcher's stdout (`SETUP_KEY <hex>`).
+// It travels in the URL fragment, which is never sent to the server, so other local processes cannot get it.
+func desktopSetupKey(line: String) -> String? {
+    guard line.hasPrefix("SETUP_KEY ") else { return nil }
+    let key = String(line.dropFirst("SETUP_KEY ".count))
+    return key.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil ? key : nil
+}
+func desktopLocalURL(path: String, setupKey: String?) -> URL? {
+    guard path.hasPrefix("/") else { return nil }
+    if path == "/setup", let key = setupKey { return URL(string: "http://127.0.0.1:61192/setup#setup=" + key) }
+    return URL(string: "http://127.0.0.1:61192" + path)
+}
+// A /setup load without the current key (server redirect, plain link) is reopened with it.
+func desktopSetupNeedsKey(_ target: URL, setupKey: String?) -> Bool {
+    guard let key = setupKey else { return false }
+    return target.scheme == "http" && target.host == "127.0.0.1" && target.port == 61192 && target.path == "/setup" && target.fragment != "setup=" + key
+}
+enum DesktopNavigationDecision { case allow, openExternally, cancel }
+// Only this Mac's workspace loads inside the app view. A clicked https link opens in the browser;
+// any other outside navigation (redirects, scripts, frames) is dropped.
+func desktopNavigation(_ target: URL, mainFrame: Bool, linkActivated: Bool) -> DesktopNavigationDecision {
+    if target.scheme == "http" && target.host == "127.0.0.1" && target.port == 61192 { return .allow }
+    if target.absoluteString == "about:blank" { return .allow }
+    if target.scheme == "https" && mainFrame && linkActivated { return .openExternally }
+    return .cancel
+}

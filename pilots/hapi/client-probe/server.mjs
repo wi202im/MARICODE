@@ -55,11 +55,14 @@ export function allowedRoute(method,url,sessionId) {
   if(p!==base+'/messages/queued-state'&&/^\/messages\/[A-Za-z0-9_-]{1,80}(\/steer)?$/.test(p.slice(base.length))&&p.startsWith(base+'/messages/')&&!url.search)return p.endsWith('/steer')?method==='POST':method==='DELETE';
   return method==='POST'&&['/messages','/messages/queued-state','/resume','/archive','/upload','/fork','/abort'].some(x=>p===base+x);
 }
-export function createServer({cleanStart=false,appReset=null,pairing,deviceLogins,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null,usageService=accountConfig?createUsageLimits(accountConfig):null}) {
+export function createServer({cleanStart=false,appReset=null,pairing,deviceLogins,desktopAccess,upstream,sessionId,sessions=[{id:sessionId,label:"Codex 시험"}],origins=[],handoffTarget,taskTarget,accountConfig,accountCandidates={},environmentPath,runnerConfig,runnerService=runnerConfig?createRunnerSetup(runnerConfig):null,registrationService=accountConfig?createAccountRegistration(accountConfig,accountCandidates):null,accountsService=accountConfig?createAccounts(accountConfig):null,usageService=accountConfig?createUsageLimits(accountConfig):null,setupKey=randomBytes(32).toString('hex')}) {
   if(runnerConfig&&(runnerConfig.accountConfig!==accountConfig||new URL(runnerConfig.hubUrl).origin!==new URL(upstream).origin))throw Error('Runner must use the displayed account configuration and Hub');
   if(runnerConfig&&(handoffTarget||taskTarget))throw Error('Runner workspace cannot use a different fixed task target');
   const environment=environmentPath?createEnvironment(environmentPath):null;
-  const setupNonce=randomBytes(32).toString('hex'),remoteStreams=new Set();
+  // The setup key is never served over HTTP: the Mac app receives it on the launcher's stdout and opens
+  // /setup#setup=<key>, so another local account or process cannot obtain it from this port.
+  if(typeof setupKey!=='string'||!/^[a-f0-9]{64}$/.test(setupKey))throw Error('Invalid setup key');
+  const setupNonce=setupKey,remoteStreams=new Set();
   const uploads=new Map(),fileLinks=createFileLinks();
   const target=new URL(upstream),decisions=new Set(),archives=new Set(),sessionMutations=new Set(),settingLocks=new Set(),handoffs=handoffTarget?createHandoffs(handoffTarget):null;
   if(!['127.0.0.1','localhost'].includes(target.hostname)||target.protocol!=='http:')throw Error('Loopback Hub required');
@@ -161,7 +164,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
           }
           res.writeHead(405).end();return;
         }
-        const setupAssets=new Map([['/setup','setup/index.html'],['/setup/','setup/index.html'],['/setup/app.mjs','setup/app.mjs'],['/setup/progress.mjs','setup/progress.mjs'],['/setup/style.css','setup/style.css']]);
+        const setupAssets=new Map([['/setup','setup/index.html'],['/setup/','setup/index.html'],['/setup/app.mjs','setup/app.mjs'],['/setup/progress.mjs','setup/progress.mjs'],['/setup/setup-key.mjs','setup/setup-key.mjs'],['/setup/style.css','setup/style.css']]);
         if(u.pathname==='/api/environment/reset'&&appReset){
           // Local settings only: the reset itself runs on the next app start, before Hub/Runner.
           if(!local||u.search||req.method!=='POST'||req.headers['x-setup-nonce']!==setupNonce||req.headers.origin!==`http://${host}`){res.writeHead(403).end();return;}
@@ -172,6 +175,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
         }
         if(setupAssets.has(u.pathname)||u.pathname==='/api/environment'){
           if(!local||u.search){res.writeHead(403).end();return;}
+          if(u.pathname==='/api/environment'&&req.headers['x-setup-nonce']!==setupNonce){res.writeHead(403).end();return;}
           if(req.method==='GET'&&setupAssets.has(u.pathname)){
             const name=setupAssets.get(u.pathname);res.setHeader('Content-Type',name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css':'text/javascript');res.end(await readPresentationAsset(name));return;
           }
@@ -182,7 +186,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
               try{await environment.save(JSON.parse(body));for(const stream of remoteStreams)stream.destroy();remoteStreams.clear();}
               catch{res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({error:'설정을 저장하지 못했습니다. 현재 설정을 다시 조회하세요.'}));return;}
             }else if(req.method!=='GET'){res.writeHead(405).end();return;}
-            res.setHeader('Content-Type','application/json');res.end(JSON.stringify({...await environment.read(),nonce:setupNonce,cleanStart:cleanStart===true,appReset:appReset?.reset===true,resetRequested:appReset?await appReset.requested():false,resetAvailable:!!appReset,aiConfigurationRegistered:!!accountsService,aiRegistrationAvailable:!!registrationService,runnerSetupAvailable:!!runnerService,remoteEndpointConfigured:origins.length>0}));return;
+            res.setHeader('Content-Type','application/json');res.end(JSON.stringify({...await environment.read(),cleanStart:cleanStart===true,appReset:appReset?.reset===true,resetRequested:appReset?await appReset.requested():false,resetAvailable:!!appReset,aiConfigurationRegistered:!!accountsService,aiRegistrationAvailable:!!registrationService,runnerSetupAvailable:!!runnerService,remoteEndpointConfigured:origins.length>0}));return;
           }
           res.writeHead(405).end();return;
         }
@@ -643,6 +647,8 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
     }catch {if(!res.headersSent)res.writeHead(502,{'Content-Type':'application/json'}).end('{"error":"연결 요청을 완료하지 못했습니다."}');else res.destroy();}
     finally{if(mutationId)sessionMutations.delete(mutationId);}
   });
+  // In-process only (launcher stdout, tests); never part of an HTTP response.
+  Object.defineProperty(server,'setupKey',{value:setupKey,enumerable:false});
   return server;
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){

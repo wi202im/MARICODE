@@ -7,7 +7,9 @@ export {pinMismatches,newBranches,pinFrom,validPin,validBranch} from './branch-r
 // session folder itself and its direct sub-folders (company layout: workspace/api, workspace/web).
 // Git is read-only except, after the user confirms, fetching the remote and a fast-forward pull of a pinned branch.
 // The app never switches, deletes, merges or rebases branches.
-const git=(cwd,args)=>new Promise(resolve=>execFile('git',args,{cwd,timeout:5000,env:{...process.env,GIT_OPTIONAL_LOCKS:'0',PATH:`${process.env.PATH??''}:/usr/bin:/opt/homebrew/bin:/usr/local/bin`}},(error,stdout)=>resolve(error?null:stdout.trim())));
+// Repository-configured hooks and fsmonitor commands never run from the app (same as workspace preparation).
+const safe=['-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false'];
+const git=(cwd,args)=>new Promise(resolve=>execFile('git',[...safe,...args],{cwd,timeout:5000,env:{...process.env,GIT_OPTIONAL_LOCKS:'0',PATH:`${process.env.PATH??''}:/usr/bin:/opt/homebrew/bin:/usr/local/bin`}},(error,stdout)=>resolve(error?null:stdout.trim())));
 
 async function repoState(dir,key,run){
  const top=await run(dir,['rev-parse','--show-toplevel']);if(top===null)return null;
@@ -28,7 +30,7 @@ export async function repoStates(root,run=git){
 }
 
 // Remote checks never prompt for credentials; a failed fetch is reported, never retried.
-const gitNet=(cwd,args,timeout)=>new Promise(resolve=>execFile('git',args,{cwd,timeout,env:{...process.env,GIT_TERMINAL_PROMPT:'0',SSH_ASKPASS_REQUIRE:'never',PATH:`${process.env.PATH??''}:/usr/bin:/opt/homebrew/bin:/usr/local/bin`}},
+const gitNet=(cwd,args,timeout)=>new Promise(resolve=>execFile('git',[...safe,...args],{cwd,timeout,env:{...process.env,GIT_TERMINAL_PROMPT:'0',SSH_ASKPASS_REQUIRE:'never',PATH:`${process.env.PATH??''}:/usr/bin:/opt/homebrew/bin:/usr/local/bin`}},
  (error,stdout,stderr)=>resolve(error?{ok:false,error:((stderr||'').trim().split('\n').slice(-3).join(' ')||error.message).slice(0,400)}:{ok:true,out:stdout.trim()})));
 const fetchedAt=new Map(),fetchEvery=5*60*1000;
 async function counts(dir,run){const c=await run(dir,['rev-list','--left-right','--count','HEAD...@{u}'],5000);if(!c.ok)return c;const [ahead,behind]=c.out.split(/\s+/).map(Number);return {ok:true,ahead,behind};}

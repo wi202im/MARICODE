@@ -199,8 +199,10 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
     // After the server address changes the app restarts its web server, then reopens the device dialog.
     var reopenDevicesAfterRestart = false
+    // Per-launch key for the local setup page, read from the launcher's stdout only.
+    var setupKey: String?
     func loadDesktop(_ path: String) {
-        guard process != nil, !stopping, let target = URL(string: "http://127.0.0.1:61192" + path) else { return }
+        guard process != nil, !stopping, let target = desktopLocalURL(path: path, setupKey: setupKey) else { return }
         showLocal(); webView.load(URLRequest(url: target))
     }
     func restoreDesktop() {
@@ -242,8 +244,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             NSLayoutConstraint.activate([view.topAnchor.constraint(equalTo: browserContainer.topAnchor), view.bottomAnchor.constraint(equalTo: browserContainer.bottomAnchor), view.leadingAnchor.constraint(equalTo: browserContainer.leadingAnchor), view.trailingAnchor.constraint(equalTo: browserContainer.trailingAnchor)])
             utilityViews[key] = view
         }
-        if freshVisit || utilityViews[key]!.url == nil {
-            utilityViews[key]!.load(URLRequest(url: URL(string: "http://127.0.0.1:61192" + path)!))
+        if freshVisit || utilityViews[key]!.url == nil, let target = desktopLocalURL(path: path, setupKey: setupKey) {
+            utilityViews[key]!.load(URLRequest(url: target))
         }
         renderScreen()
     }
@@ -371,12 +373,18 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         if owned && local && navigationAction.navigationType == .linkActivated && navigationAction.targetFrame?.isMainFrame == true && target.path == "/setup" {
             decisionHandler(.cancel); showSettings(); return
         }
+        if owned && desktopSetupNeedsKey(target, setupKey: setupKey), navigationAction.targetFrame?.isMainFrame == true, let keyed = desktopLocalURL(path: "/setup", setupKey: setupKey) {
+            decisionHandler(.cancel); webView.load(URLRequest(url: keyed)); return
+        }
         if webView !== self.webView && local && target.path == "/workspace" { decisionHandler(.cancel); if self.webView.url?.path == "/workspace" { showLocal() } else { restoreDesktop() }; return }
         if webView === self.webView && local && target.path == "/workspace" && navigationAction.targetFrame?.isMainFrame == true && !authenticating {
             decisionHandler(.cancel); restoreDesktop(); return
         }
-        if local || target.scheme == "https" || target.absoluteString == "about:blank" { decisionHandler(.allow) }
-        else { decisionHandler(.cancel) }
+        switch desktopNavigation(target, mainFrame: navigationAction.targetFrame?.isMainFrame == true, linkActivated: navigationAction.navigationType == .linkActivated) {
+        case .allow: decisionHandler(.allow)
+        case .openExternally: decisionHandler(.cancel); NSWorkspace.shared.open(target)
+        case .cancel: decisionHandler(.cancel)
+        }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         updateLocalLabel(); refreshPanelControls()
@@ -739,6 +747,12 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 while let end = self.received.firstIndex(of: "\n") {
                     let line = String(self.received[..<end])
                     self.received.removeSubrange(...end)
+                if let key = desktopSetupKey(line: line) {
+                    // A restarted launcher has a new key: an open settings page is reopened with it.
+                    let changed = self.setupKey != nil && self.setupKey != key
+                    self.setupKey = key
+                    if changed, let settings = self.utilityViews["settings"], settings.url?.path == "/setup", let target = desktopLocalURL(path: "/setup", setupKey: key) { settings.load(URLRequest(url: target)) }
+                }
                 if line == "APP_RESET" { self.appResetPending = true }
                 if line == "READY http://127.0.0.1:61192" && !self.stopping {
                     self.url = URL(string: "http://127.0.0.1:61192/setup")

@@ -28,6 +28,8 @@ const environmentPath=join(temp,'environment.json');await createEnvironment(envi
 const deviceLogins=createDeviceLogins({path:join(temp,'device-logins.json'),authenticate:async()=>`${b64({alg:'none'})}.${b64({exp:Math.floor(Date.now()/1000)+3600,n:Math.random()})}.x`});
 const app=createServer({upstream:hub.url,sessionId:ids.claude,sessions:sessionList,pairing,deviceLogins,environmentPath});await new Promise(r=>app.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${app.address().port}`;
+// The Mac app opens the setup page with this key in the fragment (see setup/setup-key.mjs).
+globalThis.uxSetupKey=app.setupKey;
 // Scenarios marked localFiles get a server whose sessions run on this Mac in the fixture project,
 // so file reads/saves go through the local checks. Kept separate: it also changes the project list.
 let localBase=null;

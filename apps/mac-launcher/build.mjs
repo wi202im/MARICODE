@@ -35,7 +35,7 @@ async function copySources(relative){
   if(item.name.startsWith('.')||item.name==='node_modules'||item.name.endsWith('.test.mjs'))continue;
   if(item.isSymbolicLink())throw Error('Source symlink is not packaged');
   // Everything under vendor/ is shipped as vendored (fonts, icons, library builds).
-  if(item.isDirectory()){if(relative.split('/').includes('vendor')||['connections','setup','workspace','design','secure-login','vendor'].includes(item.name))await copySources(join(relative,item.name));}
+  if(item.isDirectory()){if(relative.split('/').includes('vendor')||['connections','setup','workspace','design','vendor'].includes(item.name))await copySources(join(relative,item.name));}
   else if(/\.(mjs|js|html|css|webmanifest|png|svg|ttf)$/.test(item.name))await copyFile(join(source,item.name),join(target,item.name));
  }
 }

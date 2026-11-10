@@ -71,3 +71,14 @@ test('a diverged branch or a local change the pull would overwrite is never merg
  assert.equal(g(work,'log','-1','--format=%s').toString().trim(),'d');
  g(work,'checkout','-q','-b','local-only');assert.deepEqual(await remoteState(work,{now:()=>3e12}),{upstream:null});
 });
+test('branch checks and pulls never run repository hooks or fsmonitor commands',async t=>{
+ const {work,push}=await remotes(t),marker=join(work,'..','ran');
+ const script=join(work,'..','evil.sh');await writeFile(script,`#!/bin/sh\necho ran >> "${marker}"\n`,{mode:0o755});
+ g(work,'config','core.fsmonitor',script);
+ await mkdir(join(work,'.git','hooks'),{recursive:true});await writeFile(join(work,'.git','hooks','post-merge'),`#!/bin/sh\necho ran >> "${marker}"\n`,{mode:0o755});
+ await repoStates(work);await push('d');
+ assert.equal((await remoteState(work,{now:()=>1e9})).behind,1);
+ assert.deepEqual(await pullFastForward(work),{ok:true});
+ const {access}=await import('node:fs/promises');
+ await assert.rejects(access(marker),'no hook or fsmonitor ran');
+});

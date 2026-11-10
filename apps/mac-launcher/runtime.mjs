@@ -74,7 +74,7 @@ export async function startDesktopWeb({directory,port=61192,beforeClose=async()=
   // startRemote keeps the existing ownership, settings and duplicate-operation guards.
   const remoteStartup=backend&&environment.roles.server&&remote
    ?startRemote(remote).then(()=>true,()=>false):Promise.resolve(null);
-  return {url:`http://127.0.0.1:${web.address().port}`,appReset:reset.reset,remoteStartup,get remoteStarting(){return remoteBusy;},get remotePhase(){return forward.phase;},
+  return {url:`http://127.0.0.1:${web.address().port}`,setupKey:web.setupKey,appReset:reset.reset,remoteStartup,get remoteStarting(){return remoteBusy;},get remotePhase(){return forward.phase;},
   startRemote,prepareRemote:()=>startRemote(undefined,true),
   async stopRemote(){
    if(closed||closing||remoteBusy)throw Error('Remote operation pending');
@@ -103,6 +103,8 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  try{
   runtime=await startDesktopWeb({directory:process.argv[2],port:Number(process.argv[3]??61192),cleanInstall:process.argv[4]==='--clean-start-1.1.0',onForwardExit:()=>process.stdout.write('REMOTE_UNKNOWN\n')});
   if(runtime.appReset)process.stdout.write('APP_RESET\n');
+  // Only the Mac app reads this pipe; it opens the setup page with the key in the URL fragment.
+  process.stdout.write('SETUP_KEY '+runtime.setupKey+'\n');
   process.stdout.write('READY '+runtime.url+'\n');
   if(runtime.remoteStarting)process.stdout.write('REMOTE_STARTING\n');
   void runtime.remoteStartup.then(result=>{if(result!==null)process.stdout.write(result?'REMOTE_ON\n':runtime.remotePhase==='unknown'?'REMOTE_UNKNOWN\n':'REMOTE_FAILED\n');});

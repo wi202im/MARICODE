@@ -30,7 +30,7 @@ test('isolated launcher serves setup, rejects duplicate owner and releases only 
  const url=first.url;assert.equal(new URL(url).hostname,'127.0.0.1');
  const page=await fetch(url+'/setup');assert.equal(page.status,200);assert.match(await page.text(),/작업 시작까지/);
  await assert.rejects(startDesktopWeb({directory,port:0}),e=>e.startupKind==='locked');
- assert.equal((await fetch(url+'/api/environment')).status,200);
+ assert.equal((await fetch(url+'/api/environment')).status,403);assert.equal((await fetch(url+'/api/environment',{headers:{'x-setup-nonce':first.setupKey}})).status,200);
  await first.close();first=null;
  second=await startDesktopWeb({directory,port:0});assert.ok(second.url);
  }finally{await first?.close();await second?.close();await rm(directory,{recursive:true,force:true});}
@@ -68,10 +68,11 @@ test('SIGKILL leaves recoverable ownership; concurrent relaunches admit only one
  const start=()=>new Promise((resolve,reject)=>{
   const child=spawn(process.execPath,[new URL('./runtime.mjs',import.meta.url).pathname,directory,'0'],{stdio:['pipe','pipe','ignore']});children.push(child);let settled=false,output='';
   const timer=setTimeout(()=>reject(Error('Launcher timeout')),10000);
-  child.on('error',reject);child.stdout.on('data',part=>{output+=part;if(!settled&&output.includes('READY ')){settled=true;clearTimeout(timer);resolve({child,url:output.trim().slice(6)});}});
+  child.on('error',reject);child.stdout.on('data',part=>{output+=part;if(!settled&&/READY \S+\n/.test(output)){settled=true;clearTimeout(timer);resolve({child,url:/READY (\S+)/.exec(output)[1],setupKey:/SETUP_KEY ([a-f0-9]{64})/.exec(output)?.[1]});}});
   child.once('exit',code=>{if(!settled){settled=true;clearTimeout(timer);resolve({child,code});}});
  });
- const first=await start();assert.ok(first.url);await writeFile(join(directory,'preserved.txt'),'settings and history placeholder');
+ const first=await start();assert.ok(first.url);assert.match(first.setupKey??'',/^[a-f0-9]{64}$/,'the Mac app receives the setup key on stdout');
+ assert.equal((await fetch(first.url+'/api/environment')).status,403);assert.equal((await fetch(first.url+'/api/environment',{headers:{'x-setup-nonce':first.setupKey}})).status,200);await writeFile(join(directory,'preserved.txt'),'settings and history placeholder');
  const died=new Promise(r=>first.child.once('exit',r));first.child.kill('SIGKILL');await died;await access(join(directory,'web.lock'));
  const results=await Promise.all([start(),start()]);assert.equal(results.filter(r=>r.url).length,1);assert.equal(results.find(r=>!r.url).code,21);
  const winner=results.find(r=>r.url);assert.equal((await fetch(winner.url+'/workspace')).status,200);assert.equal(await readFile(join(directory,'preserved.txt'),'utf8'),'settings and history placeholder');
@@ -81,21 +82,21 @@ test('SIGKILL leaves recoverable ownership; concurrent relaunches admit only one
 test('1.1.0 clean launch clears old catalog and roles before serving first-run setup, then preserves new settings',async t=>{
  const {mkdir,writeFile,readFile}=await import('node:fs/promises');const directory=await mkdtemp(join(tmpdir(),'maricode-upgrade-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  await mkdir(join(directory,'hub'));await writeFile(join(directory,'hub/data.db'),'old session history');await writeFile(join(directory,'projects.json'),'old project registrations');await writeFile(join(directory,'environment.json'),JSON.stringify({version:1,revision:1,roles:{local:true,server:false,remote:false}}));let runtime;
- try{runtime=await startDesktopWeb({directory,port:0,cleanInstall:true});const state=await (await fetch(runtime.url+'/api/environment')).json();assert.equal(state.configured,false);assert.equal(state.cleanStart,true);await assert.rejects(access(join(directory,'hub/data.db')));await assert.rejects(access(join(directory,'projects.json')));assert.match(await (await fetch(runtime.url+'/setup')).text(),/clean-start-notice/);
- const r=await fetch(runtime.url+'/api/environment',{method:'POST',headers:{origin:runtime.url,'content-type':'application/json','x-setup-nonce':state.nonce},body:JSON.stringify({revision:0,roles:{local:true,server:false,remote:false}})});assert.equal(r.status,200);await runtime.close();runtime=null;
- runtime=await startDesktopWeb({directory,port:0,cleanInstall:true});const again=await (await fetch(runtime.url+'/api/environment')).json();assert.equal(again.configured,true);assert.equal(again.cleanStart,false);assert.equal(JSON.parse(await readFile(join(directory,'environment.json'))).roles.local,true);
+ try{runtime=await startDesktopWeb({directory,port:0,cleanInstall:true});const state=await (await fetch(runtime.url+'/api/environment',{headers:{'x-setup-nonce':runtime.setupKey}})).json();assert.equal(state.configured,false);assert.equal(state.cleanStart,true);await assert.rejects(access(join(directory,'hub/data.db')));await assert.rejects(access(join(directory,'projects.json')));assert.match(await (await fetch(runtime.url+'/setup')).text(),/clean-start-notice/);
+ const r=await fetch(runtime.url+'/api/environment',{method:'POST',headers:{origin:runtime.url,'content-type':'application/json','x-setup-nonce':runtime.setupKey},body:JSON.stringify({revision:0,roles:{local:true,server:false,remote:false}})});assert.equal(r.status,200);await runtime.close();runtime=null;
+ runtime=await startDesktopWeb({directory,port:0,cleanInstall:true});const again=await (await fetch(runtime.url+'/api/environment',{headers:{'x-setup-nonce':runtime.setupKey}})).json();assert.equal(again.configured,true);assert.equal(again.cleanStart,false);assert.equal(JSON.parse(await readFile(join(directory,'environment.json'))).roles.local,true);
  }finally{await runtime?.close();}
 });
 test('upgrade cannot clean while another app runtime owns the directory',async t=>{const {writeFile,readFile}=await import('node:fs/promises');const directory=await mkdtemp(join(tmpdir(),'maricode-upgrade-busy-'));t.after(()=>rm(directory,{recursive:true,force:true}));const runtime=await startDesktopWeb({directory,port:0});try{await writeFile(join(directory,'projects.json'),'keep');await assert.rejects(startDesktopWeb({directory,port:0,cleanInstall:true}),e=>e.startupKind==='locked');assert.equal(await readFile(join(directory,'projects.json'),'utf8'),'keep');}finally{await runtime.close();}});
 test('app reset is requested from settings and applied on the next launch, returning to first-run setup',async t=>{
  const {mkdir,writeFile}=await import('node:fs/promises');const directory=await mkdtemp(join(tmpdir(),'maricode-reset-'));t.after(()=>rm(directory,{recursive:true,force:true}));let runtime;
- try{runtime=await startDesktopWeb({directory,port:0});const state=await (await fetch(runtime.url+'/api/environment')).json();
+ try{runtime=await startDesktopWeb({directory,port:0});const state=await (await fetch(runtime.url+'/api/environment',{headers:{'x-setup-nonce':runtime.setupKey}})).json();
   await mkdir(join(directory,'hub'),{recursive:true});await writeFile(join(directory,'projects.json'),'registrations');
-  const post=(body,headers={})=>fetch(runtime.url+'/api/environment/reset',{method:'POST',headers:{origin:runtime.url,'content-type':'application/json','x-setup-nonce':state.nonce,...headers},body:JSON.stringify(body)});
+  const post=(body,headers={})=>fetch(runtime.url+'/api/environment/reset',{method:'POST',headers:{origin:runtime.url,'content-type':'application/json','x-setup-nonce':runtime.setupKey,...headers},body:JSON.stringify(body)});
   assert.equal((await post({confirm:'초기화'},{'x-setup-nonce':'wrong'})).status,403);assert.equal((await post({confirm:'nope'})).status,400);
-  assert.equal((await post({confirm:'초기화'})).status,200);assert.equal((await (await fetch(runtime.url+'/api/environment')).json()).resetRequested,true);
+  assert.equal((await post({confirm:'초기화'})).status,200);assert.equal((await (await fetch(runtime.url+'/api/environment',{headers:{'x-setup-nonce':runtime.setupKey}})).json()).resetRequested,true);
   await runtime.close();runtime=null;await access(join(directory,'projects.json'));
-  runtime=await startDesktopWeb({directory,port:0});const after=await (await fetch(runtime.url+'/api/environment')).json();
+  runtime=await startDesktopWeb({directory,port:0});const after=await (await fetch(runtime.url+'/api/environment',{headers:{'x-setup-nonce':runtime.setupKey}})).json();
   assert.equal(after.configured,false);assert.equal(after.resetRequested,false);await assert.rejects(access(join(directory,'projects.json')));await assert.rejects(access(join(directory,'hub')));
  }finally{await runtime?.close();}
 });
