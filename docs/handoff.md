@@ -12,9 +12,15 @@
 
 
 
-## 1.2.5 배포 준비 — 2026-11-11
+## 1.2.5 공증 공개 완료 — 2026-11-11
 
-- 사용자 DMG 배포 요청으로 1.2.5로 올려 보안 점검 후속 수정 4건을 배포한다. 기존 설정·프로젝트·대화 보존. 서명·공증·번들 실행·공개 다운로드 검증 후 발행 완료를 기록한다.
+- 사용자 DMG 배포 요청으로 1.2.5로 올려 보안 점검 후속 수정 4건(설정 키 비공개, 웹뷰 외부 이동 차단, git 훅·fsmonitor 미실행, secure-login 번들 제외)을 공개했다. 아래 ‘미배포’는 이전 상태이며 이번 릴리스에 포함된다. 빌드/태그 `db15a14acf85e5eea7405c424c9aa0b48b248f73`, https://github.com/wi202im/MARICODE/releases/tag/v1.2.5 가 latest다.
+- 기존 설정·프로젝트·대화를 보존한다. 사용자 설치 앱·운영 설정 변경 없음.
+- **된다 — 자동:** Node 26.12.1 전체 436개 통과(`.runtime/patch-1.2.5-tests.log`).
+- **된다 — 실제 번들/합성 자료:** Swift release 빌드, 키 없는 설정 조회 403·키로 조회·`setup-key.mjs` 제공·secure-login 미포함, 실제 Hub 인증·합성 세션 등록, 재시작 후 역할·세션 보존 및 정상 종료·잠금 해제(`.runtime/patch-1.2.5-smoke.log`, 확인 스크립트는 `runtime.setupKey` 사용으로 갱신). 실제 AI 호출 없음.
+- **된다 — 배포:** 앱·DMG Developer ID 서명, Apple Accepted·티켓 부착·Gatekeeper 통과. 제품 소스 455개 파일과 빌드 커밋 일치. 초안에서 첨부 10개 이름·크기·SHA-256·대상 커밋 확인 후 발행. 인증 없는 latest·태그·체크섬·전체 DMG 다운로드 해시와 원격 태그 검증 완료(`.runtime/patch-1.2.5-public-verify.log`). 인증 설정·receipt·시험 자료는 공개하지 않았다.
+- DMG `.runtime/patch-1.2.5-release/MARICODE-1.2.5-arm64.dmg`, 126,639,320바이트, SHA-256 `7a1e028922bb6969fe95ff7b657d3b22060be2cdbd4dcf97bfb2d4c9e1213f44`.
+- **확인 안 함:** 실제 Mac 앱 화면의 처음 설정·메뉴의 설정 열기·재시작 후 설정 창·외부 링크 브라우저 열기, 최종 DMG 설치·다른 Mac 설치. 릴리스에 제한을 명시했다.
 
 ## 보안 점검 후속 수정 4건 — 2026-11-10 (미배포)
 
