@@ -465,6 +465,21 @@ test('registered workspace restarts after saved default disappears and preserves
  const fresh=createRunnerSetup({...c,directory:join(root,'fresh')},deps);await fresh.ready('Bearer synthetic',project.id,'codex');assert.equal(plans[2].cwd,project.path);await fresh.stop();
 });
 
+test('a session closed before its first message resumes fresh; one with messages but no CLI record is still rejected',async t=>{
+ const {createServer}=await import('node:http');const root=await mkdtemp(join(tmpdir(),'maricode-resume-fresh-'));
+ const cfg=join(root,'accounts'),env=join(root,'env'),directory=join(root,'runner');let messages=[];
+ await writeFile(env,JSON.stringify({PATH:'/usr/bin:/bin',HOME:root}));await writeFile(cfg,JSON.stringify({cwd:root,environment:env,binaries:{},cliConnectionRequired:true}));await writeFile(join(root,'token'),'synthetic');
+ const hub=createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.url==='/api/auth'){res.end('{"token":"owner"}');return;}
+  if(req.headers.authorization!=='Bearer owner'){res.writeHead(401).end();return;}res.end(JSON.stringify({messages}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ const api=createRunnerSetup({directory,accountConfig:cfg,binary:'/bin/echo',hubUrl:`http://127.0.0.1:${hub.address().port}`,tokenFile:join(root,'token')},{connection:async()=>true,launch:async({prepared})=>{await mkdir(join(prepared,'runner-home'),{recursive:true});await writeFile(join(prepared,'runner-home/settings.json'),'{"machineId":"own"}');return {running:true};}});
+ await api.prepare();await api.start();let writes=0;
+ const resume={id:'10000000-0000-4000-8000-000000000002',active:false,metadata:{machineId:'own',path:root,flavor:'claude'}};
+ messages=[{id:'m1'}];
+ await assert.rejects(api.runSessionMutation(async()=>{writes++;},{resume}),e=>e.status===409&&e.reason==='ACCOUNT_MISMATCH');assert.equal(writes,0);
+ messages=[];
+ await api.runSessionMutation(async()=>{writes++;},{resume});assert.equal(writes,1);
+});
 test('missing original CLI record is a definite account rejection before any resume write',async t=>{
  const {readFile}=await import('node:fs/promises');const root=await mkdtemp(join(tmpdir(),'maricode-resume-owner-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const cfg=join(root,'accounts'),env=join(root,'env'),directory=join(root,'runner');

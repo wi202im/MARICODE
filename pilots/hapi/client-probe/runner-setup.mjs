@@ -21,6 +21,10 @@ export async function ownerAuthorization(config){
  const auth=await fetch(config.hubUrl+'/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({accessToken:token}),redirect:'error',signal:AbortSignal.timeout(3000)});
  if(!auth.ok)throw Error();const {token:bearer}=await auth.json();if(typeof bearer!=='string'||!bearer)throw Error();return 'Bearer '+bearer;
 }
+async function neverStarted(config,id){
+ try{const r=await fetch(config.hubUrl+'/api/sessions/'+encodeURIComponent(id)+'/messages?limit=1',{headers:{authorization:await ownerAuthorization(config)},redirect:'error',signal:AbortSignal.timeout(5000)});
+  const data=r.ok?await r.json():null;return Array.isArray(data?.messages)&&data.messages.length===0;}catch{return false;}
+}
 async function machineId(config){return JSON.parse(await readFile(join(config.directory,'runner-home/settings.json'),'utf8')).machineId;}
 export async function runnerConnected(config){
  const id=await machineId(config);if(typeof id!=='string'||!id)return false;
@@ -468,7 +472,9 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
      if(!/^[a-f0-9-]{36}$/.test(resume.id??'')||resume.active!==false||!['codex','claude'].includes(m?.flavor)||m.machineId!==await machineId(c))throw Error('Resume identity unavailable');
      const nativeKey=m.flavor==='codex'?'codexSessionId':'claudeSessionId';
      // Resume only a native record in the connected CLI. Removed legacy profiles cannot silently create a fresh conversation.
-     const owner=await accountProfiles(c.accountConfig).owner(m.flavor,m[nativeKey]??m.agentSessionId,m.path).catch(()=>null);
+     const nativeId=m[nativeKey]??m.agentSessionId;
+     // Closed before its first message: there is no CLI record to protect, and HAPI starts it fresh in the same folder.
+     const owner=!nativeId&&await neverStarted(c,resume.id)||await accountProfiles(c.accountConfig).owner(m.flavor,nativeId,m.path).catch(()=>null);
      if(!owner&&(JSON.parse(await readFile(c.accountConfig,'utf8'))).cliConnectionRequired)throw Object.assign(Error('현재 연결한 CLI에서 이 대화의 원본 기록을 찾지 못했습니다. 기존 대화 찾기로 다시 연결하세요.'),{rejected:true,status:409,reason:'ACCOUNT_MISMATCH'});
      pending={id:resume.id,machineId:m.machineId,path:m.path,flavor:m.flavor,nativeKey,nativeId:typeof m[nativeKey]==='string'?m[nativeKey]:null,child,directory:c.directory};
     }
