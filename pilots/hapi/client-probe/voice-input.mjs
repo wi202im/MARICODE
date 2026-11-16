@@ -25,14 +25,14 @@ export function createVoiceDraft({context,read,write,state,adapter}){
   cancel(){const run=current;if(!run)return;current=null;run.adapter?.abort();state({active:false,message:'음성 입력을 취소했습니다. 기존 입력은 유지됩니다.'});}
  };
 }
-const errors={'not-allowed':'마이크 또는 음성 인식 권한이 거부됐습니다. 기기 설정에서 확인하세요.','audio-capture':'사용할 수 있는 마이크가 없습니다.','network':'음성 인식 연결이 끊겼습니다. 다시 시작해 주세요.','no-speech':'음성이 들리지 않았습니다.','language-not-supported':'한국어 음성 인식을 지원하지 않습니다.','service-not-allowed':'이 브라우저에서는 음성 인식을 사용할 수 없습니다.'};
+const errors={'aborted':'브라우저가 음성 인식을 취소했습니다 (aborted). 마이크를 사용하는 다른 앱을 닫고 이 화면에서 다시 시작하세요. 계속되면 기기 키보드의 받아쓰기를 이용하세요.','not-allowed':'마이크 또는 음성 인식 권한이 거부됐습니다. 기기 설정에서 확인하세요.','audio-capture':'사용할 수 있는 마이크가 없습니다.','network':'음성 인식 연결이 끊겼습니다. 다시 시작해 주세요.','no-speech':'음성이 들리지 않았습니다.','language-not-supported':'한국어 음성 인식을 지원하지 않습니다.','service-not-allowed':'이 브라우저에서는 음성 인식을 사용할 수 없습니다.'};
 export function browserVoiceAdapter(Recognition,emit){
- const r=new Recognition();r.lang='ko-KR';r.continuous=true;r.interimResults=true;let ended=false,timer;
+ const r=new Recognition();r.lang='ko-KR';r.continuous=true;r.interimResults=true;let ended=false,stopping=false,timer;
  const end=()=>{if(ended)return;ended=true;clearTimeout(timer);emit({type:'end'});};
- r.onstart=()=>emit({type:'ready'});
+ r.onstart=()=>{if(!ended)emit({type:'ready'});};
  r.onresult=e=>{if(!ended)emit({type:'result',text:Array.from(e.results).map(x=>x[0]?.transcript??'').join(' ')});};
- r.onerror=e=>{if(ended)return;ended=true;clearTimeout(timer);emit({type:'error',message:errors[e.error]??'음성 인식이 중단됐습니다. 다시 시작해 주세요.'});};r.onend=end;
- return {start:()=>r.start(),stop(){r.stop();if(!ended)timer=setTimeout(()=>{r.abort();end();},2000);},abort(){ended=true;clearTimeout(timer);r.abort();}};
+ r.onerror=e=>{if(ended)return;if(stopping&&e.error==='aborted'){end();return;}ended=true;clearTimeout(timer);emit({type:'error',message:errors[e.error]??'브라우저 음성 인식에서 알 수 없는 오류가 발생했습니다. 기기 키보드의 받아쓰기를 이용하세요.'});};r.onend=end;
+ return {start:()=>r.start(),stop(){if(ended||stopping)return;stopping=true;r.stop();if(!ended)timer=setTimeout(()=>{ended=true;try{r.abort();}catch{}clearTimeout(timer);emit({type:'end'});},2000);},abort(){ended=true;clearTimeout(timer);r.abort();}};
 }
 export function setupVoiceInput({form,prompt,context,changed,window:win=window,document:doc=document}){
  const bridge=win.webkit?.messageHandlers?.maricode,Recognition=win.SpeechRecognition??win.webkitSpeechRecognition;
