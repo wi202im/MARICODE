@@ -25,7 +25,7 @@ export function createVoiceDraft({context,read,write,state,adapter}){
   cancel(){const run=current;if(!run)return;current=null;run.adapter?.abort();state({active:false,message:'음성 입력을 취소했습니다. 기존 입력은 유지됩니다.'});}
  };
 }
-const errors={'aborted':'브라우저가 음성 인식을 취소했습니다 (aborted). 마이크를 사용하는 다른 앱을 닫고 이 화면에서 다시 시작하세요. 계속되면 기기 키보드의 받아쓰기를 이용하세요.','not-allowed':'마이크 또는 음성 인식 권한이 거부됐습니다. 기기 설정에서 확인하세요.','audio-capture':'사용할 수 있는 마이크가 없습니다.','network':'음성 인식 연결이 끊겼습니다. 다시 시작해 주세요.','no-speech':'음성이 들리지 않았습니다.','language-not-supported':'한국어 음성 인식을 지원하지 않습니다.','service-not-allowed':'이 브라우저에서는 음성 인식을 사용할 수 없습니다.'};
+const errors={'aborted':'브라우저가 음성 인식을 취소했습니다 (aborted). 아이폰은 Siri 활성화 여부를 확인하고, 홈 화면 앱에서 발생했다면 같은 주소를 Safari에서 열어 비교해 주세요. 계속되면 기기 키보드의 받아쓰기를 이용하세요.','not-allowed':'마이크 또는 음성 인식 권한이 거부됐습니다. 기기 설정에서 확인하세요.','audio-capture':'사용할 수 있는 마이크가 없습니다.','network':'음성 인식 연결이 끊겼습니다. 다시 시작해 주세요.','no-speech':'음성이 들리지 않았습니다.','language-not-supported':'한국어 음성 인식을 지원하지 않습니다.','service-not-allowed':'이 브라우저에서는 음성 인식을 사용할 수 없습니다.'};
 export function browserVoiceAdapter(Recognition,emit){
  const r=new Recognition();r.lang='ko-KR';r.continuous=true;r.interimResults=true;let ended=false,stopping=false,timer;
  const end=()=>{if(ended)return;ended=true;clearTimeout(timer);emit({type:'end'});};
