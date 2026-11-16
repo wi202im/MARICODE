@@ -143,3 +143,11 @@ body:not(.maricode-desktop) .topbar{background:var(--sidebar)}
  .sidebar-bottom{height:48px;min-height:48px}
  .sidebar-bottom button,.sidebar-bottom a{min-height:40px}
 }
+
+#voice-input{width:32px;min-width:32px;padding:5px;color:var(--muted)}
+#voice-input svg{fill:none;stroke:currentColor;stroke-width:1.6}
+#voice-input[aria-pressed=true]{color:var(--warning);background:var(--surface2);outline:1px solid currentColor}
+.voice-status{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px}
+.voice-status>span:first-child{flex:1}.voice-status>span:nth-child(2){width:100%;white-space:pre-wrap;overflow-wrap:anywhere;max-height:90px;overflow:auto}
+.voice-status>button{min-height:32px}
+@media(max-width:760px){#voice-input{width:40px;min-width:40px;min-height:40px}.voice-status>button{min-height:40px}}

@@ -25,6 +25,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     var quitReviewNonce: String?
     var stopping = false
     var received = ""
+    let voiceInput = VoiceInput()
     var webView: WKWebView!
     let updateNotice = NSButton(title: "새 업데이트", target: nil, action: nil)
     let machineLabel = NSTextField(labelWithString: "이 Mac")
@@ -320,8 +321,20 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
         guard (message.webView === webView || message.webView === utilityViews["settings"]), let rawAction = message.body as? String else { return }
-        let action = rawAction.hasPrefix("pairing-prepare:") ? "pairing-prepare" : rawAction.hasPrefix("pairing-cancel:") ? "pairing-cancel" : rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("pairing-qr:") ? "pairing-qr" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
+        let action = rawAction.hasPrefix("voice-start:") ? "voice-start" : rawAction.hasPrefix("voice-stop:") ? "voice-stop" : rawAction.hasPrefix("voice-cancel:") ? "voice-cancel" : rawAction.hasPrefix("pairing-prepare:") ? "pairing-prepare" : rawAction.hasPrefix("pairing-cancel:") ? "pairing-cancel" : rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("pairing-qr:") ? "pairing-qr" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
         guard desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
+        if ["voice-start", "voice-stop", "voice-cancel"].contains(action) {
+            guard message.webView === webView, desktopWorkspacePath(webView.url?.path),
+                  let request = rawAction.split(separator: ":").last.map(String.init), UUID(uuidString: request) != nil else { return }
+            if action == "voice-cancel" { voiceInput.cancel(request); return }
+            if action == "voice-stop" { voiceInput.stop(request); return }
+            guard NSApp.isActive else { return }
+            voiceInput.start(request) { [weak self] event in
+                guard let self, let data = try? JSONSerialization.data(withJSONObject: event), let json = String(data: data, encoding: .utf8) else { return }
+                self.webView.evaluateJavaScript("window.maricodeVoiceEvent?.(" + json + ")", completionHandler: nil)
+            }
+            return
+        }
         if action == "quit-cancelled" {
             guard message.webView === webView, let nonce = quitReviewNonce, rawAction == "quit-cancelled:" + nonce else { return }
             quitReviewNonce = nil; cancelUpdateInstallation(); return
@@ -385,6 +398,9 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         case .openExternally: decisionHandler(.cancel); NSWorkspace.shared.open(target)
         case .cancel: decisionHandler(.cancel)
         }
+    }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        if webView === self.webView { voiceInput.cancel() }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         updateLocalLabel(); refreshPanelControls()
@@ -694,7 +710,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             status.stringValue = "연결 링크를 복사했습니다. 코드가 들어 있으니 신뢰하는 기기에만 보내세요."
         }
     }
-    func applicationWillTerminate(_ notification: Notification) { connectionTimer?.invalidate() }
+    func applicationWillTerminate(_ notification: Notification) { voiceInput.cancel(); connectionTimer?.invalidate() }
+    func applicationDidResignActive(_ notification: Notification) { voiceInput.cancelIfRecording() }
     @objc func startRemote() {
         guard process != nil, !stopping, let info = try? RemoteConnection.read(directory: dataDirectory()) else {
             status.stringValue = "먼저 Maricode 화면을 시작하고 서버 역할·원격 주소를 설정하세요."; return

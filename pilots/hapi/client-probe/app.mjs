@@ -1,3 +1,4 @@
+import {setupVoiceInput} from './voice-input.mjs';
 import {setupPanelLayout} from './panel-layout.mjs';
 import {cliProfileControls} from './cli-profile-ui.mjs';
 import {supportedChatCommands,chatCommandName,chatCommandSupported} from './command-support.mjs';
@@ -77,6 +78,7 @@ async function api(path,{method='GET',body,signal}={}){
 }
 const usagePanel=workspaceLayout?createUsagePanel({root:$('usage-info'),api,messages:()=>messages}):null;
 const attachmentComposer=workspaceLayout?createAttachmentComposer({form:$('send-form'),prompt:$('prompt'),context:()=>({id:sessionId,active:session?.active,connected,busy,pending:actions?.pending}),upload:(id,body)=>api(`/api/sessions/${id}/upload`,{method:'POST',body}),changed:()=>render(),notice}):null;
+const voiceInput=workspaceLayout?setupVoiceInput({form:$('send-form'),prompt:$('prompt'),context:()=>token&&sessionId||'',changed:()=>render()}):null;
 const base=()=>`/api/sessions/${sessionId}`;
 // Pinned sessions: branchTurn marks a sent turn whose end (HAPI 'ready' event after seq) triggers the branch check.
 const branchPin=workspaceLayout&&$('branch-pin')?createBranchPin({api,section:$('branch-pin'),banner:$('branch-banner'),changed:()=>refreshCatalog().catch(()=>{}),shown:()=>renderProjects()}):null;let branchTurn=null;
@@ -128,7 +130,7 @@ function render(){
   $('session-state').textContent=!session?'상태 확인 중':!connected?'연결 끊김 · 표시된 내용은 마지막 확인 상태':!session.active?'실행 종료 · 메시지를 보내면 같은 세션으로 이어집니다':inTerminal?'터미널에서 사용 중 · 앱에서 보내면 세션이 앱으로 돌아옵니다':waiting?'승인 대기 · 아래 요청 내용을 확인해 주세요':session.thinking?'답변 작성 중':'실행 중 · 입력 대기';
   if($('menu-terminal')){$('menu-terminal').hidden=!sessionTerminalEnabled||!session;$('menu-terminal').disabled=terminalBusy||!connected;}
   if($('open-terminal')){$('terminal-controls').hidden=!sessionTerminalEnabled;$('open-terminal').disabled=terminalBusy||!connected||!session||inTerminal;$('terminal-state').textContent=inTerminal?'지금 터미널에서 이 세션을 쓰고 있습니다.':'';}
-  $('send').disabled=!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||waiting>0||!!actions?.pending;
+  $('send').disabled=!!voiceInput?.active||!!attachmentComposer?.uncertain||!!session?.resumeUnconfirmed||!!settingsPending()||busy||!connected||!session||waiting>0||!!actions?.pending;
   // While the engine works a sent message waits in HAPI's queue; stop asks the engine to end the current turn.
   if($('stop')){$('stop').hidden=!(session?.active&&session.thinking);$('stop').disabled=stopping||!connected;}
   if(session?.thinking&&$('session-state'))$('send').title='보내면 지금 작업이 끝난 뒤 전달됩니다';else $('send').title='보내기 (Enter) · 줄바꿈 (Shift+Enter)';
@@ -306,6 +308,7 @@ $('login-form').addEventListener('submit',async e=>{
  }catch(e){if(attempt===epoch)notice(e.message);}finally{button.disabled=false;}
 });
 async function selectSession(id){
+  voiceInput?.cancel();
   if(id!==sessionId&&fileTabs&&!fileTabs.confirmDiscard()){if($('session-select'))$('session-select').value=sessionId;return;}
   rememberChat();usagePanel?.load(false,token);importedHistory?.load(id,importHistorySupported);
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
@@ -337,6 +340,7 @@ function refreshDevice(){
  return deviceRefreshing;
 }
 function clearLogin(message,state='login-needed'){
+ voiceInput?.cancel();
  // Only a refused refresh ends the device login; a network failure keeps it for the next reload.
  if(state==='expired'&&!desktopLogin&&readDeviceLogin(deviceStorage)?.refresh){const used=token;void refreshDevice().then(ok=>{if(token!==used&&ok){notice('로그인을 갱신했습니다. 실패한 요청은 다시 보내지 않았으니 결과를 확인한 뒤 다시 시도해 주세요.');beginRecovery();}else if(!ok&&readDeviceLogin(deviceStorage)?.refresh){showConnection('unavailable');}else if(!ok)clearLogin(message,'login-needed');});return;}
  clearTimeout(deviceRefreshTimer);
@@ -917,6 +921,7 @@ function renderDraftLocations(){
 }
 async function openNewWorkspace(project=selectedProject){
  if(taskCreating||busy)return;
+ voiceInput?.cancel();
  rememberChat();notice('');
  draftSessionMode=claudeImportPanel?.pending?'import':'new';
  draftProject=claudeImportPanel?.pendingProject??taskPending()?.project??(projectCatalog.some(p=>p.key===project)?project:draftProject);draftMessage='';draftContinue=false;draftOptions=null;

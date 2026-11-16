@@ -12,6 +12,17 @@
 
 
 
+## 채팅 마이크 음성 입력 — 2026-11-16 (미배포)
+
+- 사용자 요청으로 입력창 첨부 옆에 마이크 버튼을 추가했다. 한국어 음성은 미리보기 후 마이크를 다시 누르면 기존 초안 뒤에 붙는다. 자동 전송하지 않으며 인식 중 전송을 막는다. 최대 60초, 취소·세션 변경·새 대화·화면 이탈 시 폐기하고 기존 초안을 보존한다.
+- Mac은 Apple Speech + AVAudioEngine, 한국어 기기 내 인식만 허용한다. 마이크/음성 인식 권한 설명과 배포 서명용 audio-input entitlement를 추가했다. 권한 거부·기기 내 인식 미지원은 화면에 안내한다. 원음 파일 저장·서버 인식 fallback 없음.
+- 원격 브라우저/PWA는 Web Speech API 지원과 secure context를 확인한다. 시작할 때 외부 인식 서비스 전송 가능성을 확인받고 회사·민감한 내용은 사용하지 않도록 안내한다. 브라우저 지원/정책에 따라 불가능할 수 있다.
+- WhisperKit(MIT)도 검토했으나 별도 모델·의존성 없이 플랫폼 기능으로 구현했다. 참고: [Apple 기기 내 인식 지원](https://developer.apple.com/documentation/Speech/SFSpeechRecognizer/supportsOnDeviceRecognition), [Web Speech API](https://webaudio.github.io/web-speech-api/), [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift).
+- **된다 — 자동:** 음성 컨트롤러 실패 테스트 후 구현, Node 26.12.1 전체 441개 통과(.runtime/voice-tests.log). 중복 시작/종료·늦은 결과·취소·대화/초안 변경·인식 오류에서 초안을 보호한다. native bridge 원점/프레임 제한 검사 포함.
+- **된다 — 빌드:** Swift release 옵션 빌드, Speech/AVFoundation 링크 및 배포 소스에 VoiceInput.swift 포함(.runtime/voice-input-build.log). 서명·공증은 하지 않았다.
+- **된다 — 합성 브라우저:** ego-browser에서 실제 workspace + 합성 Hub + 가짜 SpeechRecognition으로 마이크 표시·초안 추가·취소 보존, 모바일 390px에서 버튼 40×40/화면 내 위치 확인. 확인창 문구 확인 후 인식 흐름 시험에는 confirm도 대체했다. 실제 서버 연결 안정성 시험은 아니다.
+- **확인 안 함:** 실제 마이크 입력/권한 대화상자/한국어 인식 품질, Mac 기기 내 지원, 안드로이드 Chrome/PWA 실기 인식, 새 entitlement 적용 앱의 서명·공증. 설치 앱 변경·DMG 발행 없음. 버전은 1.2.6 그대로다.
+
 ## 1.2.6 공증 공개 완료 — 2026-11-12
 
 - 사용자 요청으로 원격 main을 ff-only로 반영하고 첫 메시지 전 종료된 빈 세션 재개 수정을 1.2.6으로 공개했다. 아래 ‘미배포’는 이전 상태이며 이번 릴리스에 포함된다. 빌드/태그 `9158a281d450fb11182e2f320533fa87febf4024`, https://github.com/wi202im/MARICODE/releases/tag/v1.2.6 가 latest다.

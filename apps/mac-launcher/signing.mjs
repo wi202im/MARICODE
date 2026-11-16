@@ -54,7 +54,10 @@ export async function signAndNotarizeApp(app,output,options,run=execute){
  for(const binary of [join(app,'Contents/Resources/node'),join(hapi,'hapi')])run('/usr/bin/codesign',['--force','--sign',identity,'--timestamp','--options','runtime','--entitlements',entitlements,binary]);
  const release=JSON.parse(await readFile(join(hapi,'release.json'),'utf8'));
  await writeFile(join(hapi,'release.json'),JSON.stringify({...release,codeSignedBinarySha256:digest(await readFile(join(hapi,'hapi')))},null,2)+'\n');
- run('/usr/bin/codesign',['--force','--sign',identity,'--timestamp','--options','runtime',app]);
+ const audioEntitlements=join(output,'audio-entitlements.plist');
+ await writeFile(audioEntitlements,'<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.security.device.audio-input</key><true/></dict></plist>',{flag:'wx'});
+ run('/usr/bin/codesign',['--force','--sign',identity,'--timestamp','--options','runtime','--entitlements',audioEntitlements,app]);
+ await unlink(audioEntitlements);
  run('/usr/bin/codesign',['--verify','--deep','--strict',app]);
  const archive=join(output,'app-notary.zip');
  run('/usr/bin/ditto',['-c','-k','--keepParent',app,archive]);

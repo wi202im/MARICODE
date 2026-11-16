@@ -22,7 +22,7 @@ assert(desktopHostActions(server:true) == ["settings", "agent", "devices", "reco
 assert(desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:true,action:"remote-start"))
 assert(!desktopCommandAllowed(scheme:"https",host:"mini.tail123.ts.net",port:443,mainFrame:true,action:"remote-start"))
 assert(!desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:false,action:"remote-stop"))
-for action in ["pairing-prepare", "pairing-cancel"] {
+for action in ["pairing-prepare", "pairing-cancel", "voice-start", "voice-stop", "voice-cancel"] {
  assert(desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:true,action:action))
  assert(!desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:false,action:action))
  assert(!desktopCommandAllowed(scheme:"https",host:"mini.tail123.ts.net",port:443,mainFrame:true,action:action))

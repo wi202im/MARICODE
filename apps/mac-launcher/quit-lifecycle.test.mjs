@@ -36,7 +36,7 @@ let app=NSApplication.shared;let harness=Harness();app.delegate=harness;app.setA
 DispatchQueue.global().asyncAfter(deadline:.now()+4){print("MAIN_QUEUE_BLOCKED");fflush(stdout);exit(2)}
 app.run()
 `);
- const files=['AppUpdate.swift','DesktopNavigation.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift'].map(f=>resolve('apps/mac-launcher',f));
+ const files=['AppUpdate.swift','DesktopNavigation.swift','VoiceInput.swift','DataLocation.swift','AgentDiscovery.swift','RemoteConnection.swift'].map(f=>resolve('apps/mac-launcher',f));
  execFileSync('/usr/bin/swiftc',[join(dir,'Merry.swift'),...files,join(dir,'main.swift'),'-framework','AppKit','-framework','WebKit','-o',join(dir,'check')],{stdio:'pipe'});
  assert.equal(execFileSync(join(dir,'check'),{encoding:'utf8',timeout:10000}).trim(),'NORMAL_QUIT');
 });
