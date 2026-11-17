@@ -80,3 +80,17 @@ test('resume preparation follows the session owner even when its folder is assig
  const count=f.calls.length;sessions.lost='unregistered-machine';
  await assert.rejects(pool.ready('Bearer x','p1','codex',{session:'lost'}));await assert.rejects(pool.ready('Bearer x','p1','codex',{session:'missing'}));assert.equal(f.calls.length,count);assert.equal(f.made.length,1);
 });
+
+test('overlapping workspace reads share only the same authorization and never retain completed results',async t=>{
+ const d=await dir(t);let reads=0,rows=[{id:'first'}],release;
+ let gate=new Promise(r=>{release=r;});
+ const pool=createRunnerPool({directory:join(d,'runner')},{sweepMs:0,createUnit:()=>({workspace:async auth=>{reads++;await gate;if(auth==='Bearer denied')throw Error('denied');return rows;}})});
+ const first=pool.workspace('Bearer one');
+ const overlapping=Array.from({length:20},()=>pool.workspace('Bearer one'));
+ assert.ok(overlapping.every(p=>p===first),'one in-flight lookup per authorization');
+ const other=pool.workspace('Bearer two');assert.notEqual(other,first);
+ release();await Promise.all([first,other,...overlapping]);assert.equal(reads,2);
+ rows=[{id:'changed'}];assert.deepEqual(await pool.workspace('Bearer one'),rows);assert.equal(reads,3);
+ await assert.rejects(pool.workspace('Bearer denied'),/denied/);
+ await assert.rejects(pool.workspace('Bearer denied'),/denied/);assert.equal(reads,5);
+});

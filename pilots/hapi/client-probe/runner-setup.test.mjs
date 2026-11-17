@@ -513,3 +513,20 @@ test('unregistered legacy default folder stays served after a selected workspace
  await api.ready('Bearer synthetic','','codex');assert.equal(plans.length,3);
  await api.stop();
 });
+
+test('workspace reads authorize once and keep history for missing folders without changing project readiness',async t=>{
+ const {createServer}=await import('node:http'),{projectRegistry}=await import('./project-registry.mjs');
+ const root=await mkdtemp(join(tmpdir(),'maricode-workspace-read-')),directory=join(root,'runner'),source=join(root,'project'),projectsPath=join(root,'projects'),accountConfig=join(root,'accounts');
+ await mkdir(source);await mkdir(join(directory,'runner-home'),{recursive:true});
+ const project=await projectRegistry(projectsPath).add(source);
+ await writeFile(accountConfig,JSON.stringify({cwd:source}));await writeFile(join(directory,'prepared.json'),JSON.stringify({cwd:source}));await writeFile(join(directory,'runner-home/settings.json'),'{"machineId":"own"}');
+ const id='11111111-1111-4111-8111-111111111111';let reads=0;
+ const hub=createServer((req,res)=>{reads++;if(req.headers.authorization!=='Bearer synthetic')return res.writeHead(401).end();res.setHeader('Content-Type','application/json');res.end(JSON.stringify({sessions:[{id,metadata:{machineId:'own',path:source,flavor:'codex'}}]}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ const service=createRunnerSetup({directory,accountConfig,projectsPath,binary:'/bin/echo',tokenFile:join(root,'token'),hubUrl:`http://127.0.0.1:${hub.address().port}`});
+ await rm(source,{recursive:true});
+ assert.deepEqual((await service.workspace('Bearer synthetic')).map(s=>s.id),[id]);
+ assert.equal(reads,1,'one authenticated Hub snapshot per workspace lookup');
+ assert.equal((await service.projects('Bearer synthetic')).find(p=>p.key===project.id).available,false);
+ await assert.rejects(service.workspace('Bearer wrong'),e=>e.status===401);
+});

@@ -8,7 +8,7 @@ import {projectRegistry} from './project-registry.mjs';
 // An idle dedicated Runner (no app request for idleMs; its own stop refuses while sessions run) is stopped;
 // the next send or resume starts it again with the same machine id.
 export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),sessionMachine,resolvePath,now=Date.now,idleMs=600000,sweepMs=60000}={}){
- const file=config.directory+'.assignments.json',units=new Map(),used=new Map();let saving=Promise.resolve(),sweeping=false;
+ const file=config.directory+'.assignments.json',units=new Map(),used=new Map(),workspaceReads=new Map();let saving=Promise.resolve(),sweeping=false;
  const use=u=>{if(u!==primary)used.set(u,now());return u;};
  const pathOf=resolvePath??(async key=>(await projectRegistry(config.projectsPath).get(key)).path);
  const machineOf=sessionMachine??(async id=>{
@@ -70,7 +70,14 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
    }else{u=await forRow(raw?.project,raw?.agent);if(u!==primary&&request)await update(a=>{a.requests[request]??=[...units].find(([,v])=>v===u)[0];});}
    return use(u).task(raw,auth,check);
   },
-  async workspace(auth){const seen=new Set(),out=[];for(const u of await all())for(const s of await u.workspace(auth))if(!seen.has(s.id)){seen.add(s.id);out.push(s);}return out;},
+  workspace(auth){
+   // Catalog, selected chat and shutdown review request the same full list together.
+   // Share only an unfinished read for this credential, never a completed authorization snapshot.
+   if(workspaceReads.has(auth))return workspaceReads.get(auth);
+   const pending=(async()=>{const seen=new Set(),out=[];for(const u of await all())for(const s of await u.workspace(auth))if(!seen.has(s.id)){seen.add(s.id);out.push(s);}return out;})()
+    .finally(()=>workspaceReads.delete(auth));
+   workspaceReads.set(auth,pending);return pending;
+  },
   async navigation(auth){
    const base=await primary.navigation(auth),known=new Set(base.removed.map(r=>r.kind+':'+r.id));
    for(const u of units.values())for(const r of (await u.navigation(auth)).removed)if(r.kind==='session'&&!known.has('session:'+r.id)){known.add('session:'+r.id);const at=base.removed.findIndex(p=>p.kind!=='session'&&p.name===r.parent);base.removed.splice(at<0?base.removed.length:at+1,0,r);}

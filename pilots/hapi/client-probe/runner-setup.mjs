@@ -120,7 +120,12 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
  async function projects(authorization){
   await authorize(authorization);const generalPath=await generalDirectory();
   if(!c.projectsPath){const t=await createRunnerWorkspace(c).target(authorization);return [{key:'',label:t.project,path:t.project}];}
-  const registry=projectRegistry(c.projectsPath);const registered=await registry.list();const availability=new Map();for(const p of registered){try{await registry.get(p.id);availability.set(p.id,true);}catch{availability.set(p.id,false);}}
+  return projectRows(generalPath,true);
+ }
+ // Reading conversation history needs registered paths, not probes of every project disk.
+ // Launch/file operations still validate their selected folder separately.
+ async function projectRows(generalPath,checkFolders){
+  const registry=projectRegistry(c.projectsPath);const registered=await registry.list();const availability=new Map();if(checkFolders)for(const p of registered){try{await registry.get(p.id);availability.set(p.id,true);}catch{availability.set(p.id,false);}}
   const rows=registered.map(p=>({key:p.id,label:p.path===generalPath?'일반 대화':p.name,general:p.path===generalPath,path:p.path,available:availability.get(p.id),projectId:p.projectId,projectLabel:p.path===generalPath?'일반 대화':p.projectLabel,workspaceId:p.workspaceId,workspaceLabel:p.workspaceLabel,...(p.parentId?{parentKey:p.parentId,worktree:p.worktree===true}:{})}));
   const cfg=JSON.parse(await readFile(c.accountConfig,'utf8'));
   if(!cfg.cwd.endsWith('/local-setup/working-directory')&&!(await registry.list({includeRemoved:true})).some(p=>p.path===cfg.cwd))rows.unshift({key:'',label:cfg.cwd.split('/').at(-1),path:cfg.cwd,projectId:legacyProjectId(cfg.cwd)});
@@ -531,14 +536,12 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    await current();
    if(typeof authorization!=='string'||!authorization.startsWith('Bearer '))throw Error('Authentication required');
    if(c.projectsPath&&['unprepared','prepared'].includes(await state())){await authorize(authorization);return [];}
-   const allowed=c.projectsPath?await projects(authorization):null;
+   const data=await authorize(authorization);if(!Array.isArray(data.sessions))throw Error('Workspace unavailable');
+   const allowed=c.projectsPath?await projectRows(await generalDirectory(),false):null;
    const views=c.projectsPath?(await projectRegistry(c.projectsPath).navigation()).sessions:{};
    const plan=JSON.parse(await readFile(join(c.directory,'prepared.json'),'utf8'));
    const settings=JSON.parse(await readFile(join(c.directory,'runner-home/settings.json'),'utf8'));
    if(typeof settings.machineId!=='string'||!settings.machineId||typeof plan.cwd!=='string')throw Error('Runner identity unavailable');
-   const r=await fetch(c.hubUrl+'/api/sessions',{headers:{authorization},redirect:'error',signal:AbortSignal.timeout(5000)});
-   if(!r.ok)throw Object.assign(Error('Workspace unavailable'),{status:r.status});
-   const data=await r.json();if(!Array.isArray(data.sessions))throw Error('Workspace unavailable');
    const links=await handoffLinks().catch(()=>({}));
    return data.sessions.filter(s=>/^[a-f0-9-]{36}$/.test(s.id)&&s.metadata?.machineId===settings.machineId&&(allowed?allowed.some(p=>p.path===s.metadata?.path):s.metadata?.path===plan.cwd))
     .map(s=>({id:s.id,...(typeof links[s.id]==='string'&&data.sessions.some(x=>x.id===links[s.id])?{parentId:links[s.id]}:{}),...(views[s.id]?.name?{displayName:views[s.id].name}:{}),...(views[s.id]?.removed?{hidden:true}:{}),...(views[s.id]?.branchPin?{branchPin:views[s.id].branchPin}:{}),agent:s.metadata?.flavor,updatedAt:s.updatedAt,createdAt:s.createdAt,label:sessionTitle({id:s.id},s),project:s.metadata.path,projectLabel:allowed?.find(p=>p.path===s.metadata.path)?.projectLabel??allowed?.find(p=>p.path===s.metadata.path)?.label,workspaceId:allowed?.find(p=>p.path===s.metadata.path)?.workspaceId,workspaceLabel:allowed?.find(p=>p.path===s.metadata.path)?.workspaceLabel,...(()=>{const p=allowed?.find(p=>p.path===s.metadata.path),parent=allowed?.find(x=>x.key===p?.parentKey);return p?.worktree&&parent?{worktree:{name:p.label,basePath:parent.path,worktreePath:p.path}}:{};})()}));
