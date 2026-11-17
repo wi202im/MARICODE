@@ -23,6 +23,8 @@
 .live-permissions{max-height:min(44vh,360px);overflow:auto;margin:0 0 10px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface1)}
 .live-permissions>h2{font-size:12px;margin:0 0 8px;color:var(--muted)}
 .live-permissions .permission-card{border:0;padding:0;margin:0}
+/* The primary actions stay in view while a long request scrolls inside the panel. */
+.live-permissions .question-form .question-submit,.live-permissions .permission-card .buttons{position:sticky;bottom:-12px;z-index:1;box-shadow:0 -10px 12px -4px var(--surface1)}.live-permissions .permission-card .buttons{background:var(--surface1);padding-bottom:4px}
 .live-permissions .permission-card+ .permission-card{border-top:1px solid var(--border);padding-top:12px;margin-top:12px}
 .live-permissions h3{font-size:14px;margin:0 0 6px}
 .permission-card .permission-summary{color:var(--foreground);font:13px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 8px}
