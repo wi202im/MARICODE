@@ -154,5 +154,5 @@
 #tools details[open]>summary::before{content:"\eab6";transform:rotate(90deg)}
 .connection-menu>summary::after{content:"\ea7c";font:16px/1 codicon;vertical-align:middle}
 
-/* Files: the machine line is noise now that files are always on this Mac; refresh sits beside the folder title. */
-.live-files .file-server{display:none}.live-files{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;align-content:start}.live-files>*{grid-column:1/-1}.live-files>#path{grid-column:1;grid-row:1;margin:0}.live-files>.file-navigation{grid-column:2;grid-row:1;margin:0}.live-files .file-navigation button{font-size:11px;min-height:24px;padding:2px 8px}.live-files>#entries{margin-top:8px}
+/* Files: the machine line is noise now that files are always on this Mac; refresh is an icon beside the folder title. */
+.live-files .file-server{display:none}.live-files{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;align-content:start}.live-files>*{grid-column:1/-1}.live-files>#path{grid-column:1;grid-row:1;margin:0}.live-files>.file-navigation{grid-column:2;grid-row:1;margin:0}.live-files .file-navigation button{font-size:11px;min-height:24px;padding:2px 8px}.live-files #files-refresh{width:24px;height:24px;padding:0;font-size:16px;color:var(--muted);border-color:transparent}.live-files #files-refresh:not(:hover){background:transparent}.live-files>#entries{margin-top:8px}

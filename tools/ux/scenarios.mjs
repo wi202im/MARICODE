@@ -129,7 +129,8 @@ export const scenarios=[
   ['파일 탭 열기',async ui=>{await ui.click('#info-tab');return ui.click('#files-tab');}],
   ['그사이 새 파일이 생김',async ui=>{await (await import('node:fs/promises')).writeFile(globalThis.uxProject+'/NEW-NOTES.md','# 새 파일\n');return ui.click('#session-info-tab');}],
   ['파일 탭 다시 열기',ui=>ui.click('#files-tab')],
-  ['새 파일이 보임',async ui=>{await ui.expectVisible('vscode-tree-item[data-name="NEW-NOTES.md"]',3000);await (await import('node:fs/promises')).rm(globalThis.uxProject+'/NEW-NOTES.md',{force:true});return {changes:1};}]]},
+  ['새 파일이 보임',async ui=>{await ui.expectVisible('vscode-tree-item[data-name="NEW-NOTES.md"]',3000);await (await import('node:fs/promises')).rm(globalThis.uxProject+'/NEW-NOTES.md',{force:true});return {changes:1};}],
+  ['새로고침 아이콘으로 다시 읽기',async ui=>{await (await import('node:fs/promises')).writeFile(globalThis.uxProject+'/ICON-NOTES.md','# 아이콘\n');await ui.click('파일 목록 새로고침');await ui.expectVisible('vscode-tree-item[data-name="ICON-NOTES.md"]',3000);await (await import('node:fs/promises')).rm(globalThis.uxProject+'/ICON-NOTES.md',{force:true});return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

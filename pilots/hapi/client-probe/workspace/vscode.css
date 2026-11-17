@@ -39,9 +39,9 @@ input,select,textarea,.bubble.user,.code-block,.markdown-table,.question-form la
 /* Chat: VS Code chat send action. */
 #send{border-radius:4px;width:28px;height:28px;min-height:28px}
 /* Secondary buttons: VS Code fills them grey instead of outlining. Primary (.primary and the accent rules) stay blue. */
-:is(.connection-banner,.handoff-controls,.account-panel,.file-navigation,.task-create,.navigation-card,.account-profile-row,.pairing-actions,.official-cli-actions,.settings-fields,.archive-buttons,.composer-activity) button:not(.primary):not(#create-task):not(#claude-import-start),
+:is(.connection-banner,.handoff-controls,.account-panel,.file-navigation,.task-create,.navigation-card,.account-profile-row,.pairing-actions,.official-cli-actions,.settings-fields,.archive-buttons,.composer-activity) button:not(.primary):not(#create-task):not(#claude-import-start):not(#files-refresh),
 .turn-alert button:first-of-type,.agent-settings>button,.permission-card button:not(:first-child),.branch-repo li button,.branch-add button,.branch-disable,.branch-pin>button,.branch-banner button:not(.primary){background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);border:1px solid transparent}
-:is(.connection-banner,.handoff-controls,.account-panel,.file-navigation,.task-create,.navigation-card,.account-profile-row,.pairing-actions,.official-cli-actions,.settings-fields,.archive-buttons,.composer-activity) button:not(.primary):not(#create-task):not(#claude-import-start):hover:not(:disabled),
+:is(.connection-banner,.handoff-controls,.account-panel,.file-navigation,.task-create,.navigation-card,.account-profile-row,.pairing-actions,.official-cli-actions,.settings-fields,.archive-buttons,.composer-activity) button:not(.primary):not(#create-task):not(#claude-import-start):not(#files-refresh):hover:not(:disabled),
 .agent-settings>button:hover:not(:disabled),.permission-card button:not(:first-child):hover:not(:disabled),.branch-banner button:not(.primary):hover:not(:disabled){background:var(--vscode-button-secondaryHoverBackground)}
 /* Form controls: VS Code density (26px rows). */
 input:not([type=checkbox]):not([type=radio]),select{min-height:26px;padding:3px 8px;font-size:13px}
