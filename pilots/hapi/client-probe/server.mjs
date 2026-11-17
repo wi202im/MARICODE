@@ -12,7 +12,7 @@ import {createUsageLimits} from './codex-limits.mjs';
 import {settingsView,settingChange} from './settings.mjs';
 import http from 'node:http';
 import {createTasks} from './tasks.mjs';
-import {projectFilePath} from './files.mjs';
+import {projectFilePath,linkedFilePath} from './files.mjs';
 import {createFileLinks} from './file-stream.mjs';
 import {listDirectory,readProjectFile,saveProjectFile} from './local-files.mjs';
 import {projectChoices,selectProject} from './projects.mjs';
@@ -394,7 +394,7 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
         if(!check.ok){res.writeHead(check.status).end();return;}
         const m=(await check.json()).session?.metadata;
         if(m?.machineId!==fileTarget.machineId||m?.path!==(available.find(s=>s.id===id)?.project??fileTarget.project)){reply(403,{rejected:true,reason:'FORBIDDEN',error:'이 Mac의 세션 파일만 저장할 수 있습니다. 저장하지 않았습니다.'});return;}
-        let rel;try{rel=await projectFilePath(m.path,input.path);}catch{reply(403,{rejected:true,reason:'FORBIDDEN',error:'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다. 저장하지 않았습니다.'});return;}
+        let rel;try{rel=await projectFilePath(m.path,input.path);}catch{reply(403,{rejected:true,reason:'FORBIDDEN',error:'프로젝트 밖을 가리키는 링크의 파일은 보기만 할 수 있습니다(없는 경로일 수도 있습니다). 저장하지 않았습니다.'});return;}
         let result;try{result=await saveProjectFile(await realpath(m.path),rel,input.content,input.expectedHash);}
         catch{reply(500,{rejected:false,error:'저장 결과를 확인하지 못했습니다. 파일을 다시 열어 내용을 확인하세요. 자동으로 다시 저장하지 않습니다.'});return;}
         if(result.success){reply(200,result);return;}
@@ -583,16 +583,20 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
         if(m?.machineId!==fileTarget.machineId||m?.path!==(available.find(s=>s.id===id)?.project??fileTarget.project)){res.writeHead(403).end();return;}
         // Search runs on the Runner (ripgrep) inside the session folder; it has no path to rewrite and no offline fallback.
         if(u.pathname.endsWith('/files')){if(localRead){res.writeHead(409,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,reason:'RUNNER_OFFLINE',error:'실행 환경이 꺼져 있어 파일을 검색하지 못했습니다. 메시지를 보내면 실행 환경이 켜집니다.'}));return;}}
-        else try{u.searchParams.set('path',await projectFilePath(m.path,u.searchParams.get('path')??''));}
-        catch{res.writeHead(403,{'Content-Type':'application/json'}).end(JSON.stringify({error:'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다.'}));return;}
+        let linked=null;
+        if(!u.pathname.endsWith('/files')){const path=u.searchParams.get('path')??'';
+          try{u.searchParams.set('path',await projectFilePath(m.path,path));}
+          // A link in the project may lead outside it. HAPI refuses to read there, so this Mac reads the target itself, read-only.
+          catch{try{linked=await linkedFilePath(m.path,path);u.searchParams.set('path','');localRead=true;}
+           catch{res.writeHead(403,{'Content-Type':'application/json'}).end(JSON.stringify({error:'링크 대상이 없거나 접근할 수 없는 경로입니다.'}));return;}}}
         if(u.pathname.endsWith('/file-link')){
           // The Runner of this file route is this Mac, so the checked path is read from this disk.
-          try{const url=await fileLinks.issue(join(await realpath(m.path),u.searchParams.get('path')));res.setHeader('Content-Type','application/json');res.end(JSON.stringify({url}));}
+          try{const url=await fileLinks.issue(join(linked??await realpath(m.path),u.searchParams.get('path')));res.setHeader('Content-Type','application/json');res.end(JSON.stringify({url}));}
           catch(error){res.writeHead(error.status===415?415:403,{'Content-Type':'application/json'}).end(JSON.stringify({error:error.status===415?'이 형식은 바로 재생할 수 없습니다.':'파일을 열 수 없습니다.'}));}
           return;
         }
         if(localRead){
-          try{const root=await realpath(m.path),rel=u.searchParams.get('path');res.setHeader('Content-Type','application/json');res.end(JSON.stringify(u.pathname.endsWith('/directory')?await listDirectory(root,rel):await readProjectFile(root,rel)));}
+          try{const root=linked??await realpath(m.path),rel=u.searchParams.get('path');res.setHeader('Content-Type','application/json');res.end(JSON.stringify(u.pathname.endsWith('/directory')?await listDirectory(root,rel):await readProjectFile(root,rel)));}
           catch{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({success:false,error:'파일을 읽지 못했습니다.'}));}
           return;
         }

@@ -7,3 +7,8 @@ export async function projectFilePath(root,path){
  if(result==='..'||result.startsWith('../')||isAbsolute(result))throw Error('Outside project');
  return result;
 }
+// Where a project path really leads. The path itself stays inside the project (no '..' or absolute paths),
+// so only a link placed in the project can lead outside it. Callers use this for reading, never for writing.
+export async function linkedFilePath(root,path){
+ return realpath(resolve(await realpath(root),relativePath(path)));
+}

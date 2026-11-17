@@ -1,9 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,symlink,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,symlink,rm,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {projectFilePath} from './files.mjs';
+import {projectFilePath,linkedFilePath} from './files.mjs';
 test('file reads allow internal links but reject traversal and external file or folder links',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'file-root-'));
  try{
@@ -11,5 +11,8 @@ test('file reads allow internal links but reject traversal and external file or 
  await symlink('a.txt',join(root,'internal'));await symlink('../outside',join(root,'external'));await symlink('../outside/b.txt',join(root,'external-file'));
  assert.equal(await projectFilePath(root,'internal'),'a.txt');assert.equal(await projectFilePath(root,''),'');
  for(const p of ['../outside/b.txt','external/b.txt','external-file','/etc/passwd'])await assert.rejects(projectFilePath(root,p));
+ // Reading may follow a link placed in the project, but the path itself still cannot climb out.
+ assert.equal(await linkedFilePath(root,'external/b.txt'),join(await realpath(dir),'outside','b.txt'));
+ for(const p of ['../outside/b.txt','/etc/passwd'])await assert.rejects(linkedFilePath(root,p));
  }finally{await rm(dir,{recursive:true,force:true});}
 });

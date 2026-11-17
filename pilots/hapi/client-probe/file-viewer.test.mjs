@@ -133,7 +133,7 @@ test('editor languages follow the file name; unknown files edit as plain text',a
 });
 test('file errors are told apart by status, not by the wording of the request error',async()=>{
  const {fileErrorMessage}=await import('./file-viewer.mjs');
- assert.match(fileErrorMessage(Object.assign(Error('이 화면에서 할 수 없는 요청입니다 (오류 403).'),{status:403})),/프로젝트 폴더 밖/);
+ assert.match(fileErrorMessage(Object.assign(Error('이 화면에서 할 수 없는 요청입니다 (오류 403).'),{status:403})),/링크 대상이 없거나/);
  assert.match(fileErrorMessage(Object.assign(Error('x (오류 415).'),{status:415})),/재생할 수 없습니다/);
  assert.equal(fileErrorMessage(Error('다른 오류')),'다른 오류');
 });

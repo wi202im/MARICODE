@@ -94,10 +94,10 @@ test('other origins are refused without any cross-origin allowance',async t=>{
  for(const path of ['/config','/api/server-identity','/connections','/api/environment/discovery'])assert.equal((await fetch(base+path,{headers:{origin}})).status,403,path);
  assert.notEqual((await fetch(base+'/connections')).status,200);
 });
-test('file reads require a configured project and reject external symlinks',async t=>{
+test('file reads require a configured project; an external link is read here, read-only, and traversal is refused',async t=>{
  const {createServer}=await import('./server.mjs'),{mkdir,symlink}=await import('node:fs/promises');const dir=await mkdtemp(join(tmpdir(),'mari-remote-files-')),root=join(dir,'project'),path=join(dir,'env.json');await mkdir(root);await writeFile(join(root,'hello.txt'),'hello');await writeFile(join(dir,'outside.txt'),'outside');await symlink('../outside.txt',join(root,'external'));await symlink('hello.txt',join(root,'internal'));await createEnvironment(path).save({revision:0,roles:{local:true,server:true,remote:false}});
  const id='00000000-0000-0000-0000-000000000000',reads=[];const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(req.url===`/api/sessions/${id}`)res.end(JSON.stringify({session:{id,metadata:{machineId:'fixture',path:root}}}));else{reads.push(req.url);res.end(JSON.stringify({success:true,content:'aGVsbG8='}));}});await new Promise(r=>hub.listen(0,'127.0.0.1',r));let origin;const server=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,sessionId:id,environmentPath:path,handoffTarget:{directory:join(dir,'handoffs'),machineId:'fixture',project:root}});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(async()=>{for(const s of [server,hub]){s.closeAllConnections();s.close();}await rm(dir,{recursive:true,force:true});});origin=`http://127.0.0.1:${server.address().port}`;const base=`http://127.0.0.1:${server.address().port}/api/sessions/${id}/file?path=`;
- const headers={origin,authorization:'Bearer synthetic'};assert.equal((await fetch(base+'internal',{headers})).status,200);assert.ok(reads[0].endsWith('path=hello.txt'));assert.equal((await fetch(base+'external',{headers})).status,403);assert.equal((await fetch(base+'..%2Foutside.txt',{headers})).status,403);assert.equal(reads.length,1);
+ const headers={origin,authorization:'Bearer synthetic'};assert.equal((await fetch(base+'internal',{headers})).status,200);assert.ok(reads[0].endsWith('path=hello.txt'));const ext=await fetch(base+'external',{headers});assert.equal(ext.status,200);assert.equal(Buffer.from((await ext.json()).content,'base64').toString(),'outside');assert.equal((await fetch(base+'..%2Foutside.txt',{headers})).status,403);assert.equal(reads.length,1);
 });
 test('permission decisions preserve auth, exact request and at-most-once forwarding',async t=>{
  const {createServer}=await import('./server.mjs');const dir=await mkdtemp(join(tmpdir(),'mari-permissions-')),path=join(dir,'env.json');await createEnvironment(path).save({revision:0,roles:{local:true,server:true,remote:false}});
@@ -166,14 +166,15 @@ test('empty runner workspace can authenticate but cannot read unsupported files'
  for(const path of ['file','directory'])assert.equal((await fetch(base+'/api/sessions/'+id+'/'+path,{headers:{authorization:'Bearer synthetic'}})).status,403);
  assert.equal(forwards,1);
 });
-test('Runner file reads keep the project realpath boundary',async t=>{
+test('Runner file reads refuse traversal and broken links; links leading outside are not forwarded',async t=>{
  const {createServer}=await import('./server.mjs'),{symlink}=await import('node:fs/promises');const root=await mkdtemp(join(tmpdir(),'runner-cors-file-')),env=join(root,'env.json'),id='00000000-0000-0000-0000-000000000001';
- await writeFile(join(root,'inside'),'ok');await symlink('/etc/hosts',join(root,'outside'));await createEnvironment(env).save({revision:0,roles:{local:true,server:true,remote:false}});
+ await writeFile(join(root,'inside'),'ok');await symlink('/etc/hosts',join(root,'outside'));await symlink('/nonexistent-target',join(root,'broken'));await createEnvironment(env).save({revision:0,roles:{local:true,server:true,remote:false}});
  const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(req.url.includes('/file')?{content:'b2s='}:{session:{id,metadata:{machineId:'own',path:root}}}));});await new Promise(r=>hub.listen(0,'127.0.0.1',r));
  const s=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,sessionId:id,environmentPath:env,runnerService:{workspace:async()=>[{id,project:root}],target:async()=>({machineId:'own',project:root})}});
  await new Promise(r=>s.listen(0,'127.0.0.1',r));t.after(()=>{for(const a of [s,hub]){a.closeAllConnections();a.close();}return rm(root,{recursive:true,force:true});});
  const base=`http://127.0.0.1:${s.address().port}/api/sessions/${id}/file?path=`,headers={origin:`http://127.0.0.1:${s.address().port}`,authorization:'Bearer synthetic'};
- assert.equal((await fetch(base+'inside',{headers})).status,200);assert.equal((await fetch(base+'outside',{headers})).status,403);
+ assert.equal((await fetch(base+'inside',{headers})).status,200);const out=await fetch(base+'outside',{headers});assert.equal(out.status,200);assert.notEqual((await out.json()).content,'b2s=');
+ assert.equal((await fetch(base+'broken',{headers})).status,403);assert.equal((await fetch(base+'..%2Finside',{headers})).status,403);
 });
 
 test('the setup key is never handed out over HTTP; setup reads and writes need it',async t=>{

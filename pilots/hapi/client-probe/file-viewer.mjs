@@ -17,9 +17,9 @@ const sha256=async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256
 const maxTabs=12;
 export const formatBytes=n=>n<1024?`${n} B`:n<1024**2?`${(n/1024).toFixed(1)} KB`:n<1024**3?`${(n/1024**2).toFixed(1)} MB`:`${(n/1024**3).toFixed(1)} GB`;
 // A link inside a project file, resolved against that file; null when it leaves the folder or is not a path.
-// A 403 here means the path (often a symbolic link) leads outside the session's project folder.
+// A 403 here means the path (often a broken symbolic link) cannot be reached.
 export function fileErrorMessage(e){
- if(e?.status===403)return '프로젝트 폴더 밖을 가리키는 링크이거나 접근할 수 없는 경로라 열 수 없습니다.';
+ if(e?.status===403)return '링크 대상이 없거나 접근할 수 없는 경로라 열 수 없습니다.';
  if(e?.status===415)return '이 형식은 바로 재생할 수 없습니다.';
  return e?.message??'파일을 열 수 없습니다.';
 }

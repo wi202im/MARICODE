@@ -545,6 +545,21 @@ test('with the Runner stopped, this Mac reads its own session folder from disk; 
  assert.equal((await get('file?path=..%2F..%2Fetc%2Fhosts')).status,403);
  machine='other';assert.equal((await get('directory?path=')).status,403);
 });
+test('a link inside the project that leads outside it is read from this Mac, never forwarded; broken links and other machines stay blocked',async t=>{
+ const {mkdtemp,writeFile,mkdir,rm,realpath,symlink}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path');
+ const dir=await realpath(await mkdtemp(join(tmpdir(),'linked-read-'))),project=join(dir,'project');await mkdir(join(project));await mkdir(join(dir,'shared/sub'),{recursive:true});await writeFile(join(dir,'shared/sub/b.txt'),'linked');
+ await symlink('../shared',join(project,'shared'));await symlink('../missing',join(project,'broken'));
+ let machine='mac',forwarded=0;const hub=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');if(!req.url.startsWith(`/api/sessions/${id}?`)&&req.url!==`/api/sessions/${id}`){forwarded++;res.end('{}');return;}res.end(JSON.stringify({session:{active:true,metadata:{machineId:machine,path:project,flavor:'claude'}}}));});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));
+ const proxy=createServer({upstream:`http://127.0.0.1:${hub.address().port}`,runnerService:{workspace:async()=>[{id,project}],status:async()=>({workspaceAvailable:true}),target:async()=>({machineId:'mac',project})}});
+ await new Promise(r=>proxy.listen(0,'127.0.0.1',r));t.after(async()=>{for(const s of [hub,proxy]){s.closeAllConnections();s.close();}await rm(dir,{recursive:true,force:true});});
+ const get=p=>fetch(`http://127.0.0.1:${proxy.address().port}/api/sessions/${id}/${p}`,{headers:{Authorization:'Bearer synthetic'}});
+ assert.deepEqual((await (await get('directory?path=shared')).json()).entries.map(e=>[e.name,e.type]),[['sub','directory']]);
+ const f=await (await get('file?path=shared%2Fsub%2Fb.txt')).json();assert.equal(Buffer.from(f.content,'base64').toString(),'linked');
+ assert.equal(forwarded,0);
+ for(const p of ['file?path=broken','file?path=..%2Fshared%2Fsub%2Fb.txt','directory?path=%2Fetc'])assert.equal((await get(p)).status,403);
+ machine='other';assert.equal((await get('directory?path=shared')).status,403);
+});
 test('every module the workspace page imports is served',async t=>{
  const {readFile}=await import('node:fs/promises');
  const server=createServer({upstream:'http://127.0.0.1:9',sessionId:id});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();server.close();});

@@ -68,7 +68,7 @@ export async function startFakeHub({project,port=0}){
    if(rest==='/skills')return send({success:true,skills:[]});
    if(rest==='/files'){const q=(u.searchParams.get('query')??'').toLowerCase(),all=['src/app.mjs','src/file-viewer.mjs','docs/viewer.md','README.md','package.json'];
     return send({success:true,files:all.filter(f=>f.toLowerCase().includes(q)).map(f=>({fileName:f.split('/').pop(),filePath:f.split('/').slice(0,-1).join('/'),fullPath:f,fileType:'file'}))});}
-   if(rest==='/directory'){const dir=inside(u.searchParams.get('path'));const entries=await Promise.all((await readdir(dir,{withFileTypes:true})).map(async e=>({name:e.name,type:e.isDirectory()?'directory':'file',size:e.isFile()?(await stat(join(dir,e.name))).size:undefined})));
+   if(rest==='/directory'){const dir=inside(u.searchParams.get('path'));const entries=await Promise.all((await readdir(dir,{withFileTypes:true})).map(async e=>({name:e.name,type:e.isDirectory()?'directory':e.isFile()?'file':'other',size:e.isFile()?(await stat(join(dir,e.name))).size:undefined})));
     entries.sort((a,b)=>(a.type==='directory')!==(b.type==='directory')?(a.type==='directory'?-1:1):a.name.localeCompare(b.name));return send({success:true,entries});}
    if(rest==='/file'){const f=inside(u.searchParams.get('path'));const b=await readFile(f);return send({success:true,content:b.toString('base64'),size:b.length});}
    return send({});
