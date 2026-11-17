@@ -7,6 +7,12 @@ const permissionOptions={
 };
 const option=value=>({value,label:value??'자동 · 엔진 기본값'});
 export function permissionLabel(flavor,value){return permissionOptions[flavor]?.find(([v])=>v===value)?.[1]??value;}
+export function compactSettings(flavor,effort,mode){
+ const known=permissionOptions[flavor]?.some(([value])=>value===mode);
+ return {effort:({low:'낮음',medium:'보통',high:'높음',xhigh:'매우 높음',max:'최대'})[effort]??effort??'자동',
+  access:known?({default:'기본 승인',acceptEdits:'편집 허용',auto:'자동 판단',bypassPermissions:'승인 생략',plan:'계획 모드','read-only':'읽기 전용',autoReview:'자동 검토',yolo:'전체 허용'})[mode]:'미확인',
+  elevated:!!known&&['bypassPermissions','yolo'].includes(mode)};
+}
 export function settingsView(session,catalog){
  const flavor=session?.metadata?.flavor,current={model:session?.model??null,effort:(flavor==='codex'?session?.modelReasoningEffort:session?.effort)??null,permissionMode:session?.permissionMode??null};
  const editable=['codex','claude'].includes(flavor)&&session?.active===true&&!session.thinking&&session.agentState?.controlledByUser===false&&!Object.keys(session.agentState?.requests??{}).length;

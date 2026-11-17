@@ -22,7 +22,7 @@ import {icon} from './icons.mjs';
 import './vendor/vscode-elements/bundled.js';
 import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
-import {permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
+import {compactSettings,permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,refreshDeviceLogin,readDeviceLogin,deviceLabel,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,readWorkspaceSession,saveWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
@@ -323,7 +323,7 @@ async function selectSession(id){
   saveWorkspaceSession(sessionStorage,deviceStorage,deviceServerId,id);
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;
   settingsSerial++;settingsData=null;settingsOwner='';settingsLoading=false;commandSuggest?.reset();fileMentions?.reset();
-  if(workspaceLayout){$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
+  if(workspaceLayout){$('composer-settings').close();$('composer-settings').hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');$('setting-model').replaceChildren();$('setting-effort').replaceChildren();$('setting-extras').replaceChildren();$('setting-permissionMode').replaceChildren();$('permission-description').textContent='';$('settings-source').textContent='';$('settings-status').textContent='이 세션의 설정을 조회해 주세요.';}
   sessionId=id;branchTurn=null;fileTabs?.clear();fileTree?.clear();branchPin?.load(id);$('terminal-offer')?.remove();if(workspaceLayout){selectedProject=sessionProject(projectCatalog,trialSessions.find(s=>s.id===id),selectedProject);renderProjects();}session=null;messages=[];history=createHistory();loadingHistory=false;handoffState=null;connected=false;paused=false;directory='';selectedFile='';fileLoaded=false;lastFileRequest=null;fileFeedback('');
   let draft=chatDrafts.read(id);try{const kept=JSON.parse(sessionStorage.getItem('maricode-desktop-draft')||'null');if(kept?.id===id){sessionStorage.removeItem('maricode-desktop-draft');draft={text:kept.text??'',note:kept.note??''};}}catch{}$('handoff-note').textContent=draft.note;$('prompt').value=draft.text;$('prompt').style.height='auto';$('entries').replaceChildren();$('file-content').textContent='';$('file-title').textContent='';
   $('stream-toggle').textContent='실시간 연결 끊기';$('session-select').value=id;
@@ -1131,9 +1131,17 @@ function renderSettings(){
  const extraOn=settingsOwner===sessionId?(settingsData?.extras??[]).filter(e=>e.current==='fast'||e.current==='plan').map(e=>e.current==='fast'?'Fast':'계획'):[];
  const view=settingsOwner===sessionId?settingsData:null,modelInfo=modelReadout(session,view,messages);
  // The chip shows the value only; where it came from stays in the tooltip.
- $('model-chip').textContent=`모델: ${modelInfo.chip.split(' · ')[0]}${extraOn.length?' · '+extraOn.join(' · '):''} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
- $('permissionMode-chip').textContent=`액세스: ${settingsData?.permissionModes?.find(o=>o.value===current.permissionMode)?.label??permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'} ▾`;
- $('model-chip').title=modelInfo.detail;$('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
+ const mobile=matchMedia('(max-width:760px)').matches,compact=compactSettings(session?.metadata?.flavor,current.effort,current.permissionMode);
+ const modelText=modelInfo.chip.split(' · ')[0]+(extraOn.length?' · '+extraOn.join(' · '):'');
+ const modelName=document.createElement('span');modelName.className='chip-model';modelName.textContent=(mobile?'':'모델: ')+modelText;
+ const suffix=document.createElement('span');suffix.className='chip-effort';suffix.textContent=mobile?` · ${compact.effort} ▾`:' ▾';
+ $('model-chip').replaceChildren(modelName,suffix);$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
+ const accessLabel=view?.permissionModes?.find(o=>o.value===current.permissionMode)?.label??permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인';
+ $('permissionMode-chip').textContent=mobile?`${compact.access} ▾`:`액세스: ${accessLabel} ▾`;
+ $('permissionMode-chip').classList.toggle('access-elevated',compact.elevated);
+ $('permissionMode-chip').title=accessLabel;$('permissionMode-chip').setAttribute('aria-label',`액세스 설정: ${accessLabel}`);
+ $('model-chip').title=modelInfo.detail;$('model-chip').setAttribute('aria-label',mobile?`모델 및 추론 설정: ${modelText}, ${compact.effort}`:`모델 설정: ${modelText}`);
+ $('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
  $('settings-current').textContent=modelInfo.detail+`\n서버 설정: 추론 ${label(current.effort)} / 액세스 ${permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'}`;
  const controls=settingsControls(session,{loaded:!!view,editable:!!view?.editable,connected,busy,loading:settingsLoading,pending:!!pending,actionPending:!!actions?.pending,permissionPending:!!permissionActions?.pending}),allowed=controls.apply;
  $('settings-reason').textContent=controls.reason;
@@ -1227,17 +1235,23 @@ if(workspaceLayout){$('accounts-tab').onclick=openAccounts;$('open-accounts').on
 
 if(workspaceLayout){
  const panel=$('composer-settings');
- function closeSettings(){panel.hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');}
+ const mobile=matchMedia('(max-width:760px)');
+ function closeSettings(){panel.close();panel.hidden=true;for(const id of ['model-chip','effort-chip','permissionMode-chip'])$(id).setAttribute('aria-expanded','false');}
  for(const field of ['model','effort','permissionMode'])$(field+'-chip').onclick=()=>{
   const opening=panel.hidden||panel.dataset.field!==field;closeSettings();if(!opening)return;
   panel.dataset.field=field;panel.hidden=false;$(field+'-chip').setAttribute('aria-expanded','true');
-  $('settings-title').textContent=field==='model'?'모델 선택':field==='effort'?'추론 수준':'액세스 모드';
-  for(const f of ['model','effort','permissionMode'])$(f+'-field').hidden=f!==field;
+  $('settings-title').textContent=mobile.matches?'대화 설정':field==='model'?'모델 선택':field==='effort'?'추론 수준':'액세스 모드';
+  for(const f of ['model','effort','permissionMode'])$(f+'-field').hidden=!mobile.matches&&f!==field;
+  if(mobile.matches)panel.showModal();else panel.show();
+  $('close-settings').focus();
   if(!settingsLoading&&!busy&&connected)loadSettings();
  };
  $('close-settings').onclick=closeSettings;
+ panel.addEventListener('cancel',e=>{e.preventDefault();closeSettings();});
+ panel.addEventListener('click',e=>{if(e.target!==panel)return;const r=panel.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeSettings();});
+ mobile.addEventListener('change',()=>{closeSettings();renderSettings();});
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSettings();workspacePanel('chat');workspaceDrawer(false);}});
- document.addEventListener('click',e=>{if(!e.target.closest('.composer-wrap'))closeSettings();});
+ document.addEventListener('click',e=>{if(!e.composedPath().some(el=>el.classList?.contains('composer-wrap')))closeSettings();});
  commandSuggest=createCommandSuggest({input:$('prompt'),list:$('command-suggestions'),load:{key:()=>sessionId&&session?.active?`${epoch}:${sessionId}`:null,fetch:async()=>{const agent=session?.metadata?.flavor;const [c,s]=await Promise.all([api(base()+'/slash-commands').catch(()=>null),api(base()+'/skills').catch(()=>null)]);const reported=c?.success?c.commands:[],chat=supportedChatCommands(agent,reported),inChat=new Set(chat.map(x=>x.name.toLowerCase()));
   // Commands the chat cannot carry are still listed; sending one offers the terminal.
   const terminal=sessionTerminalEnabled?reported.filter(x=>typeof x?.name==='string'&&/^[a-zA-Z][\w.:-]{0,127}$/.test(x.name)&&!inChat.has(x.name.toLowerCase())).map(x=>({...x,description:'터미널에서 실행 · '+(x.description??x.name)})):[];

@@ -97,3 +97,13 @@ test('resume preserves only still-supported draft choices and never changes the 
  assert.equal(view.current.permissionMode,'default');
  assert.deepEqual(settingsDraft({permissionMode:'yolo'},view),{});
 });
+
+test('compact settings keep effort and access meaning without treating unknown modes as allowed',async()=>{
+ const {compactSettings}=await import('./settings.mjs');
+ assert.deepEqual(compactSettings('claude','high','bypassPermissions'),{effort:'높음',access:'승인 생략',elevated:true});
+ assert.deepEqual(compactSettings('codex','xhigh','yolo'),{effort:'매우 높음',access:'전체 허용',elevated:true});
+ assert.equal(compactSettings('codex',null,'read-only').access,'읽기 전용');
+ assert.equal(compactSettings('claude','max','acceptEdits').access,'편집 허용');
+ assert.deepEqual(compactSettings('codex',null,null),{effort:'자동',access:'미확인',elevated:false});
+ assert.deepEqual(compactSettings('unknown','custom','yolo'),{effort:'custom',access:'미확인',elevated:false});
+});
