@@ -101,6 +101,13 @@ export const scenarios=[
   ['이전 요청의 늦은 성공은 무시',async ui=>{await ui.evaluate("window.maricodePairingReady(window.__posted.filter(x=>x.startsWith('pairing-prepare:'))[0].slice(16),true);true");if(await ui.evaluate("window.__posted.some(x=>x.startsWith('pairing-qr:'))"))throw Error('이전 요청으로 QR 표시');return {changes:1};}],
   ['앱이 주소·전달 완료를 알려 줌',async ui=>{await ui.evaluate("window.maricodeRemoteState({address:'https://mini.tail1a2b.ts.net',forwarding:true,canStart:false});window.maricodePairingReady(window.__posted.filter(x=>x.startsWith('pairing-prepare:')).at(-1).slice(16),true);true");await ui.wait(1000);const posted=await ui.evaluate("JSON.stringify(window.__posted)");if(!/pairing-qr:[A-Z0-9]{4}-[A-Z0-9]{4}/.test(posted))throw Error('준비 후 QR 요청 없음');return {changes:1};}],
   ['닫힌 창에는 늦은 성공으로 QR을 열지 않음',async ui=>{await ui.click('#pairing-qr');await ui.click('#pairing-close');const before=await ui.evaluate("window.__posted.filter(x=>x.startsWith('pairing-qr:')).length");await ui.evaluate("window.maricodePairingReady(window.__posted.filter(x=>x.startsWith('pairing-prepare:')).at(-1).slice(16),true);true");await ui.wait(300);if(before!==await ui.evaluate("window.__posted.filter(x=>x.startsWith('pairing-qr:')).length"))throw Error('닫은 뒤 QR 요청');return {changes:1};}]]},
+ {name:'다른 대화의 작업 완료 알아채기',goal:'보고 있지 않던 대화의 작업이 끝나면 사이드바에서 바로 알고, 열면 표시가 사라진다',session:ids.claude,steps:[
+  ['목록 새로고침',async ui=>{globalThis.uxBusyThinking=true;await ui.click('#refresh-list');await ui.wait(1500);return {changes:1};}],
+  ['다른 대화의 작업이 끝남',async ui=>{globalThis.uxBusyThinking=false;await ui.click('#refresh-list');await ui.wait(2000);
+   const r=JSON.parse(await ui.evaluate(`JSON.stringify((()=>{const b=document.querySelector('.task[data-session-id="${ids.busy}"]');return [b?.querySelector('small')?.textContent,b?.querySelector('.task-dot')?.className];})())`));
+   if(!r[0]?.includes('작업 완료')||!r[1]?.includes('done'))throw Error('줄 상태: '+JSON.stringify(r));return {changes:1};}],
+  ['그 대화 열기',ui=>ui.click(`.task[data-session-id="${ids.busy}"]`)],
+  ['열면 완료 표시가 사라짐',async ui=>{await ui.wait(1500);const t=await ui.evaluate(`document.querySelector('.task[data-session-id="${ids.busy}"] small')?.textContent`);globalThis.uxBusyThinking=true;if(t?.includes('작업 완료'))throw Error('남은 표시: '+t);return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

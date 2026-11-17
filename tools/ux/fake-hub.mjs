@@ -41,7 +41,7 @@ export async function startFakeHub({project,port=0}){
  const text=async req=>{let b='';for await(const c of req)b+=c;return b;};
  let question={q1:{tool:'AskUserQuestion',arguments:{questions:[{question:'어디에 배포할까요?',header:'배포',multiSelect:false,options:[{label:'스테이징',description:'먼저 확인'},{label:'운영'}]}]},createdAt:Date.now()}};
  const flavor=id=>id===ids.codex?'codex':'claude';
- const session=id=>({id,active:true,activeAt:Date.now(),updatedAt:Date.now(),thinking:id===ids.busy,metadata:{path:project,flavor:flavor(id),machineId:'ux-mac',host:'ux-mac',name:sessionList.find(s=>s.id===id)?.label},
+ const session=id=>({id,active:true,activeAt:Date.now(),updatedAt:Date.now(),thinking:id===ids.busy&&globalThis.uxBusyThinking!==false,metadata:{path:project,flavor:flavor(id),machineId:'ux-mac',host:'ux-mac',name:sessionList.find(s=>s.id===id)?.label},
   agentState:{requests:id===ids.question?question:{},controlledByUser:false},permissionMode:'default',modelMode:'default'});
  const messages=id=>id===ids.claude?claudeMessages(project):id===ids.busy?busyMessages(project):codexMessages();
  const inside=p=>{const full=resolve(project,p||'.');if(relative(project,full).startsWith('..'))throw Error('outside');return full;};

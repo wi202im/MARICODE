@@ -112,3 +112,11 @@ test('a session card carries when it last changed, for recency sorting and the r
  assert.equal(sessionPresentation({id:'a'},{updatedAt:123,active:true,metadata:{}}).updatedAt,123);
  assert.equal(sessionPresentation({id:'a',updatedAt:'2026-11-01T00:00:00Z'},null).updatedAt,'2026-11-01T00:00:00Z');
 });
+test('a finished conversation not yet opened reads as done until it is opened; approval and work come first',async()=>{
+ const {rowStatus}=await import('./workspace.mjs');
+ assert.deepEqual(rowStatus('입력 대기',true),{label:'작업 완료',dot:'done'});
+ assert.deepEqual(rowStatus('입력 대기',false),{label:'입력 대기',dot:''});
+ assert.deepEqual(rowStatus('승인 필요',true),{label:'승인 필요',dot:'amber'});
+ assert.deepEqual(rowStatus('작업 중',true),{label:'작업 중',dot:'working'});
+ assert.deepEqual(rowStatus('실행 종료',false),{label:'실행 종료',dot:'ended'});
+});

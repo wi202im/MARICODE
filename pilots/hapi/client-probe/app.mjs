@@ -27,7 +27,7 @@ import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,refreshDeviceLogin,r
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,readWorkspaceSession,saveWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
 import {createReadRecovery,connectionFailure,desktopRelogin} from './reconnect.mjs';
-import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace,relativeTime} from './workspace.mjs';
+import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace,relativeTime,rowStatus} from './workspace.mjs';
 import {createHistory} from './history.mjs';
 import {createGitReview} from './git-review.mjs';
 import {toolViews,requestSnapshot,createPermissionActions,permissionChoices} from './workflow.mjs';
@@ -44,6 +44,8 @@ const collapsedProjects=new Set();
 let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JSON.parse(localStorage.getItem('maricode-display-preferences')));}catch{}
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
+// Conversations whose turn finished while the user looked elsewhere; cleared when opened.
+const unseenDone=new Set();
 let alertSnapshots=new Map(),unseenAlerts=0,runnerHandoff=false,finder=null,palette=null,pairingEnabled=false;
 let fileEditEnabled=false,sessionTerminalEnabled=false,terminalBusy=false,pinnedPrompt=null;
 let commandSuggest=null,fileMentions=null,settingsData=null,settingsOwner='',settingsLoading=false,settingsSerial=0;
@@ -312,6 +314,7 @@ $('login-form').addEventListener('submit',async e=>{
 async function selectSession(id){
   voiceInput?.cancel();
   if(id!==sessionId&&fileTabs&&!fileTabs.confirmDiscard()){if($('session-select'))$('session-select').value=sessionId;return;}
+  unseenDone.delete(id);
   rememberChat();usagePanel?.load(false,token);importedHistory?.load(id,importHistorySupported);
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
   saveWorkspaceSession(sessionStorage,deviceStorage,deviceServerId,id);
@@ -656,8 +659,8 @@ function renderWorkspace(){
     const {section,children}=inline?{section:content,children:content}:header(w.key,label,w.path,w.cards.length,w.project?.key===selectedProject,onselect,w.project?()=>openNewWorkspace(w.project.key):null,w.label+'에 대화 추가','workspace',w.project?.workspaceId?{kind:'workspace',id:w.project.workspaceId,name:w.label,path:w.path,default:!w.project.parentKey}:null);
     for(const c of matches){
      const button=document.createElement('button');button.className='task';button.dataset.sessionId=c.config.id;button.title=c.engine+' · '+c.state+' · '+c.config.id;button.setAttribute('aria-current',String(c.selected));button.disabled=busy||taskCreating;
-     const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' working':c.state==='실행 종료'?' ended':'');
-     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');const when=relativeTime(c.updatedAt);title.textContent=c.title;state.textContent=c.engine+' · '+c.state+(when?' · '+when:'');text.append(title,state);
+     const dot=document.createElement('span');const status=rowStatus(c.state,unseenDone.has(c.config.id)&&!c.selected);dot.className='task-dot'+(status.dot?' '+status.dot:'');
+     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');const when=relativeTime(c.updatedAt);title.textContent=c.title;state.textContent=c.engine+' · '+status.label+(when?' · '+when:'');text.append(title,state);
      // Pinned: an icon on every row (branches in its tooltip); only the open session spells them out. Orange = the open session is off its branches.
      if(c.config.branchPin){const summary=pinSummary(c.config.branchPin),off=c.selected&&branchPin?.sessionId===c.config.id&&branchPin.offBranch,icon=document.createElement('span');icon.className='task-pin-icon'+(off?' off':'');icon.append(navigationBranch());icon.title=(off?'고정 목록 밖 브랜치에 있습니다 · ':'고정한 브랜치 · ')+summary;icon.setAttribute('aria-label',icon.title);title.prepend(icon);
       if(c.selected){const pin=document.createElement('small');pin.className='task-pin'+(off?' off':'');pin.textContent=summary;pin.title=icon.title;text.append(pin);}}button.append(dot,text);
@@ -682,6 +685,7 @@ function renderWorkspace(){
 }
 const baseTitle=document.title;
 function showTurnAlerts(list){
+ for(const a of list)if(a.kind==='done')unseenDone.add(a.id);if(list.some(a=>a.kind==='done'))renderWorkspace();
  const box=$('turn-alerts');if(!box||!list.length)return;
  for(const a of list){
   const label=trialSessions.find(s=>s.id===a.id)?.label??'대화',item=document.createElement('div'),text=document.createElement('span'),open=document.createElement('button'),close=document.createElement('button');

@@ -72,3 +72,10 @@ export function relativeTime(at,now=Date.now()){
  if(s<60)return '방금';if(s<3600)return `${Math.floor(s/60)}분 전`;if(s<86400)return `${Math.floor(s/3600)}시간 전`;if(s<7*86400)return `${Math.floor(s/86400)}일 전`;
  const d=new Date(t);return (d.getFullYear()!==new Date(now).getFullYear()?d.getFullYear()+'년 ':'')+`${d.getMonth()+1}월 ${d.getDate()}일`;
 }
+// Sidebar row status, most urgent first (as t3code): approval, working, then a finished turn not yet opened.
+export function rowStatus(state,unseenDone){
+ if(state==='승인 필요')return {label:state,dot:'amber'};
+ if(state==='작업 중')return {label:state,dot:'working'};
+ if(state==='입력 대기'&&unseenDone)return {label:'작업 완료',dot:'done'};
+ return {label:state,dot:state==='실행 종료'?'ended':''};
+}
