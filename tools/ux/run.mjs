@@ -42,7 +42,9 @@ try{
   if(sc.needs){results.push({name:sc.name,goal:sc.goal,skipped:sc.needs,steps:[],findings:[],logs:[]});process.stdout.write(`- ${sc.name} (건너뜀: ${sc.needs})\n`);continue;}
   const page=await openPage(chrome),record={name:sc.name,goal:sc.goal,steps:[],findings:[],logs:[]};
   try{
-   await page.goto((sc.localFiles?await localFilesBase():base)+'/workspace');
+   const start=(sc.localFiles?await localFilesBase():base)+'/workspace';
+   // Each task starts signed out: a device login kept by an earlier task must not leak into the next.
+   await page.goto(start);await page.evaluate('localStorage.clear();sessionStorage.clear();true');await page.goto(start);
    if(sc.session!==undefined){
     await page.evaluate(`sessionStorage.setItem('hapi-trial-selected-session',${JSON.stringify(sc.session)});true`);await page.login();await page.wait(1200);
    }
