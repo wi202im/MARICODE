@@ -530,3 +530,27 @@ test('workspace reads authorize once and keep history for missing folders withou
  assert.equal((await service.projects('Bearer synthetic')).find(p=>p.key===project.id).available,false);
  await assert.rejects(service.workspace('Bearer wrong'),e=>e.status===401);
 });
+
+// A conversation already open in Maricode (any of this Mac's runners) is opened again, never re-registered.
+async function importFixture(t,agent,sessionsFor){
+ const {createServer}=await import('node:http'),{randomUUID}=await import('node:crypto'),{accountProfiles}=await import('./account-profiles.mjs'),{projectRegistry}=await import('./project-registry.mjs');
+ const root=await mkdtemp(join(tmpdir(),'maricode-import-existing-')),source=join(root,'cli');await mkdir(source);
+ const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),projectsPath:join(root,'projects'),binary:'/bin/echo',tokenFile:join(root,'token')};
+ await writeFile(join(root,'env'),JSON.stringify({HOME:root,PATH:'/usr/bin:/bin'}));await writeFile(c.accountConfig,JSON.stringify({cwd:root,environment:join(root,'env'),cliConnectionRequired:true,binaries:{[agent]:'/bin/echo'}}));await writeFile(c.tokenFile,'fixture');
+ await accountProfiles(c.accountConfig).connect(agent,source,true);const p=await projectRegistry(c.projectsPath).add(root),nativeId=randomUUID();let posts=0;
+ const hub=createServer((req,res)=>{if(req.url==='/cli/sessions'){posts++;return res.writeHead(500).end('{}');}if(req.url==='/api/sessions')return res.end(JSON.stringify({sessions:sessionsFor(p.path,nativeId)}));res.writeHead(404).end('{}');});
+ await new Promise(r=>hub.listen(0,'127.0.0.1',r));c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
+ t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ let starts=0;const service=createRunnerSetup(c,{prepare:async()=>{starts++;throw Error('private runner detail');},launch:async()=>{starts++;throw Error('must not launch');}});
+ return {service,input:{project:p.id,source,id:nativeId,fingerprint:'0'.repeat(64)},get starts(){return starts;},get posts(){return posts;}};
+}
+for(const agent of ['codex','claude'])test(`${agent} import of a conversation already registered for the same folder opens it without preparing or registering`,async t=>{
+ const f=await importFixture(t,agent,(path,id)=>[{id:'other-folder',metadata:{flavor:agent,path:path+'-elsewhere',machineId:'m-old',agentSessionId:id}},{id:'existing-session',metadata:{flavor:agent,path,machineId:'m-older-runner',agentSessionId:id,lifecycleState:'archived'}}]);
+ for(const action of ['import','check']){const r=await f.service[agent+'Import']('Bearer fixture',f.input,action);assert.deepEqual(r,{state:'registered',id:'existing-session',existing:true},action);}
+ assert.equal(f.starts,0);assert.equal(f.posts,0);
+});
+test('codex import failures before registration are reported as not started, never as an unknown result',async t=>{
+ const f=await importFixture(t,'codex',(path,id)=>[{id:'other-folder',metadata:{flavor:'codex',path:path+'-elsewhere',machineId:'m',agentSessionId:id}}]);
+ await assert.rejects(f.service.codexImport('Bearer fixture',f.input,'import'),e=>e.rejected===true&&e.reason==='IMPORT_RUNNER_PREPARE'&&e.userMessage.startsWith('가져오기를 시작하지 않았습니다.')&&!e.userMessage.includes('private runner detail'));
+ assert.equal(f.posts,0);assert.equal((await f.service.codexImport('Bearer fixture',f.input,'check')).state,'none');
+});

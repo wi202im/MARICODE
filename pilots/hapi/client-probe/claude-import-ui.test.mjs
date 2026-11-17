@@ -115,3 +115,10 @@ test('preflight rejection keeps the selected record for explicit retry after con
  await f.get('claude-import-find').onclick();f.get('claude-import-select').value='source';f.panel.render();await f.get('claude-import-start').onclick();
  assert.equal(f.panel.pending,false);assert.match(f.get('claude-import-status').textContent,/CLI 연결/);assert.equal(f.get('claude-import-start').disabled,false);assert.equal(f.requests.length,2);
 });
+test('a conversation that is already in Maricode opens as is and says it was not registered again',async()=>{
+ const id='22222222-2222-4222-8222-222222222222';let opened=null;
+ const f=fixture(null,(_,path)=>path.endsWith('/list')?{sessions:[{id:'source',title:'Prior',importable:true,fingerprint:'abc'}],searched:{source:'/fixture'}}:{state:'registered',id,existing:true},async selected=>{opened=selected;});
+ await f.get('claude-import-find').onclick();f.get('claude-import-select').value='source';f.panel.render();
+ await f.get('claude-import-start').onclick();
+ assert.equal(opened,id);assert.equal(f.panel.pending,false);assert.match(f.get('claude-import-status').textContent,/이미 Maricode에 있는 대화.*새로 등록하거나 복사하지 않았습니다/);
+});

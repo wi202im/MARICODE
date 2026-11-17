@@ -238,6 +238,12 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    const available=await api.workspace(authorization),session=available.find(s=>s.id===id);if(!session)throw Error('등록된 세션을 선택하세요.');
    return claudeImports({directory:shared+'.claude-imports',project:session.project,machineId:await machineId(c)}).history(id,before);
   },
+  // A conversation already in this Mac's Hub for the same folder (on any runner of this Mac,
+  // archived or not) is the import result: open it, never register or prepare a duplicate.
+  async existingImport(authorization,agent,path,nativeId){
+   const list=await authorize(authorization),key=agent==='codex'?'codexSessionId':'claudeSessionId';
+   return list.sessions?.find(s=>s.metadata?.flavor===agent&&s.metadata?.path===path&&(s.metadata?.[key]??s.metadata?.agentSessionId)===nativeId)?.id??null;
+  },
   async claudeImport(authorization,input,action){
    await authorize(authorization);
    if(!input||Object.keys(input).some(k=>!['project','source','id','fingerprint',...(action==='list'?['offset']:[])].includes(k))||typeof input.project!=='string'||!['list','import','check'].includes(action))throw Error('가져오기 요청을 확인하세요.');
@@ -268,6 +274,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     // needs only the durable import journal and Hub, not a healthy CLI/Runner.
     const priorMachine=await exists(join(c.directory,'runner-home/settings.json'))?await machineId(c):null;
     const prior=await makeImports(priorMachine).import({...input,source},callbacks,true);
+    if(prior.state==='none'){const existing=await api.existingImport(authorization,'claude',p.path,input.id);if(existing)return {state:'registered',id:existing,existing:true};}
     if(action==='check'||prior.state!=='none')return prior;
     // No import was admitted. Errors below must not masquerade as a lost
     // registration, but Runner's own lifecycle uncertainty remains protected.
@@ -295,19 +302,26 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     const p=await selectedProject(authorization,input.project);
     const cfg=JSON.parse(await readFile(c.accountConfig,'utf8')),env=JSON.parse(await readFile(cfg.environment,'utf8'));
     const link=(await accountProfiles(c.accountConfig).list()).codex,destination=link?.accounts[0]?.path;
-    if(typeof destination!=='string'||!isAbsolute(destination))throw Error('Codex CLI 설정 연결이 필요합니다.');
+    // Failures before the Hub registration request mean nothing was registered: report them as not started.
+    const reject=(reason,message)=>Object.assign(Error(message),{rejected:true,reason,userMessage:'가져오기를 시작하지 않았습니다. '+message});
+    if(typeof destination!=='string'||!isAbsolute(destination))throw reject('IMPORT_CLI_CONNECTION','AI 연결에서 기존 Codex CLI 설정 위치를 먼저 연결하세요.');
     const source=input.source||(link?.confirmed?destination:join(homedir(),'.codex')),imports=codexImports({project:p.path,destination});
     if(action==='list')return {...await imports.list(source,input.offset??0),sourceOrigin:input.source?'selected':'default'};
+    if(typeof input.id==='string'){const existing=await api.existingImport(authorization,'codex',p.path,input.id);if(existing)return {state:'registered',id:existing,existing:true};}
     const registered=async machineId=>(await authorize(authorization)).sessions?.find(s=>s.metadata?.machineId===machineId&&s.metadata?.flavor==='codex'&&(s.metadata?.codexSessionId??s.metadata?.agentSessionId)===input.id&&s.metadata?.path===p.path)?.id;
     if(action==='check'){
      if(!await exists(join(c.directory,'runner-home/settings.json')))return {state:'none'};
      const id=await registered(await machineId(c));return id?{state:'registered',id}:{state:'none'};
     }
-    await ensureReady(authorization,input.project,'codex');
+    try{await ensureReady(authorization,input.project,'codex');}
+    catch(error){if(error.rejected)throw error;throw reject('IMPORT_RUNNER_PREPARE','실행 환경을 준비하지 못했습니다. 같은 폴더에서 진행 중인 대화가 있으면 끝난 뒤 다시 시도하세요. 실행 상태가 미확인이면 컴퓨터 설정에서 먼저 확인하세요.');}
     let ready=false;for(let attempt=0;attempt<15;attempt++){try{ready=await connection(c);}catch{}if(ready)break;await new Promise(r=>setTimeout(r,300));}
-    if(!ready)throw Error('실행기 연결을 먼저 확인하세요. 가져오기를 실행하지 않았습니다.');
-    const target=await createRunnerWorkspace(c).target(authorization);
-    const {title}=await imports.copy(source,input.id,input.fingerprint),existing=await registered(target.machineId);
+    if(!ready)throw reject('IMPORT_RUNNER_CONNECT','실행기의 서버 연결을 확인하지 못했습니다. 컴퓨터 설정의 실행 상태를 확인하세요.');
+    let target;try{target=await createRunnerWorkspace(c).target(authorization);}
+    catch{throw reject('IMPORT_RUNNER_TARGET','연결된 실행 컴퓨터를 확인하지 못했습니다. 서버 연결과 실행 상태를 확인하세요.');}
+    let title;try{({title}=await imports.copy(source,input.id,input.fingerprint));}
+    catch(error){if(error.rejected)throw error;throw reject('IMPORT_SOURCE','선택한 Codex 기록을 읽거나 복사하지 못했습니다. 파일 접근 권한과 기록 상태를 확인하세요.');}
+    const existing=await registered(target.machineId);
     if(existing)return {state:'registered',id:existing};
     // Register without messages: HAPI's Codex resume replays the thread with stable IDs, while
     // /api/codex/sync-session's appended copies would show every earlier turn twice. The tag is

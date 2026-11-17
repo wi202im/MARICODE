@@ -92,6 +92,7 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
     pending={...pending,registeredId:result.id};sessionStorage.setItem(key,JSON.stringify(pending));
     await opened(result.id,pending.agent??'claude');
     pending=null;sessionStorage.removeItem(key);selection=null;$('claude-import-status').textContent='';
+    if(result.existing===true)message='이미 Maricode에 있는 대화라 기존 대화를 열었습니다. 새로 등록하거나 복사하지 않았습니다.';
    }else if(result.state==='none'){
     pending=null;sessionStorage.removeItem(key);selection=null;message='가져오기를 시작하지 않았습니다. 폴더와 실행 환경을 확인한 뒤 기록을 다시 찾으세요.';
    }else message='가져오기 결과가 미확인입니다. 결과 확인은 조회만 하며 원본 복사나 등록을 반복하지 않습니다.';
