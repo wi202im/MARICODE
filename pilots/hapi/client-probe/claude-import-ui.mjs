@@ -33,7 +33,7 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
   $('claude-import-more').hidden=selection?.nextOffset==null;
   $('claude-import-more').disabled=blocked||!!pending;
   const needsConnection=['not-configured','not-installed','connection-required','configuration-error'].includes(c.connectionState)||c.connectionState==='checking';
-  $('claude-import-readiness').textContent=needsConnection?'대화 목록은 원본 파일 조회 결과입니다. 위 AI 연결 상태를 확인하고 기존 CLI를 연결한 뒤 가져오세요.':'목록 조회와 AI 연결은 별개입니다. 가져올 때 실행기를 준비하며, 실제 AI 응답은 대화 재개 후 확인합니다.';
+  $('claude-import-readiness').textContent=needsConnection?'대화 목록은 원본 파일 조회 결과입니다. 위 AI 연결 상태를 확인하고 기존 CLI를 연결한 뒤 가져오세요.':'목록이 보여도 AI 연결과는 별개입니다. 가져올 때 실행 환경을 준비합니다.';
   $('claude-import-start').disabled=needsConnection||blocked||!!pending||!chosen||chosen.importable===false||selection.project!==c.project;
   $('claude-import-check').hidden=!pending;$('claude-import-check').disabled=blocked;$('claude-import-check').textContent=pending?.registeredId?'가져온 대화 다시 열기':'가져오기 결과 확인';
   if(owner!==c.project+':'+c.agent){owner=c.project+':'+c.agent;selection=null;searchedOwner=null;lastChecked=null;serial++;$('claude-import-status').textContent='';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();}
@@ -93,7 +93,7 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
     await opened(result.id,pending.agent??'claude');
     pending=null;sessionStorage.removeItem(key);selection=null;$('claude-import-status').textContent='';
    }else if(result.state==='none'){
-    pending=null;sessionStorage.removeItem(key);selection=null;message='등록 요청은 시작되지 않았습니다. 폴더와 실행기 준비 상태를 확인한 뒤 기록을 다시 찾으세요.';
+    pending=null;sessionStorage.removeItem(key);selection=null;message='가져오기를 시작하지 않았습니다. 폴더와 실행 환경을 확인한 뒤 기록을 다시 찾으세요.';
    }else message='가져오기 결과가 미확인입니다. 결과 확인은 조회만 하며 원본 복사나 등록을 반복하지 않습니다.';
   }catch(error){
    if(pending?.registeredId)message='등록은 완료됐지만 이전 대화 화면을 열지 못했습니다. 가져온 대화 다시 열기를 눌러 주세요. 새 세션을 만들거나 원본을 다시 복사하지 않습니다.';

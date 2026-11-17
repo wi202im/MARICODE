@@ -22,7 +22,7 @@ export function createGitReview({element,api,base,owner,untracked,openDiff=null}
    const files=[...numstatRows(staged.stdout,true),...numstatRows(work.stdout,false)],extra=untracked();
    $('git-review-status').textContent=(files.length?`변경 파일 ${files.length}건 · 파일을 누르면 변경 내용을 봅니다.`:'커밋되지 않은 기존 파일 변경이 없습니다.')+(extra?` 새 파일 ${extra}개는 파일 탭에서 확인하세요.`:'');
    $('git-review-files').replaceChildren(...files.map(f=>{const li=node('li'),b=node('button','git-review-file');b.type='button';b.append(node('span','git-review-path',f.path),node('span','git-review-stat',f.binary?'바이너리':`+${f.added} −${f.removed}`),...(f.staged?[node('span','git-review-staged','스테이징')]:[]));b.onclick=()=>showDiff(f);li.append(b);return li;}));
-  }catch{if(ticket===serial){loadedFor=null;$('git-review-status').textContent='변경 목록을 가져오지 못했습니다. 실행기 연결을 확인하세요.';}}
+  }catch{if(ticket===serial){loadedFor=null;$('git-review-status').textContent='변경 목록을 가져오지 못했습니다. 잠시 뒤 다시 확인해 주세요.';}}
  }
  element.addEventListener('toggle',()=>load());element.addEventListener('vsc-collapsible-toggle',()=>setTimeout(load)); // native <details> or <vscode-collapsible>
  return {load,reset(){serial++;loadedFor=null;$('git-review-files').replaceChildren();$('git-review-diff').hidden=true;$('git-review-status').textContent='';if(element.open)load();}};

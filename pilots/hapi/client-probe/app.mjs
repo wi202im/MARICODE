@@ -223,7 +223,7 @@ async function decidePermission(id,request,action,scope,answers){
     const current=session?.agentState?.requests?.[id];
     if(!current||requestSnapshot(current)!==expected)throw Error('요청이 바뀌었습니다. 새 내용을 확인해 주세요.');
     const pending=permissionActions.decide(id,request,action,scope,session?.metadata?.flavor,answers);render();const result=await pending;if(result?.ok===false||result?.success===false)throw Error('승인 결과를 확인하지 못했습니다.');await refresh();notice(answers?'질문에 답변을 전달했습니다.':action==='deny'?'거절을 전달했습니다. 요청 상태를 다시 확인했습니다.':scope==='session'?'표시된 범위의 세션 허용을 전달했습니다.':'이번 요청의 허용을 전달했습니다.');
-  }catch(e){if(mine===epoch)notice(e.message+' 결과를 다시 확인하며 자동 재시도하지 않습니다.');}finally{busy=false;render();}
+  }catch(e){if(mine===epoch)notice(e.message+' 결과를 다시 확인했고, 자동으로 다시 보내지 않습니다.');}finally{busy=false;render();}
 }
 async function refresh(){
   if(!token||!sessionId||!actions)return false;
@@ -268,7 +268,7 @@ async function stream(authEpoch){
       });
       const reader=r.body.getReader();
       while(true){const {value,done}=await reader.read();if(done)break;touch();parse(decode.decode(value,{stream:true}));}
-    }catch(error){if(authEpoch===epoch&&!paused){const failure=connectionFailure(error);blocked=['denied','expired','outdated'].includes(failure);showConnection(failure);notice(failure==='outdated'?'서버와 화면 버전이 맞지 않습니다. 입력을 보관한 뒤 새로고침해 주세요.':blocked?'접근 권한 또는 세션을 확인해 주세요. 자동 재시도를 멈췄습니다.':'연결이 끊겼습니다. 재연결 후 서버 상태와 이력을 다시 확인합니다.');}}
+    }catch(error){if(authEpoch===epoch&&!paused){const failure=connectionFailure(error);blocked=['denied','expired','outdated'].includes(failure);showConnection(failure);notice(failure==='outdated'?'서버와 화면 버전이 맞지 않습니다. 입력을 보관한 뒤 새로고침해 주세요.':blocked?'접근 권한이나 세션을 확인해 주세요. 자동으로 다시 시도하지 않습니다.':'연결이 끊겼습니다. 재연결 후 서버 상태와 이력을 다시 확인합니다.');}}
     finally{clearTimeout(watchdog);controller.abort();if(authEpoch===epoch){connected=false;if(connectionState==='live')showConnection('unavailable');render();}}
     if(blocked)return;
     if(!paused&&token&&authEpoch===epoch)await new Promise(r=>setTimeout(r,2000));
@@ -405,7 +405,7 @@ $('send-form').addEventListener('submit',async e=>{
     }
     if(!session.active||Object.keys(session.agentState?.requests??{}).length||actions.pending)return;
     const attachments=await attachmentComposer?.prepare()??[];if(mine!==epoch)return;submitted=true;if(branchPin?.pinned)branchTurn={id:sessionId,seq:Math.max(0,...messages.map(m=>m.seq??0))};const result=actions.send(text,fitPreviews(text,attachments));render();await result;if(mine!==epoch)return;if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}await refresh();
-  }catch(e){if(mine===epoch)notice(submitted&&!actions.pending?'서버 이력에서 전송을 확인했습니다.':e.message+' 전송은 자동 재시도하지 않습니다.');}finally{busy=false;render();}
+  }catch(e){if(mine===epoch)notice(submitted&&!actions.pending?'서버 이력에서 전송을 확인했습니다.':e.message+' 메시지는 자동으로 다시 보내지 않습니다.');}finally{busy=false;render();}
 });
 $('retry-message').onclick=async()=>{
   if($('retry-message').disabled)return;

@@ -9,7 +9,7 @@ export function cliProfileControls({agent,local,active,api,linked,valid=()=>true
  const result=el('p');result.setAttribute('role','status');
  const consent=el('input');consent.type='checkbox';const label=el('label','이 폴더의 로그인·설정·MCP·훅을 CLI와 공유하고, 폴더가 없으면 만듭니다. 앱에서 실행한 작업도 이 설정을 사용하고 변경할 수 있습니다.');label.append(consent);
  const link=el('button','이 CLI로 연결');link.type='button';
- const note=el('small','연결하면 다음 대화부터 이 설정을 사용합니다. 진행 중인 앱 대화가 있으면 먼저 실행을 종료하세요. CLI와 같은 대화를 동시에 실행하지 마세요. 셸 함수·별칭·추가 환경변수는 자동 실행하거나 복사하지 않습니다. HAPI의 지시문·권한 옵션은 아직 별도로 적용됩니다.');
+ const note=el('small','연결하면 다음 대화부터 이 설정을 사용합니다. 진행 중인 앱 대화가 있으면 먼저 실행을 종료하세요. CLI와 같은 대화를 동시에 실행하지 마세요. 셸 함수·별칭·추가 환경변수는 가져오지 않습니다.');
  let busy=false,review=null,serial=0;
  const sync=()=>{find.disabled=!local||busy;source.disabled=consent.disabled=!local||busy;link.disabled=!local||busy||!review?.source||!review?.binary||!consent.checked;};
  source.oninput=()=>{serial++;review=null;consent.checked=false;result.textContent='경로가 바뀌었습니다. 다시 확인하세요.';sync();};consent.onchange=sync;

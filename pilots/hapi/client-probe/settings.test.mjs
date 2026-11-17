@@ -9,7 +9,7 @@ test('settings use per-model advertised efforts and do not invent missing capabi
  assert.deepEqual(settingsView({...session,model:'unknown'},catalog).efforts,[]);
  assert.equal(settingsView({...session,thinking:true},catalog).editable,false);
  assert.equal(settingsView({...session,agentState:{controlledByUser:true}},catalog).editable,false);
- const c=settingsView({...session,metadata:{flavor:'claude'},effort:'medium'});assert.equal(c.current.effort,'medium');assert.match(c.source,/프리셋/);
+ const c=settingsView({...session,metadata:{flavor:'claude'},effort:'medium'});assert.equal(c.current.effort,'medium');assert.match(c.source,/기본 목록/);
 });
 test('setting changes reject stale state, mixed changes, unsupported values and busy sessions',()=>{
  const expected={model:'m1',effort:'high'},input={field:'effort',value:'low',expected};
@@ -51,7 +51,7 @@ test('Claude uses the account model list with per-model effort levels when the r
  const list={success:true,availableModels:[{value:'default',displayName:'Default (recommended)',effortLevels:['low']},{value:'opus',displayName:'Opus 5.5',effortLevels:['low','max']},{value:'sonnet',displayName:'Sonnet 5.5',effortLevels:['low','high']},{value:'claude-haiku-4-5',displayName:'Haiku 4.5',effortLevels:[]}]};
  const v=settingsView(c,list);
  assert.deepEqual(v.models.map(o=>o.value),[null,'opus','sonnet','claude-haiku-4-5']);assert.equal(v.models[1].label,'Opus 5.5');
- assert.deepEqual(v.efforts.map(o=>o.value),[null,'low','high']);assert.doesNotMatch(v.source,/프리셋/);
+ assert.deepEqual(v.efforts.map(o=>o.value),[null,'low','high']);assert.doesNotMatch(v.source,/기본 목록/);
  assert.deepEqual(settingsView({...c,model:'claude-haiku-4-5'},list).efforts,[]);
  assert.deepEqual(settingsView({...c,model:'retired'},list).models.map(o=>o.value)[1],'retired');
  assert.deepEqual(settingChange(c,list,{field:'model',value:'opus',expected:{...v.current}}),{route:'model',body:{model:'opus'}});

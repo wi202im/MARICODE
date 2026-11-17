@@ -41,11 +41,11 @@ export function draftAccountView(provider,{local=false,localLogin=false,found=nu
 }
 
 export function draftRunnerLabel(runner,agent){
- if(!runner)return '실행기 상태 미확인 · 로그인 확인은 실제 AI 응답 확인과 다릅니다.';
+ if(!runner)return '실행 환경 상태를 아직 확인하지 못했습니다.';
  if(['unprepared','prepared','exited'].includes(runner.phase))return '실행 전 · 대화 시작/가져오기 시 실행기를 준비합니다.';
  if(runner.phase==='unknown')return '실행 상태 미확인 · 컴퓨터 설정에서 상태를 확인하세요.';
- if(runner.hub==='connected'&&runner.phase==='running')return runner.agents?.includes(agent)?'실행기 → 서버 연결 확인 · 실제 AI 응답은 대화 시작 후 확인합니다.':`${agent==='claude'?'Claude':'Codex'}가 실행기에 준비되지 않았습니다. 대화 시작 시 설정을 확인합니다.`;
- return '실행기 → 서버 연결 미확인 · 컴퓨터 설정에서 상태를 확인하세요.';
+ if(runner.hub==='connected'&&runner.phase==='running')return runner.agents?.includes(agent)?'실행기 → 서버 연결 확인 · 실제 AI 응답은 대화 시작 후 확인합니다.':`${agent==='claude'?'Claude':'Codex'}가 아직 준비되지 않았습니다. 대화를 시작할 때 준비합니다.`;
+ return '실행 환경이 아직 연결되지 않았습니다 · 컴퓨터 설정에서 확인하세요.';
 }
 
 // Within 90px of the end counts as reading the latest output.

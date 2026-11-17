@@ -47,8 +47,8 @@ export function createActions({post,save,pending=null,now=Date.now}) {
       try{
         if(!attempt.digest||await textDigest(sendContent(text,attachments))!==attempt.digest)throw Error('처음 전송한 내용을 그대로 입력해야 합니다.');
         const state=await post('state',{localIds:[attempt.id]});
-        if(!Array.isArray(state.queuedLocalIds)||!Array.isArray(state.indeterminateLocalIds)||!Array.isArray(state.invokedLocalMessages))throw Error('접수 상태를 확인하지 못했습니다.');
-        if(state.indeterminateLocalIds.includes(attempt.id))throw Error('서버에는 접수됐지만 실행 결과가 불확실합니다. 다시 보내지 않습니다.');
+        if(!Array.isArray(state.queuedLocalIds)||!Array.isArray(state.indeterminateLocalIds)||!Array.isArray(state.invokedLocalMessages))throw Error('전달됐는지 확인하지 못했습니다.');
+        if(state.indeterminateLocalIds.includes(attempt.id))throw Error('메시지는 전달됐지만 처리 결과를 확인하지 못했습니다. 다시 보내지 않습니다.');
         if(pending!==attempt||state.queuedLocalIds.includes(attempt.id)||state.invokedLocalMessages.some(x=>x.localId===attempt.id)){
           pending=null;save(null);return {reconciled:true};
         }
