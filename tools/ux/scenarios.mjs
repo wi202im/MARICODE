@@ -108,6 +108,12 @@ export const scenarios=[
    if(!r[0]?.includes('작업 완료')||!r[1]?.includes('done'))throw Error('줄 상태: '+JSON.stringify(r));return {changes:1};}],
   ['그 대화 열기',ui=>ui.click(`.task[data-session-id="${ids.busy}"]`)],
   ['열면 완료 표시가 사라짐',async ui=>{await ui.wait(1500);const t=await ui.evaluate(`document.querySelector('.task[data-session-id="${ids.busy}"] small')?.textContent`);globalThis.uxBusyThinking=true;if(t?.includes('작업 완료'))throw Error('남은 표시: '+t);return {changes:1};}]]},
+ {name:'처리할 대화로 바로 가기',goal:'⌘K에서 승인이 필요한 대화를 먼저 보고, 열자마자 입력할 수 있다',session:ids.claude,steps:[
+  ['⌘K',async ui=>{await ui.wait(1500);return ui.key('k',4);}],
+  ['승인 필요한 대화가 대화 중 맨 위',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([...document.querySelectorAll('#palette-list .palette-option')].map(o=>[o.querySelector('.palette-label')?.textContent,o.querySelector('.palette-detail')?.textContent??'',o.querySelector('.palette-group')?.textContent]).filter(x=>x[2]==='대화'))"));
+   if(r[0]?.[0]!=='배포 방식 정하기'||!r[0][1].includes('승인 필요'))throw Error('대화 순서: '+JSON.stringify(r.slice(0,2)));return {changes:1};}],
+  ['“결제” 입력 후 Enter로 열기',async ui=>{await ui.type('결제');return ui.key('Enter');}],
+  ['입력창에 바로 포커스',async ui=>{await ui.wait(800);if(await ui.evaluate("document.activeElement?.id")!=='prompt')throw Error('포커스: '+await ui.evaluate("document.activeElement?.id||document.activeElement?.tagName"));return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

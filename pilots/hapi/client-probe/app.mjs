@@ -311,6 +311,7 @@ $('login-form').addEventListener('submit',async e=>{
   beginRecovery();scheduleDeviceRefresh();if(!saved)notice('로그인 정보를 보관할 수 없어 다시 열면 재로그인이 필요합니다.');
  }catch(e){if(attempt===epoch)notice(e.message);}finally{button.disabled=false;}
 });
+const paletteRank=st=>({amber:0,done:1,working:2})[st.dot]??3;
 async function selectSession(id){
   voiceInput?.cancel();
   if(id!==sessionId&&fileTabs&&!fileTabs.confirmDiscard()){if($('session-select'))$('session-select').value=sessionId;return;}
@@ -334,6 +335,8 @@ async function selectSession(id){
     return r;
   }});
   const selectedEpoch=epoch;tab(false);render();await refresh();if(selectedEpoch===epoch)stream(selectedEpoch);
+  // Opening a conversation means typing next. Touch devices skip it (no surprise keyboard), and focus already in a field stays.
+  if(selectedEpoch===epoch&&workspaceLayout&&matchMedia('(pointer:fine)').matches&&!$('prompt').disabled&&!document.activeElement?.closest?.('input,textarea,select,[contenteditable="true"]'))$('prompt').focus({preventScroll:true});
 }
 $('session-select').onchange=()=>selectSession($('session-select').value).catch(e=>notice(e.message));
 // A device registered at the server renews its 4-hour login before it ends, and once more if a request finds it ended.
@@ -653,7 +656,7 @@ function renderWorkspace(){
     const recent=c=>{const t=c.config.updatedAt??c.config.createdAt??0;return typeof t==='string'?Date.parse(t)||0:t;};
     matches.sort((a,b)=>sidebarDisplay.sort==='active'?(b.priority-a.priority||a.title.localeCompare(b.title)):sidebarDisplay.sort==='recent'?recent(b)-recent(a):a.title.localeCompare(b.title));
     if(query&&!workspaceMatch&&!matches.length)continue;
-    const label=(sidebarDisplay.group==='flat'?project.label+' / ':'')+w.label+(w.project?.available===false?' · 폴더 확인 필요':'')+(w.kind==='worktree'?' · 워크트리':'')+(w.host?' · '+w.host:'');
+    const label=(sidebarDisplay.group==='flat'?project.label+' / ':'')+w.label+(w.project?.available===false?' · 폴더 확인 필요':'')+(w.kind==='worktree'?' · 워크트리':'');
     const onselect=async()=>{try{if(w.project)await chooseProject(w.project);else if(w.cards.length)await selectSession(w.cards[0].config.id);}catch(e){notice(e.message);}};
     const content=inline?document.createElement('div'):null;
     const {section,children}=inline?{section:content,children:content}:header(w.key,label,w.path,w.cards.length,w.project?.key===selectedProject,onselect,w.project?()=>openNewWorkspace(w.project.key):null,w.label+'에 대화 추가','workspace',w.project?.workspaceId?{kind:'workspace',id:w.project.workspaceId,name:w.label,path:w.path,default:!w.project.parentKey}:null);
@@ -722,7 +725,7 @@ async function pairingAction(action){
 async function renderDevices(action){
  const list=$('pairing-devices');if(!list)return;
  try{const r=await api('/api/devices',action?{method:'POST',body:action}:{});list.replaceChildren(...(r.devices.length?r.devices.map(d=>{const li=document.createElement('li'),name=document.createElement('span'),when=document.createElement('small'),revoke=document.createElement('button');
-   name.textContent=d.name;when.textContent=' · 마지막 사용 '+new Date(d.lastUsed).toLocaleString();revoke.type='button';revoke.textContent='끊기';revoke.setAttribute('aria-label',d.name+' 연결 끊기');
+   name.textContent=d.name;when.textContent=' · 마지막 사용 '+relativeTime(d.lastUsed);when.title=new Date(d.lastUsed).toLocaleString();revoke.type='button';revoke.textContent='끊기';revoke.setAttribute('aria-label',d.name+' 연결 끊기');
    revoke.onclick=()=>{revoke.disabled=true;void renderDevices({action:'revoke',id:d.id});};li.append(name,when,revoke);return li;}):[Object.assign(document.createElement('li'),{textContent:'없음'})]));}
  catch{list.replaceChildren(Object.assign(document.createElement('li'),{textContent:'기기 목록을 불러오지 못했습니다.'}));}
 }
@@ -1246,9 +1249,11 @@ if(workspaceLayout){
   {group:'동작',label:'상세 패널 보이기/숨기기',keywords:'inspector 세션 정보',run:click('info-tab')},
   {group:'동작',label:'AI 계정·로그인 상태',keywords:'account login 계정',run:click('accounts-tab')},
   ...(sessionTerminalEnabled&&sessionId?[{group:'동작',label:'터미널에서 이 세션 이어가기',keywords:'terminal cli 터미널 명령 slash',run:()=>openSessionTerminal()}]:[]),
-  {group:'동작',label:'세션 목록 새로고침',keywords:'refresh',run:click('refresh-list')},
+  {group:'동작',label:'대화 목록 새로고침',keywords:'refresh',run:click('refresh-list')},
   ...(pairingEnabled?[{group:'동작',label:'다른 기기 연결',keywords:'pair qr 연결 코드 원격 remote 기기 주소 https',run:()=>openPairing()}]:[]),
-  ...trialSessions.map(s=>({group:'대화',label:s.displayName??s.label,detail:[s.agent==='claude'?'Claude':s.agent==='codex'?'Codex':'',s.projectLabel].filter(Boolean).join(' · '),run:()=>selectSession(s.id)})),
+  // Conversations that need the user come first: approval, then finished-unseen, then working.
+  ...trialSessions.map(s=>({s,status:rowStatus(sessionPresentation(s,sessionCards.get(s.id)?.snapshot).state,unseenDone.has(s.id)&&s.id!==sessionId)})).sort((a,b)=>paletteRank(a.status)-paletteRank(b.status))
+   .map(({s,status})=>({group:'대화',label:s.displayName??s.label,detail:[s.agent==='claude'?'Claude':s.agent==='codex'?'Codex':'',status.label,s.projectLabel].filter(Boolean).join(' · '),run:()=>selectSession(s.id)})),
   ...shortcuts.map(([k,l])=>({group:'단축키',label:l,hint:k,keywords:'shortcut 단축키',run:()=>{}}))]});
  // Shortcuts only open existing UI; IME composition and modifier-less keys are left alone.
  document.addEventListener('keydown',e=>{
