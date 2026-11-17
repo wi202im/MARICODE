@@ -67,7 +67,7 @@ function renderHistorySummary(){
  $('history-status').textContent=(imported?.imported?'이 앱에서 이어간 기록 ':'현재 대화 기록 ')+messages.length+'개'+(history.limited||messages.length>=1000?' · 표시 상한 1,000개':history.hasMore?' · 이전 기록 더 있음':'');
  if(!workspaceLayout)return;
  const label=$('imported-history-status');label.hidden=!imported?.imported&&!imported?.loading&&!imported?.error;
- label.textContent=imported?.error?'가져온 이전 기록: 조회 실패':imported?.loading?'가져온 이전 기록 확인 중…':`가져온 이전 기록 ${imported?.shown??0}/${imported?.total??0}개 표시`;
+ label.textContent=imported?.error?'가져온 이전 기록을 불러오지 못했습니다':imported?.loading?'가져온 이전 기록 확인 중…':`가져온 이전 기록 ${imported?.shown??0}/${imported?.total??0}개 표시`;
 }
 function storedPending(){try{return JSON.parse(sessionStorage.getItem(pendingKey()));}catch{return null;}}
 // The reason first in plain words; the status code stays for support.
@@ -118,7 +118,7 @@ function render(){
   $('session-select').disabled=busy;
   const relation=trialSessions.find(s=>s.id===sessionId),nextAgent=session?.metadata?.flavor==='codex'?'Claude':'Codex';
   $('new-handoff').textContent=handoffState==='created'?'기존 인계 세션 열기':`새 ${nextAgent} 세션으로 인계 준비`;
-  $('handoff-state').textContent=!handoffEnabled?'':handoffState==='pending'?'생성 응답을 기다리거나 결과 ID를 받지 못한 상태입니다. 결과 확인만 하며 새로 만들지 않습니다. 계속 이 상태면 서버 확인이 필요합니다.':handoffState==='verifying'?'생성된 세션 ID를 보관했습니다. 결과 확인으로 같은 세션을 재조회할 수 있습니다.':handoffState==='created'?'이 출처의 인계 세션이 있습니다. 다시 만들지 않고 기존 세션을 엽니다.':'';
+  $('handoff-state').textContent=!handoffEnabled?'':handoffState==='pending'?'생성 응답을 기다리거나 결과 ID를 받지 못한 상태입니다. 결과 확인만 하며 새로 만들지 않습니다. 계속 이 상태면 서버 확인이 필요합니다.':handoffState==='verifying'?'만들어진 대화를 기억해 두었습니다. ‘결과 확인’으로 다시 열 수 있습니다.':handoffState==='created'?'이 출처의 인계 세션이 있습니다. 다시 만들지 않고 기존 세션을 엽니다.':'';
   $('check-handoff').hidden=!handoffEnabled||!['pending','verifying'].includes(handoffState);
   $('check-handoff').disabled=busy||!connected;
   $('new-handoff').disabled=!!session?.resumeUnconfirmed||handoffEnabled&&!['none','created'].includes(handoffState)||busy||!connected||!session||session.thinking||!!actions?.pending||Object.keys(session?.agentState?.requests??{}).length>0;
@@ -143,8 +143,8 @@ function render(){
   $('retry-help').hidden=$('retry-message').hidden;
   $('archive').hidden=!session?.active;
   $('archive').disabled=!!session?.resumeUnconfirmed||busy||!connected||session?.thinking||session?.agentState?.controlledByUser!==false||waiting>0||!!actions?.pending||!!permissionActions?.pending||!!settingsPending();
-  if(actions?.pending?.kind==='archive')$('session-state').textContent='종료 결과 확인 필요 · 상태 다시 확인을 눌러 주세요. 자동 재전송하지 않습니다.';
-  if(session?.resumeUnconfirmed||actions?.pending?.kind==='resume')$('session-state').textContent=busy?'실행 환경을 준비하고 같은 세션을 다시 열고 있습니다…':'재개 결과 확인 필요 · 상태 다시 확인을 눌러 주세요. 자동 재전송하지 않습니다.';
+  if(actions?.pending?.kind==='archive')$('session-state').textContent='세션이 종료됐는지 확인하지 못했습니다. ⋯ 메뉴의 ‘상태 다시 확인’을 눌러 주세요.';
+  if(session?.resumeUnconfirmed||actions?.pending?.kind==='resume')$('session-state').textContent=busy?'실행 환경을 준비하고 같은 세션을 다시 열고 있습니다…':'대화가 다시 시작됐는지 확인하지 못했습니다. ⋯ 메뉴의 ‘상태 다시 확인’을 눌러 주세요.';
   if(workspaceLayout){
     const chrome=workspaceChrome({session,connected,history,loadingHistory,messageCount:messages.length,pendingKind:session?.resumeUnconfirmed?'resume':actions?.pending?.kind});
     $('composer-activity').hidden=!chrome.activity||connected&&session?.active&&(waiting>0||session.thinking&&!session.resumeUnconfirmed&&!actions?.pending);
@@ -161,7 +161,7 @@ function render(){
   if(workspaceLayout){const usage=contextUsage(messages),k=v=>v>=1000?Math.round(v/1000)+'K':String(v),el=$('context-usage');
    el.hidden=!usage;el.textContent=usage?`컨텍스트 ${k(usage.used)}${usage.window?` / ${k(usage.window)} · ${Math.round(usage.used/usage.window*100)}%`:''}`:'';
    el.classList.toggle('high',!!usage?.window&&usage.used/usage.window>=0.8);
-   el.title=usage?`마지막 응답 기준 엔진 보고값 · ${usage.used.toLocaleString()} 토큰${usage.window?` / 한도 ${usage.window.toLocaleString()}`:' · 한도 미보고'}`:'';}
+   el.title=usage?`마지막 응답 기준 · ${usage.used.toLocaleString()} 토큰${usage.window?` / 한도 ${usage.window.toLocaleString()}`:' · 한도 미보고'}`:'';}
   if(nearBottom)scroller.scrollTop=scroller.scrollHeight;
   updateJumpLatest();
   if(workspaceLayout){renderWorkspace();renderSettings();}
@@ -238,8 +238,8 @@ async function refresh(){
   const previousPending=actions.pending,released=actions.reconcile(messages,session.active,session.resumeUnconfirmed);
   permissionActions?.reconcile(session?.agentState?.requests??{});
   if(released==='resume-not-started')notice('재개가 시작되지 않았습니다. AI 연결·로그인 상태와 원래 기록을 확인한 뒤 메시지를 다시 보내 주세요. 자동으로 다시 시도하지 않습니다.');
-  else if(actions.pending)notice('이전 요청의 접수 여부를 확인 중입니다. 자동으로 다시 보내지 않습니다.');
-  else if(previousPending)briefNotice(previousPending.kind==='resume'?'같은 세션을 다시 열었습니다. 대화를 이어가세요.':previousPending.kind==='archive'?'실행을 종료했습니다. 대화 기록과 파일은 보존됩니다.':'메시지 접수를 확인했습니다.');
+  else if(actions.pending)notice('앞서 보낸 메시지가 전달됐는지 확인하고 있습니다.');
+  else if(previousPending)briefNotice(previousPending.kind==='resume'?'같은 세션을 다시 열었습니다. 대화를 이어가세요.':previousPending.kind==='archive'?'실행을 종료했습니다. 대화 기록과 파일은 보존됩니다.':'메시지가 전달됐습니다.');
   else if(historyReset)notice('이력이 변경되거나 연결 공백이 있어 최근 이력부터 다시 불러왔습니다.');
   render();if(workspaceLayout)loadGit();return true;
 }
@@ -356,7 +356,7 @@ function clearLogin(message,state='login-needed'){
   saveTabToken(sessionStorage,'',false);clearDeviceLogin(deviceStorage);deviceServerId='';
   catalogSerial++;sessionCards.clear();firstPrompts.clear();catalogChecked=null;cardSignature='';
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;token='';session=null;messages=[];connected=false;permissionActions=null;
-  if(workspaceLayout){$('account-list').replaceChildren();$('account-host').textContent='연결 상태를 조회해 주세요.';$('account-notice').textContent='';}
+  if(workspaceLayout){$('account-list').replaceChildren();$('account-host').textContent='연결 상태를 확인해 주세요.';$('account-notice').textContent='';}
   $('workspace').hidden=true;$('login').hidden=false;fileTabs?.clear();$('messages').replaceChildren();$('file-content').textContent='';$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();showConnection(state);render();notice(message);
 }
 // Logging out also ends this device's registration at the server (best effort: unused ones expire in 30 days).
@@ -407,11 +407,11 @@ $('retry-message').onclick=async()=>{
   const mine=epoch,text=$('prompt').value.trim();busy=true;render();
   try{
     await refresh();if(mine!==epoch||!connected||!session?.active||session.thinking||Object.keys(session.agentState?.requests??{}).length)return;
-    if(!actions.pending){notice('서버 이력에서 접수를 확인했습니다. 다시 보내지 않았습니다.');return;}
+    if(!actions.pending){notice('메시지가 이미 전달된 것을 확인했습니다. 다시 보내지 않았습니다.');return;}
     await actions.retry(text,fitPreviews(text,attachmentComposer?.metadata()??[]));if(mine!==epoch)return;
     if($('prompt').value.trim()===text){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}
     await refresh();
-  }catch(e){if(mine===epoch)notice(e.message+' 자동 재전송하지 않습니다.');}finally{busy=false;render();}
+  }catch(e){if(mine===epoch)notice(e.message+' 자동으로 다시 보내지 않습니다.');}finally{busy=false;render();}
 };
 $('handoff').onclick=async()=>{
   if($('handoff').disabled)return;
@@ -588,7 +588,7 @@ function renderGit(){
  $('git-label').textContent=!sessionId?'세션 선택':`${name?name+' · ':''}${suffix}${data?.state==='ready'&&!connected?' · 이전 조회':''}`;
  $('git-summary').title=`${$('git-label').textContent} · 상세 보기`;
  $('info-worktree').textContent=worktree?`워크트리: ${worktree.name}\n기준 프로젝트: ${worktree.base}\n실행 폴더: ${worktree.path}\n생성 시 브랜치: ${worktree.branch||'미제공'}`:'워크트리 없이 위 작업 폴더에서 실행합니다.';
- $('info-git').textContent=!sessionId?'세션을 선택하면 Git 상태를 조회합니다.':data?.state==='ready'?`브랜치: ${data.branch}\n현재 커밋: ${data.commit??'아직 커밋 없음'}\n변경 파일 ${data.changed}개 · 스테이징 ${data.staged} · 작업본 ${data.unstaged} · 새 파일 ${data.untracked} · 충돌 ${data.conflicts}\n${data.ahead===null?'추적 브랜치 없음':`추적 브랜치 대비 +${data.ahead} / −${data.behind} (마지막으로 받아온 원격 기준)`}\n조회: ${new Date(current.checked).toLocaleTimeString()}${!connected?' · 연결 끊김, 이전 조회 결과':''}`:current?.loading?'Git 상태를 확인하고 있습니다.':'Git 정보를 읽지 못했습니다. Git 저장소가 아니거나 아직 연결 중일 수 있습니다.';
+ $('info-git').textContent=!sessionId?'대화를 고르면 Git 상태가 표시됩니다.':data?.state==='ready'?`브랜치: ${data.branch}\n현재 커밋: ${data.commit??'아직 커밋 없음'}\n변경 파일 ${data.changed}개 · 스테이징 ${data.staged} · 작업본 ${data.unstaged} · 새 파일 ${data.untracked} · 충돌 ${data.conflicts}\n${data.ahead===null?'추적 브랜치 없음':`추적 브랜치 대비 +${data.ahead} / −${data.behind} (마지막으로 받아온 원격 기준)`}\n조회: ${new Date(current.checked).toLocaleTimeString()}${!connected?' · 연결 끊김, 이전 조회 결과':''}`:current?.loading?'Git 상태를 확인하고 있습니다.':'Git 정보를 읽지 못했습니다. Git 저장소가 아니거나 아직 연결 중일 수 있습니다.';
 }
 async function loadGit(force=false){
  if(!workspaceLayout||!token||!sessionId||paused)return;
@@ -971,7 +971,7 @@ async function inheritDraftDefaults(){
   if(s?.metadata?.path!==project.path||s.metadata.flavor!==recent.agent)return;
   draftInherited={agent:recent.agent,model:s.model??null,effort:(recent.agent==='codex'?s.modelReasoningEffort:s.effort)??null};
   $('draft-defaults').textContent+=' · 모델 '+(draftInherited.model??'자동')+' / 추론 '+(draftInherited.effort??'자동')+'.';
- }catch{if(ticket===draftDefaultsSerial&&owner===draftProject)$('draft-defaults').textContent+=' · 모델·추론 조회 실패, 기본값 사용';}
+ }catch{if(ticket===draftDefaultsSerial&&owner===draftProject)$('draft-defaults').textContent+=' · 모델 정보를 불러오지 못해 기본값을 씁니다';}
  finally{if(ticket===draftDefaultsSerial){draftDefaultsLoading=false;renderTaskCreation();}}
 }
 let draftInherited=null;
@@ -1098,7 +1098,7 @@ if(workspaceLayout){
  $('new-task-toggle').onclick=()=>openNewWorkspace();
  $('park-task').onclick=()=>{
   const request=taskPending();if(!request||taskCreating)return;
-  if(!confirm('생성 결과가 미확인입니다. 기록을 보존하고 별도 요청을 준비할까요? 이미 생성된 작업은 삭제하지 않습니다.'))return;
+  if(!confirm('새 대화가 만들어졌는지 확인하지 못했습니다. 기록은 그대로 두고 다시 준비할까요? 이미 만들어진 대화는 삭제하지 않습니다.'))return;
   try{sessionStorage.setItem('hapi-trial-held-task:'+request.requestId,JSON.stringify(request));sessionStorage.removeItem(taskPendingKey);draftMessage='기존 기록은 보존했습니다.';renderTaskCreation();}catch{draftMessage='보관하지 못했습니다.';renderTaskCreation();}
  };
  $('session-entry-new').onclick=()=>{if(taskCreating||claudeImportPanel?.pending)return;draftSessionMode='new';renderTaskCreation();};
@@ -1131,7 +1131,7 @@ function renderSettings(){
  for(const field of ['model','effort','permissionMode']){$(`setting-${field}`).disabled=!controls.browse;$(`apply-${field}`).disabled=!allowed||!settingsData?.[field==='model'?'models':field==='effort'?'efforts':'permissionModes']?.length;}
  for(const e of settingsOwner===sessionId?settingsData?.extras??[]:[])if($(`setting-${e.field}`)){$(`setting-${e.field}`).disabled=!controls.browse;$(`apply-${e.field}`).disabled=!allowed;}
  $('load-settings').disabled=busy||settingsLoading||!connected;
- if(pending)$('settings-status').textContent=`${({model:'모델',effort:'추론',permissionMode:'액세스',serviceTier:'속도',collaborationMode:'협업 방식'})[pending.field]??'설정'} 변경 결과 확인 필요 · 요청값 ${label(pending.value)}. 자동 재전송하지 않습니다. 결과 확인 전 대화 전송을 잠급니다.`;
+ if(pending)$('settings-status').textContent=`${({model:'모델',effort:'추론',permissionMode:'액세스',serviceTier:'속도',collaborationMode:'협업 방식'})[pending.field]??'설정'} 변경을 확인하지 못했습니다 · 요청 ${label(pending.value)}. 자동으로 다시 보내지 않습니다. 결과 확인 전 대화 전송을 잠급니다.`;
 }
 async function loadSettings(){
  const id=sessionId,mine=++settingsSerial;settingsLoading=true;renderSettings();
@@ -1177,7 +1177,7 @@ async function applySetting(field,fromCreation=false){
  busy=true;render();
  try{
   await api(`/api/sessions/${id}/settings`,{method:'POST',body:{field,value,expected}});
- }catch(error){if(error.rejected)sessionStorage.removeItem(key);if(id===sessionId)$('settings-status').textContent=error.rejected?'전송 전에 거부됐습니다. 최신 설정을 확인해 주세요.':'설정 변경 결과가 불확실합니다. 결과 확인으로 조회해 주세요.';}
+ }catch(error){if(error.rejected)sessionStorage.removeItem(key);if(id===sessionId)$('settings-status').textContent=error.rejected?'전송 전에 거부됐습니다. 최신 설정을 확인해 주세요.':'설정이 바뀌었는지 확인하지 못했습니다. ‘결과 확인’을 눌러 주세요.';}
  finally{busy=fromCreation;if(id===sessionId){await loadSettings();render();}}
 }
 function renderPermissionDescription(){
@@ -1370,7 +1370,7 @@ window.addEventListener('maricode-close-request',async event=>{
  dialog.addEventListener('close',()=>{quitDialogOpen=false;if(quitNonce)window.webkit.messageHandlers.maricode.postMessage('quit-cancelled:'+quitNonce);quitNonce=null;dialog.remove();},{once:true});
  let approved;
  try{
-  if(!token||busy||actions?.pending||permissionActions?.pending||settingsPending())throw Error('로그인·진행 중 요청·미확인 결과를 먼저 확인한 뒤 닫아 주세요.');
+  if(!token||busy||actions?.pending||permissionActions?.pending||settingsPending())throw Error('로그인이나 진행 중인 요청이 끝난 뒤 닫아 주세요.');
   approved=await quitFlow.review();if(!dialog.open)return;
   for(const p of approved.sessions){const li=document.createElement('li');li.textContent=p.label+' · '+p.agent;rows.append(li);}
   details.textContent=approved.sessions.length?'표시된 이 Mac 세션의 실행을 종료하고 앱을 닫습니다. 대화·파일·설정은 보존됩니다. 모든 창의 미전송 입력·첨부는 먼저 보관하세요.':'종료할 실행 세션이 없습니다. 미확인 작업이나 서버 상태 때문에 닫기가 막혔을 수 있습니다. 상태를 확인한 뒤 다시 닫아 주세요.';
