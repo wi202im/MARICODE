@@ -12,6 +12,16 @@
 
 
 
+## 1.2.9 공증 공개 완료 — 2026-11-17
+
+- 사용자 pull·DMG 배포 요청으로 main 최신 상태를 ff-only 확인하고 채팅 링크 외부 브라우저 열기 수정을 1.2.9로 공개했다. 아래 링크 수정 ‘미배포’는 이전 상태이며 이번 릴리스에 포함된다. 빌드/태그 `233a516a1ea66aa0e61a9916e666f9169013c8ec`, https://github.com/wi202im/MARICODE/releases/tag/v1.2.9 가 latest다.
+- 기존 설정·프로젝트·대화를 보존한다. 사용자 설치 앱·운영 설정·실제 세션 변경 없음.
+- **된다 — 자동:** Node 26.12.1 전체 444개 통과(.runtime/patch-1.2.9-tests.log). 새 창 링크 허용·스크립트 창 차단 Swift 판별 검사 포함.
+- **된다 — 실제 번들/합성 자료:** Swift release 빌드, 화면/모듈 제공·설정 키 보호·secure-login 제외, 실제 Hub 인증·합성 세션 등록, 재시작 후 역할·세션 보존 및 정상 종료·잠금 해제(.runtime/patch-1.2.9-smoke.log). 실제 AI 호출·마이크 사용 없음.
+- **된다 — 배포:** 앱·DMG Developer ID 서명, Apple Accepted·티켓 부착·Gatekeeper 통과. 제품 소스 457개 파일이 빌드 커밋과 일치. 첨부 10개 이름·크기·SHA-256·대상 커밋, 기존 Bun/WebKit 소스 메타데이터 확인. 인증 없는 latest·태그·체크섬·전체 DMG 다운로드 해시와 원격 태그 검증 완료(.runtime/patch-1.2.9-public-verify.log). 인증 설정·receipt·시험 자료는 공개하지 않았다.
+- DMG .runtime/patch-1.2.9-release/MARICODE-1.2.9-arm64.dmg, 124,140,390바이트, SHA-256 `a5d9113582ba652f4eb10ab57de1d6cbc06e48e69a5b770022daed66654abe54`.
+- **확인 안 함:** 실제 Mac 앱의 채팅 링크 클릭, 최종 DMG 설치·다른 Mac 설치. 기존 아이폰 홈 화면 원격 앱의 음성 인식 중단 원인은 이번 변경 범위에 포함되지 않는다. 릴리스 안내에 제한을 명시했다.
+
 ## 채팅 링크가 브라우저로 열리지 않던 회귀 — 2026-11-17 (미배포)
 
 - 사용자 신고: 링크를 눌러도 외부(브라우저)로 열리지 않음. 원인: 1.2.5 보안 수정(`6d6aec5`)의 `desktopNavigation`이 `targetFrame?.isMainFrame == true`만 사용자 클릭으로 봤다. 채팅 링크는 `target="_blank"`라 WebKit이 프레임 없이(`targetFrame == nil`) 먼저 묻고, 이를 취소해 `createWebViewWith`까지 가지 않아 아무 일도 없었다.
