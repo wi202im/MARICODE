@@ -68,12 +68,14 @@ function renderHistorySummary(){
  label.textContent=imported?.error?'가져온 이전 기록: 조회 실패':imported?.loading?'가져온 이전 기록 확인 중…':`가져온 이전 기록 ${imported?.shown??0}/${imported?.total??0}개 표시`;
 }
 function storedPending(){try{return JSON.parse(sessionStorage.getItem(pendingKey()));}catch{return null;}}
+// The reason first in plain words; the status code stays for support.
+const requestFailure=status=>({401:'로그인이 필요합니다',403:'이 화면에서 할 수 없는 요청입니다',404:'대상을 찾지 못했습니다',409:'지금 상태에서는 할 수 없습니다',413:'보낼 내용이 너무 큽니다',429:'요청이 많습니다'})[status]??(status>=500?'서버가 응답하지 못했습니다':'요청을 처리하지 못했습니다');
 async function api(path,{method='GET',body,signal}={}){
   const usedToken=token;
   const r=await fetch(path,{method,headers:{'X-Merry-Protocol':'1',...(token?{Authorization:`Bearer ${token}`} : {}),...(deviceServerId?{'X-Merry-Server-Id':deviceServerId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:signal??AbortSignal.timeout(path.endsWith('/upload')?65000:path==='/api/tasks'||path==='/api/claude-import'||path.endsWith('/resume')||path.includes('/command-cards')?120000:15000)});
   if(r.status===426)throw Object.assign(Error('서버와 화면 버전이 맞지 않습니다. 입력 내용을 보관한 뒤 새로고침해 주세요. 이 요청은 실행되지 않았습니다.'),{status:426,rejected:true});
   if(r.status===401&&path!=='/api/pair'){if(usedToken&&usedToken===token)clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');throw Object.assign(Error('로그인 정보를 확인하고 다시 연결해 주세요.'),{status:401});}
-  if(!r.ok){const error=Object.assign(Error(`요청 실패 (${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path==='/api/session-terminal'||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.startsWith('/api/branch')||path.endsWith('/settings')||path.endsWith('/archive')||path.endsWith('/file-save')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
+  if(!r.ok){const error=Object.assign(Error(`${requestFailure(r.status)} (오류 ${r.status}). 상태를 다시 확인해 주세요.`),{status:r.status});if(path==='/api/session-terminal'||path.startsWith('/api/tasks')||path.startsWith('/api/claude-import')||path.startsWith('/api/codex-import')||path==='/api/account-profiles'||path==='/api/pair'||path.includes('/permissions/')||/\/(file|directory|resume)$/.test(path.split('?')[0])||path==='/api/navigation'||path.startsWith('/api/branch')||path.endsWith('/settings')||path.endsWith('/archive')||path.endsWith('/file-save')){try{const detail=await r.json();error.rejected=detail.rejected===true;error.reason=detail.reason;if((error.rejected||detail.reason==='RUNNER_SETUP')&&typeof detail.error==='string')error.message=detail.error;}catch{}}throw error;}
   return r.json();
 }
 const usagePanel=workspaceLayout?createUsagePanel({root:$('usage-info'),api,messages:()=>messages}):null;
@@ -608,7 +610,7 @@ function renderWorkspace(){
  $('project-name').textContent=current.project;$('model-name').textContent=current.engine;
  $('selected-short-id').textContent=current.shortId;
  $('info-workspace').textContent=current.workspace;$('info-workspace').title=current.workspaceId??'';$('info-engine').textContent=current.engine;$('info-state').textContent=current.state;
- $('info-id').textContent=sessionId||'확인 중';$('info-path').textContent=session?.metadata?.path??'확인 중';
+ $('info-id').textContent=sessionId||'확인 중';{const p=session?.metadata?.path??'확인 중',b=document.createElement('bdi');b.textContent=p;$('info-path').replaceChildren(b);$('info-path').title=p;}
  $('info-host').textContent=session?.metadata?.host??'확인 중';$('host-name').textContent=session?.metadata?.host??'서버 확인 중';
  $('execution-target').textContent=`실행 서버 · ${current.host||'확인 중'}`;
  $('send-target').textContent=`${current.host||'확인 중'} · ${current.project}`;
