@@ -125,16 +125,16 @@ export const scenarios=[
   ['입력창에 쓰기',async ui=>{await ui.click('#prompt');return ui.type('README 정리해줘');}],
   ['보내기 선명, 마이크 그대로',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([getComputedStyle(document.getElementById('send')).opacity,!!document.getElementById('voice-input')?.offsetParent])"));
    if(Number(r[0])<0.9||!r[1])throw Error('상태: '+JSON.stringify(r));return {changes:1};}]]},
- {name:'프로젝트 밖을 가리키는 링크 폴더 보기',goal:'프로젝트 안 링크가 밖 폴더를 가리켜도 펼쳐 읽되, 그 파일은 저장되지 않는다',session:ids.claude,localFiles:true,steps:[
+ {name:'프로젝트 밖을 가리키는 링크 폴더 보기',goal:'프로젝트 안 링크가 밖 폴더를 가리켜도 펼쳐 읽고 이 Mac에서 저장한다',session:ids.claude,localFiles:true,steps:[
   ['밖 폴더를 가리키는 링크 펼치기',async ui=>{const fs=await import('node:fs/promises'),outside=globalThis.uxProject+'/../outside-notes';await fs.mkdir(outside,{recursive:true});await fs.writeFile(outside+'/note.txt','linked note\n');await fs.symlink('../outside-notes',globalThis.uxProject+'/linked');
    await ui.click('#info-tab');await ui.click('#files-tab');return ui.click('vscode-tree-item[data-name="linked"]');}],
   ['링크 안의 파일이 보이고 열림',async ui=>{await ui.expectVisible('vscode-tree-item[data-name="note.txt"]',3000);await ui.click('vscode-tree-item[data-name="note.txt"]');await ui.expectVisible('.file-editor .cm-content',4000);
    if(!await ui.evaluate("document.querySelector('.cm-editor .cm-line')?.textContent==='linked note'"))throw Error('링크 파일 내용 불일치');return {changes:1};}],
-  ['저장은 막히고 원본은 그대로',async ui=>{const fs=await import('node:fs/promises'),file=globalThis.uxProject+'/../outside-notes/note.txt';await ui.evaluate("document.querySelector('.cm-content').focus();true");await ui.type('x');await ui.click('.file-pane-head button[title="저장 (⌘S)"]');
-   for(let i=0;i<20&&!(await ui.evaluate("document.querySelector('.file-edit-state.error')?.textContent??''"));i++)await ui.wait(150);
-   const text=await ui.evaluate("document.querySelector('.file-edit-state.error')?.textContent??''"),disk=await fs.readFile(file,'utf8');
+  ['고쳐서 저장하면 링크 대상에 반영',async ui=>{const fs=await import('node:fs/promises'),file=globalThis.uxProject+'/../outside-notes/note.txt';await ui.evaluate("document.querySelector('.cm-content').focus();true");await ui.type('x');await ui.click('.file-pane-head button[title="저장 (⌘S)"]');
+   for(let i=0;i<20&&!/저장했습니다/.test(await ui.evaluate("document.querySelector('.file-edit-state')?.textContent??''"));i++)await ui.wait(150);
+   const disk=await fs.readFile(file,'utf8'),link=(await fs.lstat(globalThis.uxProject+'/linked')).isSymbolicLink();
    await fs.rm(globalThis.uxProject+'/linked',{force:true});await fs.rm(globalThis.uxProject+'/../outside-notes',{recursive:true,force:true});
-   if(disk!=='linked note\n')throw Error('밖 파일이 바뀜');if(!text)throw Error('저장 거절 안내가 없음');return {changes:1};}]]},
+   if(disk!=='xlinked note\n')throw Error('디스크 내용: '+JSON.stringify(disk));if(!link)throw Error('링크가 사라짐');return {changes:1};}]]},
  {name:'파일 탭을 열면 새로 읽기',goal:'AI가 새로 만든 파일이 파일 탭을 다시 열 때 바로 보인다',session:ids.claude,steps:[
   ['파일 탭 열기',async ui=>{await ui.click('#info-tab');return ui.click('#files-tab');}],
   ['그사이 새 파일이 생김',async ui=>{await (await import('node:fs/promises')).writeFile(globalThis.uxProject+'/NEW-NOTES.md','# 새 파일\n');return ui.click('#session-info-tab');}],

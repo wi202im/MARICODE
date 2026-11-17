@@ -20,8 +20,8 @@ export async function readProjectFile(root,path,limit=16*1024*1024){
  return {success:true,content:(await readFile(file)).toString('base64'),size:s.size,modified:s.mtime.getTime()};
 }
 
-// Editing from this Mac's file tab. Callers pass a folder-relative path already checked by projectFilePath
-// (real path inside the project). Only an existing UTF-8 text file whose current bytes still match the
+// Editing from this Mac's file tab. Callers pass a path checked by projectFilePath, or the real target of a
+// link in the project split into folder and name, so the last part is never itself a link. Only an existing UTF-8 text file whose current bytes still match the
 // loaded hash is replaced; the new bytes go to a sibling temporary file with the same mode, then rename.
 export const editLimit=1024*1024;
 const saving=new Set();

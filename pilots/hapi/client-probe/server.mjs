@@ -18,7 +18,7 @@ import {listDirectory,readProjectFile,saveProjectFile} from './local-files.mjs';
 import {projectChoices,selectProject} from './projects.mjs';
 import {createHandoffs} from './handoff.mjs';
 import { readFile,realpath } from 'node:fs/promises';
-import {join} from 'node:path';
+import {join,dirname,basename} from 'node:path';
 import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { relativePath } from './core.mjs';
@@ -394,8 +394,10 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
         if(!check.ok){res.writeHead(check.status).end();return;}
         const m=(await check.json()).session?.metadata;
         if(m?.machineId!==fileTarget.machineId||m?.path!==(available.find(s=>s.id===id)?.project??fileTarget.project)){reply(403,{rejected:true,reason:'FORBIDDEN',error:'이 Mac의 세션 파일만 저장할 수 있습니다. 저장하지 않았습니다.'});return;}
-        let rel;try{rel=await projectFilePath(m.path,input.path);}catch{reply(403,{rejected:true,reason:'FORBIDDEN',error:'프로젝트 밖을 가리키는 링크의 파일은 보기만 할 수 있습니다(없는 경로일 수도 있습니다). 저장하지 않았습니다.'});return;}
-        let result;try{result=await saveProjectFile(await realpath(m.path),rel,input.content,input.expectedHash);}
+        // A link in the project may lead outside it; its real target is saved (the link itself stays). '..' and absolute paths never pass.
+        let root,rel;try{root=await realpath(m.path);rel=await projectFilePath(m.path,input.path);}
+        catch{try{const real=await linkedFilePath(m.path,input.path);root=dirname(real);rel=basename(real);}catch{reply(403,{rejected:true,reason:'FORBIDDEN',error:'링크 대상이 없거나 접근할 수 없는 경로입니다. 저장하지 않았습니다.'});return;}}
+        let result;try{result=await saveProjectFile(root,rel,input.content,input.expectedHash);}
         catch{reply(500,{rejected:false,error:'저장 결과를 확인하지 못했습니다. 파일을 다시 열어 내용을 확인하세요. 자동으로 다시 저장하지 않습니다.'});return;}
         if(result.success){reply(200,result);return;}
         const failure={FILE_CHANGED:[409,'불러온 뒤 다른 곳에서 파일이 바뀌어 저장하지 않았습니다. 새로고침으로 최신 내용을 확인하세요.'],BUSY:[409,'같은 파일을 저장하는 중입니다.'],TOO_LARGE:[413,'1MB를 넘는 파일은 편집할 수 없습니다.'],NOT_TEXT:[415,'UTF-8 텍스트 파일만 저장할 수 있습니다.'],NOT_FILE:[404,'기존 파일만 저장할 수 있습니다.']}[result.reason]??[409,'저장하지 않았습니다.'];

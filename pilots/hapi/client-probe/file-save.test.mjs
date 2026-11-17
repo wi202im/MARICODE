@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {createHash} from 'node:crypto';
-import {mkdtemp,writeFile,readFile,rm,realpath,chmod,stat,symlink,mkdir,readdir} from 'node:fs/promises';
+import {mkdtemp,writeFile,readFile,rm,realpath,chmod,stat,symlink,mkdir,readdir,lstat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {saveProjectFile,editLimit} from './local-files.mjs';
@@ -65,7 +65,11 @@ test('file save route: Hub authorization, this Mac only, project paths only, no 
  assert.equal((await save(env,{'X-Forwarded-For':'100.64.0.2'})).status,403,'remote clients stay read-only');
  assert.equal((await save(env,{Origin:'https://elsewhere.test'})).status,403);
  assert.equal((await save({...env,path:'../x'})).status,403);
- assert.equal((await save({path:'link.txt',content:'pwned',expectedHash:sha('outside')})).status,403);assert.equal(await readFile(join(outside,'secret.txt'),'utf8'),'outside');
+ // A link in the project may lead outside it: this Mac's app saves the target (same hash check) and keeps the link.
+ const linked={path:'link.txt',content:'edited',expectedHash:sha('outside')};
+ assert.equal((await save(linked,{'X-Forwarded-For':'100.64.0.2'})).status,403);assert.equal((await save({...linked,expectedHash:sha('other')})).status,409);
+ assert.equal((await save(linked)).status,200);assert.equal(await readFile(join(outside,'secret.txt'),'utf8'),'edited');assert.ok((await lstat(join(root,'link.txt'))).isSymbolicLink());
+ assert.equal((await save({path:'missing-link.txt',content:'x',expectedHash:sha('')})).status,403);
  assert.equal((await save({...env,extra:1})).status,400);
  assert.equal((await save({...env,expectedHash:'zz'})).status,400);
  let r=await save({...env,expectedHash:sha('other')});assert.equal(r.status,409);assert.equal((await r.json()).reason,'FILE_CHANGED');
