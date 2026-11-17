@@ -125,6 +125,11 @@ export const scenarios=[
   ['입력창에 쓰기',async ui=>{await ui.click('#prompt');return ui.type('README 정리해줘');}],
   ['보내기 선명, 마이크 그대로',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([getComputedStyle(document.getElementById('send')).opacity,!!document.getElementById('voice-input')?.offsetParent])"));
    if(Number(r[0])<0.9||!r[1])throw Error('상태: '+JSON.stringify(r));return {changes:1};}]]},
+ {name:'파일 탭을 열면 새로 읽기',goal:'AI가 새로 만든 파일이 파일 탭을 다시 열 때 바로 보인다',session:ids.claude,steps:[
+  ['파일 탭 열기',async ui=>{await ui.click('#info-tab');return ui.click('#files-tab');}],
+  ['그사이 새 파일이 생김',async ui=>{await (await import('node:fs/promises')).writeFile(globalThis.uxProject+'/NEW-NOTES.md','# 새 파일\n');return ui.click('#session-info-tab');}],
+  ['파일 탭 다시 열기',ui=>ui.click('#files-tab')],
+  ['새 파일이 보임',async ui=>{await ui.expectVisible('vscode-tree-item[data-name="NEW-NOTES.md"]',3000);await (await import('node:fs/promises')).rm(globalThis.uxProject+'/NEW-NOTES.md',{force:true});return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

@@ -131,3 +131,9 @@ test('editor languages follow the file name; unknown files edit as plain text',a
  for(const p of ['a.js','a.json','a.css','a.html','a.md','a.py','a.yaml','a.sh','.env','a.toml','a.go','a.rs','a.swift','a.sql','Dockerfile']){const l=editorLanguage(p);assert.ok(files.has(l.module+'.js'),p);
   const m=await import(`./vendor/codemirror/${l.module}.js`);assert.equal(typeof m[l.kind==='lezer'?l.fn:l.name]==='function'||typeof m[l.name]==='object',true,p);}
 });
+test('file errors are told apart by status, not by the wording of the request error',async()=>{
+ const {fileErrorMessage}=await import('./file-viewer.mjs');
+ assert.match(fileErrorMessage(Object.assign(Error('이 화면에서 할 수 없는 요청입니다 (오류 403).'),{status:403})),/프로젝트 폴더 밖/);
+ assert.match(fileErrorMessage(Object.assign(Error('x (오류 415).'),{status:415})),/재생할 수 없습니다/);
+ assert.equal(fileErrorMessage(Error('다른 오류')),'다른 오류');
+});

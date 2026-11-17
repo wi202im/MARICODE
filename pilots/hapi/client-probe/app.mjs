@@ -16,7 +16,7 @@ import {createCommandSuggest} from './composer-commands.mjs';
 import {createFileMentions} from './file-mentions.mjs';
 import {turnAlerts,alertText} from './turn-alerts.mjs';
 import {createBranchPin} from './branch-pin-ui.mjs';
-import {createFileTabs} from './file-viewer.mjs';
+import {createFileTabs,fileErrorMessage} from './file-viewer.mjs';
 import {createFileTree} from './file-tree.mjs';
 import {icon} from './icons.mjs';
 import './vendor/vscode-elements/bundled.js';
@@ -479,7 +479,8 @@ async function resumeForAction(status){
   for(let i=0;i<40&&mine===epoch;i++){await refresh();if(session.active&&!actions.pending)break;await new Promise(r=>setTimeout(r,750));}
   return mine===epoch&&!!session?.active&&!actions.pending;
 }
-function tab(files){if(workspaceLayout){workspacePanel(files?'files':'chat');if(files&&!fileLoaded)openPath(directory,'directory');return;}$('files').hidden=!files;$('chat').hidden=files;$('files-tab').setAttribute('aria-pressed',String(files));$('chat-tab').setAttribute('aria-pressed',String(!files));if(files&&!fileLoaded)openPath(directory,'directory');}
+// Showing the files on request re-reads them (open folders stay), so files the AI just made appear.
+function tab(files){if(workspaceLayout){workspacePanel(files?'files':'chat');if(files)openPath(directory,'directory');return;}$('files').hidden=!files;$('chat').hidden=files;$('files-tab').setAttribute('aria-pressed',String(files));$('chat-tab').setAttribute('aria-pressed',String(!files));if(files&&!fileLoaded)openPath(directory,'directory');}
 if($('chat-tab'))$('chat-tab').onclick=()=>tab(false);$('files-tab').onclick=()=>tab(true);
 async function openPath(path,kind){
   if(fileTree&&kind==='directory'){const serial=++fileSerial;lastFileRequest={path:'',kind};fileLoaded=true;fileFeedback('불러오는 중…');if(await fileTree.reload()&&serial===fileSerial)fileFeedback('');return;}
@@ -503,7 +504,7 @@ async function openPath(path,kind){
     }
   }catch(e){if(serial===fileSerial&&authEpoch===epoch)fileError(e);}
 }
-const fileError=e=>fileFeedback(e.message.includes('(403)')?'프로젝트 밖의 링크이거나 접근할 수 없는 경로입니다.':e.message,true,e.reason==='RUNNER_OFFLINE');
+const fileError=e=>fileFeedback(fileErrorMessage(e),true,e.reason==='RUNNER_OFFLINE');
 // Workspace layout opens files as center tabs; the narrow layout closes the inspector overlay to show them.
 function openFile(path,size){fileTabs.open(path,{size});fileTree?.render();if(compactSidebar.matches)workspacePanel('chat');}
 // Paths in replies (data-path from markdown.mjs): folders reveal in the file tree, other paths open as center tabs.
@@ -826,7 +827,7 @@ function updateSidebarToggle(){
 if(workspaceLayout){
  setupPanelLayout({shell:document.querySelector('.shell'),sidebar:$('sidebar'),inspector:$('inspector'),storage:deviceStorage});
  $('git-summary').onclick=()=>revealInPanel('info-git');$('git-refresh').onclick=()=>{loadGit(true);gitReview?.reset();};
- $('session-info-tab').onclick=()=>workspacePanel('info');$('info-tab').onclick=()=>workspacePanel(workspaceView==='chat'?lastInspector:'chat');$('back-chat').onclick=()=>workspacePanel('chat');
+ $('session-info-tab').onclick=()=>workspacePanel('info');$('info-tab').onclick=()=>{const next=workspaceView==='chat'?lastInspector:'chat';workspacePanel(next);if(next==='files'&&fileTree)openPath('','directory');};$('back-chat').onclick=()=>workspacePanel('chat');
  updateSidebarToggle();
  compactSidebar.addEventListener('change',()=>workspaceDrawer(false));
  $('open-nav').onclick=()=>{if(compactSidebar.matches){workspaceDrawer(!$('sidebar').classList.contains('open'));return;}sidebarCollapsed=!sidebarCollapsed;try{sessionStorage.setItem('maricode-sidebar-collapsed',String(sidebarCollapsed));}catch{}updateSidebarToggle();};$('close-nav').onclick=()=>workspaceDrawer(false);$('scrim').onclick=()=>workspaceDrawer(false);
