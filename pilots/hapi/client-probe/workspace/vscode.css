@@ -146,7 +146,9 @@ body:not(.maricode-desktop) .topbar{background:var(--sidebar)}
 
 #voice-input{width:32px;min-width:32px;padding:5px;color:var(--muted)}
 #voice-input svg{fill:none;stroke:currentColor;stroke-width:1.6}
-#voice-input[aria-pressed=true]{color:var(--warning);background:var(--surface2);outline:1px solid currentColor}
+#voice-input[aria-pressed=true]{color:var(--danger);background:var(--surface2);outline:1px solid currentColor;animation:voice-listening 1.4s ease-in-out infinite}@keyframes voice-listening{50%{outline-color:transparent}}@media (prefers-reduced-motion:reduce){#voice-input[aria-pressed=true]{animation:none}}
+/* Nothing to send yet: the send button steps back so the mic beside it reads as the action. Enter and clicks behave as before. */
+#send-form:has(#prompt:placeholder-shown):not(:has(.attachment-chip)) #send:not(:disabled){opacity:.4}
 .voice-status{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px}
 .voice-status>span:first-child{flex:1}.voice-status>span:nth-child(2){width:100%;white-space:pre-wrap;overflow-wrap:anywhere;max-height:90px;overflow:auto}
 .voice-status>button{min-height:32px}

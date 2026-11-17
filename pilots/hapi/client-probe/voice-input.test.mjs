@@ -20,7 +20,7 @@ test('browser aborted while finishing is normal completion; unexpected abort exp
 
 test('failed browser recognition offers keyboard dictation without losing the draft or restarting capture',()=>{
  class Element extends EventTarget{constructor(){super();this.children=[];this.hidden=false;this.value='기존 초안';}setAttribute(){}append(...items){this.children.push(...items);}before(item){this.status=item;}insertBefore(item){this.children.push(item);}focus(){this.focused=true;}}
- const doc=new Element();doc.createElement=()=>new Element();const form=new Element(),prompt=new Element(),footer=new Element();form.querySelector=()=>footer;
+ const doc=new Element();doc.createElement=()=>new Element();const form=new Element(),prompt=new Element(),footer=new Element();form.querySelector=selector=>selector==='#send'?null:footer;
  let recognition,starts=0;class Recognition{constructor(){recognition=this;}start(){starts++;this.onerror({error:'aborted'});}abort(){}}
  const win=new Element();win.SpeechRecognition=Recognition;win.isSecureContext=true;win.confirm=()=>true;
  setupVoiceInput({form,prompt,context:()=> 'session',changed(){},window:win,document:doc});

@@ -119,6 +119,12 @@ export const scenarios=[
   ['그 대화가 열림',async ui=>{await ui.wait(1200);const t=await ui.evaluate("document.querySelector('.task[aria-current=\"true\"] strong')?.textContent");if(!t?.includes('릴리스 노트 정리'))throw Error('열린 대화: '+t);return {changes:1};}],
   ['검색칸에서 Esc',async ui=>{await ui.click('#search');return ui.key('Escape');}],
   ['검색이 지워짐',async ui=>{if(await ui.evaluate("document.getElementById('search').value"))throw Error('검색어가 남음');if(!(await ui.evaluate("document.getElementById('keyboard-hint').textContent")).includes('K 명령'))throw Error('⌘K 안내 없음');return {changes:1};}]]},
+ {name:'마이크와 보내기',goal:'마이크는 보내기 옆에 늘 있고, 보낼 내용이 생기면 보내기가 선명해진다',session:ids.codex,steps:[
+  ['비어 있을 때',async ui=>{await ui.wait(1200);const r=JSON.parse(await ui.evaluate("JSON.stringify([document.getElementById('voice-input')?.nextElementSibling?.id,getComputedStyle(document.getElementById('send')).opacity])"));
+   if(r[0]!=='send'||Number(r[1])>0.5)throw Error('마이크 옆/보내기 흐림: '+JSON.stringify(r));return {changes:1};}],
+  ['입력창에 쓰기',async ui=>{await ui.click('#prompt');return ui.type('README 정리해줘');}],
+  ['보내기 선명, 마이크 그대로',async ui=>{const r=JSON.parse(await ui.evaluate("JSON.stringify([getComputedStyle(document.getElementById('send')).opacity,!!document.getElementById('voice-input')?.offsetParent])"));
+   if(Number(r[0])<0.9||!r[1])throw Error('상태: '+JSON.stringify(r));return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

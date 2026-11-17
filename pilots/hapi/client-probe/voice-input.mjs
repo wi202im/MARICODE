@@ -40,7 +40,8 @@ export function setupVoiceInput({form,prompt,context,changed,window:win=window,d
  button.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>';
  const status=doc.createElement('div');status.className='voice-status';status.hidden=true;status.setAttribute('role','status');
  const label=doc.createElement('span'),preview=doc.createElement('span'),cancel=doc.createElement('button');cancel.type='button';cancel.textContent='취소';const keyboard=doc.createElement('button');keyboard.type='button';keyboard.id='voice-keyboard';keyboard.textContent='키보드 받아쓰기';keyboard.hidden=true;status.append(label,preview,cancel,keyboard);form.before(status);
- form.querySelector('.composer-footer').insertBefore(button,form.querySelector('.composer-options'));
+ // Mic sits beside send (dictate, then send) and stays visible so dictation can continue after text exists.
+ form.querySelector('.composer-footer').insertBefore(button,form.querySelector('#send'));
  let native=null,deadline=null;
  const adapter=emit=>{
   if(!bridge)return browserVoiceAdapter(Recognition,emit);
