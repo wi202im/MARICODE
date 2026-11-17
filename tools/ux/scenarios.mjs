@@ -114,6 +114,11 @@ export const scenarios=[
    if(r[0]?.[0]!=='배포 방식 정하기'||!r[0][1].includes('승인 필요'))throw Error('대화 순서: '+JSON.stringify(r.slice(0,2)));return {changes:1};}],
   ['“결제” 입력 후 Enter로 열기',async ui=>{await ui.type('결제');return ui.key('Enter');}],
   ['입력창에 바로 포커스',async ui=>{await ui.wait(800);if(await ui.evaluate("document.activeElement?.id")!=='prompt')throw Error('포커스: '+await ui.evaluate("document.activeElement?.id||document.activeElement?.tagName"));return {changes:1};}]]},
+ {name:'사이드바 검색으로 바로 열기',goal:'검색어를 치고 Enter로 첫 결과를 열고, Esc로 검색을 지운다',session:ids.claude,steps:[
+  ['검색칸 누르기',ui=>ui.click('#search')],['“릴리스” 입력',ui=>ui.type('릴리스')],['Enter로 열기',ui=>ui.key('Enter')],
+  ['그 대화가 열림',async ui=>{await ui.wait(1200);const t=await ui.evaluate("document.querySelector('.task[aria-current=\"true\"] strong')?.textContent");if(!t?.includes('릴리스 노트 정리'))throw Error('열린 대화: '+t);return {changes:1};}],
+  ['검색칸에서 Esc',async ui=>{await ui.click('#search');return ui.key('Escape');}],
+  ['검색이 지워짐',async ui=>{if(await ui.evaluate("document.getElementById('search').value"))throw Error('검색어가 남음');if(!(await ui.evaluate("document.getElementById('keyboard-hint').textContent")).includes('K 명령'))throw Error('⌘K 안내 없음');return {changes:1};}]]},
  {name:'AI 질문에 답하기',goal:'AI가 물은 질문에 답하지 않고 거절을 제출한다',session:ids.question,steps:[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],

@@ -114,6 +114,7 @@ function offerTerminal(command){
 let fittedPrompt=null;
 function fitPrompt(){const input=$('prompt');if(!input)return;fittedPrompt=input.value;input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';}
 function render(){
+  if(workspaceLayout&&messages.length)$('messages').removeAttribute('data-empty');
   if(workspaceLayout&&$('prompt').value!==fittedPrompt)fitPrompt();
   $('session-select').disabled=busy;
   const relation=trialSessions.find(s=>s.id===sessionId),nextAgent=session?.metadata?.flavor==='codex'?'Claude':'Codex';
@@ -230,6 +231,7 @@ async function refresh(){
   const [s,m,h]=await Promise.all([api(base()),api(base()+'/messages?limit=50'),handoffEnabled?api(base()+'/handoff'):null]);
   if(mine!==refreshSerial||authEpoch!==epoch)return false;
   handoffState=h?.state??null;session=s.session;sessionCards.set(sessionId,{snapshot:session,stale:false});const historyReset=history.latest(m);messages=history.messages;
+  if(workspaceLayout)$('messages').toggleAttribute('data-empty',!messages.length);
   if(!history.hasMore&&!firstPrompts.has(sessionId)){const first=messages.map(messageView).find(v=>v?.role==='user'&&v.text?.trim());if(first)firstPrompts.set(sessionId,first.text.trim().replace(/\s+/g,' ').slice(0,80));}
   if(confirmedDraft(messages,actions.pending,$('prompt').value.trim())){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}
   if(workspaceLayout&&session?.id===sessionId&&alertSnapshots.size)alertSnapshots.set(sessionId,session);
@@ -315,7 +317,7 @@ const paletteRank=st=>({amber:0,done:1,working:2})[st.dot]??3;
 async function selectSession(id){
   voiceInput?.cancel();
   if(id!==sessionId&&fileTabs&&!fileTabs.confirmDiscard()){if($('session-select'))$('session-select').value=sessionId;return;}
-  unseenDone.delete(id);
+  unseenDone.delete(id);if(workspaceLayout)$('messages').removeAttribute('data-empty');
   rememberChat();usagePanel?.load(false,token);importedHistory?.load(id,importHistorySupported);
   if(workspaceLayout&&!taskCreating){$('new-task-panel').hidden=true;document.body.classList.remove('creating-workspace');}
   saveWorkspaceSession(sessionStorage,deviceStorage,deviceServerId,id);
@@ -828,7 +830,10 @@ if(workspaceLayout){
  updateSidebarToggle();
  compactSidebar.addEventListener('change',()=>workspaceDrawer(false));
  $('open-nav').onclick=()=>{if(compactSidebar.matches){workspaceDrawer(!$('sidebar').classList.contains('open'));return;}sidebarCollapsed=!sidebarCollapsed;try{sessionStorage.setItem('maricode-sidebar-collapsed',String(sidebarCollapsed));}catch{}updateSidebarToggle();};$('close-nav').onclick=()=>workspaceDrawer(false);$('scrim').onclick=()=>workspaceDrawer(false);
- $('search').oninput=renderWorkspace;$('refresh-list').onclick=refreshCatalog;
+ $('search').oninput=renderWorkspace;
+ // Enter opens the first match; Esc clears the search.
+ $('search').onkeydown=e=>{if(e.isComposing||e.keyCode===229)return;if(e.key==='Enter'){e.preventDefault();$('sidebar').querySelector('.task:not(:disabled)')?.click();}else if(e.key==='Escape'&&$('search').value){e.preventDefault();e.stopPropagation();$('search').value='';renderWorkspace();}};
+ if($('keyboard-hint'))$('keyboard-hint').textContent=(/Mac|iPhone|iPad/.test(navigator.platform)?'⌘K':'Ctrl+K')+' 명령 · Enter 전송 · Shift+Enter 줄바꿈';$('refresh-list').onclick=refreshCatalog;
  let catalogTick=0;
  setInterval(()=>{
   const busyElsewhere=[...alertSnapshots].some(([id,s])=>(id!==sessionId||document.hidden)&&(s?.thinking||Object.keys(s?.agentState?.requests??{}).length));
