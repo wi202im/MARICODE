@@ -122,3 +122,13 @@ test('a conversation that is already in Maricode opens as is and says it was not
  await f.get('claude-import-start').onclick();
  assert.equal(opened,id);assert.equal(f.panel.pending,false);assert.match(f.get('claude-import-status').textContent,/이미 Maricode에 있는 대화.*새로 등록하거나 복사하지 않았습니다/);
 });
+test('a listed conversation already in Maricode is labelled and opened directly without an import request',async()=>{
+ const id='33333333-3333-4333-8333-333333333333';let opened=null;
+ const f=fixture(null,()=>({sessions:[{id:'source',title:'Prior',modifiedAt:0,importable:true,fingerprint:'abc',existingId:id}],searched:{source:'/fixture'}}),async(selected,agent)=>{opened=[selected,agent];});
+ f.c.connectionState='connection-required';
+ await f.get('claude-import-find').onclick();f.get('claude-import-select').value='source';f.panel.render();
+ assert.match(f.get('claude-import-select').rows[0].textContent,/Maricode에 있음/);
+ assert.equal(f.get('claude-import-start').textContent,'기존 대화 열기');assert.equal(f.get('claude-import-start').disabled,false);
+ await f.get('claude-import-start').onclick();
+ assert.deepEqual(opened,[id,'claude']);assert.equal(f.requests.length,1);assert.equal(f.panel.pending,false);assert.equal(f.store.size,0);
+});

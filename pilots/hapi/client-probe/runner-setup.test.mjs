@@ -563,3 +563,8 @@ test('codex import failures before registration are reported as not started, nev
  await assert.rejects(f.service.codexImport('Bearer fixture',f.input,'import'),e=>e.rejected===true&&e.reason==='IMPORT_RUNNER_PREPARE'&&e.userMessage.startsWith('가져오기를 시작하지 않았습니다.')&&!e.userMessage.includes('private runner detail'));
  assert.equal(f.posts,0);assert.equal((await f.service.codexImport('Bearer fixture',f.input,'check')).state,'none');
 });
+test('import lists mark conversations already in this Mac\'s Hub for the same folder and agent',async t=>{
+ const f=await importFixture(t,'codex',(path,id)=>[{id:'elsewhere',metadata:{flavor:'codex',path:path+'-elsewhere',agentSessionId:id}},{id:'claude-one',metadata:{flavor:'claude',path,claudeSessionId:id}},{id:'existing-session',metadata:{flavor:'codex',path,machineId:'m-old',codexSessionId:id}}]);
+ const {realpath}=await import('node:fs/promises'),path=await realpath(join(f.input.source,'..'));
+ assert.deepEqual(await f.service.existingImports('Bearer fixture','codex',path,[{id:f.input.id,title:'a'},{id:'other',title:'b'}]),[{id:f.input.id,title:'a',existingId:'existing-session'},{id:'other',title:'b'}]);
+});

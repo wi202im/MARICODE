@@ -34,7 +34,9 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
   $('claude-import-more').disabled=blocked||!!pending;
   const needsConnection=['not-configured','not-installed','connection-required','configuration-error'].includes(c.connectionState)||c.connectionState==='checking';
   $('claude-import-readiness').textContent=needsConnection?'대화 목록은 원본 파일 조회 결과입니다. 위 AI 연결 상태를 확인하고 기존 CLI를 연결한 뒤 가져오세요.':'목록이 보여도 AI 연결과는 별개입니다. 가져올 때 실행 환경을 준비합니다.';
-  $('claude-import-start').disabled=needsConnection||blocked||!!pending||!chosen||chosen.importable===false||selection.project!==c.project;
+  // A conversation already in Maricode just opens: no CLI connection, copy or registration is needed.
+  $('claude-import-start').disabled=blocked||!!pending||!chosen||selection.project!==c.project||!chosen.existingId&&(needsConnection||chosen.importable===false);
+  $('claude-import-start').textContent=chosen?.existingId?'기존 대화 열기':'선택한 세션 가져오기';
   $('claude-import-check').hidden=!pending;$('claude-import-check').disabled=blocked;$('claude-import-check').textContent=pending?.registeredId?'가져온 대화 다시 열기':'가져오기 결과 확인';
   if(owner!==c.project+':'+c.agent){owner=c.project+':'+c.agent;selection=null;searchedOwner=null;lastChecked=null;serial++;$('claude-import-status').textContent='';$('claude-import-searched').textContent='';$('claude-import-select').replaceChildren();}
   if(element.open&&!element.hidden&&!blocked&&!pending&&c.projectAvailable&&searchedOwner!==owner)queueMicrotask(()=>{if(element.open&&!element.hidden&&!loading&&!pending&&searchedOwner!==owner)$('claude-import-find').click();});
@@ -53,7 +55,7 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
    $('claude-import-source-status').textContent=result.searched?`${({'selected':'선택한 기록 폴더','environment':'CLI 환경변수에서 찾은 폴더','shell-file':'셸 설정에서 찾은 경로 후보','default':`기본 ${engine()} 기록 폴더`})[result.sourceOrigin]??'기록 폴더'}: ${result.searched.source}`:'저장 위치를 자동으로 확인하지 못했습니다. 기록 폴더를 선택해 주세요.';
 
    $('claude-import-searched').textContent=result.searched?`작업 폴더: ${result.searched.project}\n기록 저장소: ${result.searched.source}\n검색한 기록 폴더: ${result.searched.records}`:'';
-   $('claude-import-select').replaceChildren(...(rows.length?rows:[{id:'',empty:true}]).map(row=>{if(row.empty){const o=document.createElement('option');o.value='';o.textContent='가져올 대화 없음';return o;}const o=document.createElement('option');o.value=row.id;o.textContent=row.title+' · '+new Date(row.modifiedAt).toLocaleString()+(row.messageCount==null?'':' · '+row.messageCount+'개 메시지')+(row.importable===false?' · 확인 필요':'');return o;}));
+   $('claude-import-select').replaceChildren(...(rows.length?rows:[{id:'',empty:true}]).map(row=>{if(row.empty){const o=document.createElement('option');o.value='';o.textContent='가져올 대화 없음';return o;}const o=document.createElement('option');o.value=row.id;o.textContent=row.title+' · '+new Date(row.modifiedAt).toLocaleString()+(row.messageCount==null?'':' · '+row.messageCount+'개 메시지')+(row.existingId?' · Maricode에 있음':row.importable===false?' · 확인 필요':'');return o;}));
    if(selectedId&&rows.some(row=>row.id===selectedId))$('claude-import-select').value=selectedId;
    $('claude-import-status').textContent=rows.length?`전체 ${selection.total}개 중 ${rows.length}개 표시. 가져오기 전 확인이 필요한 기록도 목록에 표시합니다.`:({ 'source-unresolved':'CLI 설정이 동적이거나 후보가 여러 개여서 저장 위치를 확정하지 않았습니다. 기록 폴더를 직접 선택하세요.', 'profile-missing':'표시된 Claude 기록 폴더가 없습니다. 기록 폴더 선택 또는 직접 입력으로 지정하세요.', 'store-missing':`지정한 위치에 ${engine()} 기록 저장소가 없습니다. 프로젝트 폴더가 아닌 ${engine()} 프로필 위치인지 확인하세요.`, 'project-missing':`이 작업 폴더에 대응하는 기록을 찾지 못했습니다. CLI에서 ${engine()}를 실행했던 폴더와 위 작업 폴더가 같은지 확인하세요.`, excluded:'기록 파일은 있지만 현재 지원하는 형식으로 읽지 못했습니다.', empty:'이 작업 폴더에 저장된 대화가 없습니다.' }[result.status]??'이 작업 폴더의 기록을 찾지 못했습니다.');
 
@@ -80,6 +82,9 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
   if(!check){
    if(element.hidden||$('claude-import-start').disabled)return;
    const row=selection.rows.find(r=>r.id===$('claude-import-select').value);if(!row)return;
+   if(row.existingId){loading=true;render();let message='이미 Maricode에 있는 대화를 열었습니다. 새로 등록하거나 복사하지 않습니다.';
+    try{await opened(row.existingId,selection.agent);}catch{message='기존 대화를 열지 못했습니다. 세션 목록에서 직접 열어 주세요.';}
+    finally{loading=false;render();$('claude-import-status').textContent=message;}return;}
    const request={project:selection.project,source:selection.source,id:row.id,fingerprint:row.fingerprint,agent:selection.agent};
    try{sessionStorage.setItem(key,JSON.stringify(request));pending=request;}catch{$('claude-import-status').textContent='요청을 보관하지 못해 시작하지 않았습니다.';return;}
   }

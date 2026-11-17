@@ -241,8 +241,12 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
   // A conversation already in this Mac's Hub for the same folder (on any runner of this Mac,
   // archived or not) is the import result: open it, never register or prepare a duplicate.
   async existingImport(authorization,agent,path,nativeId){
+   return (await api.existingImports(authorization,agent,path,[{id:nativeId}]))[0].existingId??null;
+  },
+  // Import lists read the CLI history folder, which also holds conversations already in Maricode: mark them.
+  async existingImports(authorization,agent,path,rows){
    const list=await authorize(authorization),key=agent==='codex'?'codexSessionId':'claudeSessionId';
-   return list.sessions?.find(s=>s.metadata?.flavor===agent&&s.metadata?.path===path&&(s.metadata?.[key]??s.metadata?.agentSessionId)===nativeId)?.id??null;
+   return rows.map(row=>{const id=list.sessions?.find(s=>s.metadata?.flavor===agent&&s.metadata?.path===path&&(s.metadata?.[key]??s.metadata?.agentSessionId)===row.id)?.id;return id?{...row,existingId:id}:row;});
   },
   async claudeImport(authorization,input,action){
    await authorize(authorization);
@@ -258,7 +262,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     const discovery=await discoverClaudeSource({source:input.source||(action==='list'&&connected?destination:action==='list'?'':join(homedir(),'.claude'))}),source=discovery.source;
     if(!source)return {sessions:[],skipped:0,status:'source-unresolved',sourceOrigin:discovery.origin};
     const makeImports=id=>claudeImports({directory:shared+'.claude-imports',project:p.path,destination,machineId:id});
-    if(action==='list')return {...await makeImports('not-started').list(source,input.offset??0),sourceOrigin:discovery.origin};
+    if(action==='list'){const r=await makeImports('not-started').list(source,input.offset??0);return {...r,sessions:await api.existingImports(authorization,'claude',p.path,r.sessions),sourceOrigin:discovery.origin};}
     const callbacks={
      register:async record=>{
       const token=await readFile(c.tokenFile,'utf8');
@@ -307,7 +311,7 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     const reject=(reason,message)=>Object.assign(Error(message),{rejected:true,reason,userMessage:'가져오기를 시작하지 않았습니다. '+message});
     if(typeof destination!=='string'||!isAbsolute(destination))throw reject('IMPORT_CLI_CONNECTION','AI 연결에서 기존 Codex CLI 설정 위치를 먼저 연결하세요.');
     const source=input.source||(link?.confirmed?destination:join(homedir(),'.codex')),imports=codexImports({project:p.path,destination});
-    if(action==='list')return {...await imports.list(source,input.offset??0),sourceOrigin:input.source?'selected':'default'};
+    if(action==='list'){const r=await imports.list(source,input.offset??0);return {...r,sessions:await api.existingImports(authorization,'codex',p.path,r.sessions),sourceOrigin:input.source?'selected':'default'};}
     if(typeof input.id==='string'){const existing=await api.existingImport(authorization,'codex',p.path,input.id);if(existing)return {state:'registered',id:existing,existing:true};}
     const registered=async machineId=>(await authorize(authorization)).sessions?.find(s=>s.metadata?.machineId===machineId&&s.metadata?.flavor==='codex'&&(s.metadata?.codexSessionId??s.metadata?.agentSessionId)===input.id&&s.metadata?.path===p.path)?.id;
     if(action==='check'){
