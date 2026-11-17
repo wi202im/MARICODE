@@ -76,13 +76,13 @@ async function runnerAction(action){
   const r=await fetch('/api/environment/runner',{method:action?'POST':'GET',headers:{'X-Setup-Nonce':setupKey,...(action?{'Content-Type':'application/json'}:{})},...(action?{body:JSON.stringify({action})}:{})});
   if(!r.ok)throw Error();const result=await r.json();checkedRunner=result;progress();
   const phases={unprepared:'환경 준비 전',preparing:'환경 준비 중',prepared:'환경 준비됨 · 아직 실행하지 않음',starting:'시작 결과 확인 중',stopping:'종료 확인 중',running:'프로세스 실행 중',exited:'프로세스 종료 확인 · 새 실행 환경 필요',unknown:'실행 결과 확인 필요 · 자동 재시작하지 않음'};
-  const hubs={'not-checked':'Hub 연결 확인 전',connected:'이 Runner의 Hub 연결 확인',disconnected:'이 Runner가 Hub 목록에 없음',unknown:'Hub 연결 확인 실패'};
-  $('runner-status').textContent=(result.observed?'기존 Runner 상태 조회 · 이 실행기에서는 종료·재준비·세션 재개 불가':phases[result.phase]??phases.unknown)+' / '+(hubs[result.hub]??hubs.unknown);
+  const hubs={'not-checked':'Hub 연결 확인 전',connected:'실행 환경 연결 확인',disconnected:'실행 환경이 아직 연결되지 않음',unknown:'Hub 연결 확인 실패'};
+  $('runner-status').textContent=(result.observed?'이미 실행 중인 환경 · 여기서는 종료하거나 다시 준비할 수 없습니다':phases[result.phase]??phases.unknown)+' / '+(hubs[result.hub]??hubs.unknown);
   $('runner-target').textContent='연결 대상 Hub: '+result.hubUrl;
   $('runner-prepare').disabled=result.phase!=='unprepared';$('runner-start').disabled=result.phase!=='prepared'||result.configuration!=='matched';
   $('runner-snapshot').textContent=({matched:'현재 등록값과 일치',changed:'등록값이 변경됨 · 새 실행 환경 필요',unknown:'준비된 환경과 현재 등록값 비교 불가'}[result.configuration]??'비교 전')+(result.project?' · 작업 폴더: '+result.project:'')+(result.binaries?' · 준비된 AI: '+Object.entries(result.binaries).map(([a,p])=>a+' — '+p).join(', '):'');
   $('runner-workspace').hidden=!result.workspaceAvailable;$('runner-stop').disabled=result.phase!=='running';$('runner-reprepare').disabled=!['prepared','exited'].includes(result.phase);
- }catch{$('runner-status').textContent='결과를 확인하지 못했습니다. 다시 실행하지 말고 Runner 상태를 조회하세요.';}
+ }catch{$('runner-status').textContent='결과를 확인하지 못했습니다. 다시 누르지 말고 ‘상태 확인’으로 먼저 확인하세요.';}
  finally{runnerBusy=false;$('runner-check').disabled=false;}
 }
 $('runner-check').onclick=()=>runnerAction();
