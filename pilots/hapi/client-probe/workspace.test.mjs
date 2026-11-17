@@ -99,3 +99,16 @@ test('catalog titles survive missing detail reads and placeholders never hide me
  assert.equal(sessionPresentation({id:'aaaa1111-rest',label:'Claude 작업'},null).title,'새 대화 · aaaa1111');
  assert.notEqual(sessionPresentation({id:'aaaa1111-rest',label:'Claude 작업'},null).title,sessionPresentation({id:'bbbb2222-rest',label:'Claude 작업'},null).title);
 });
+test('session rows say how long ago they changed, in words a person reads at a glance',async()=>{
+ const {relativeTime}=await import('./workspace.mjs');const now=Date.UTC(2026,10,17,12,0,0);
+ assert.equal(relativeTime(now-20*1000,now),'방금');
+ assert.equal(relativeTime(now-5*60*1000,now),'5분 전');
+ assert.equal(relativeTime(now-3*3600*1000,now),'3시간 전');
+ assert.equal(relativeTime(now-2*86400*1000,now),'2일 전');
+ assert.equal(relativeTime(now-40*86400*1000,now),'10월 8일');
+ assert.equal(relativeTime(0,now),'');assert.equal(relativeTime(now+60*1000,now),'방금');
+});
+test('a session card carries when it last changed, for recency sorting and the row time',async()=>{
+ assert.equal(sessionPresentation({id:'a'},{updatedAt:123,active:true,metadata:{}}).updatedAt,123);
+ assert.equal(sessionPresentation({id:'a',updatedAt:'2026-11-01T00:00:00Z'},null).updatedAt,'2026-11-01T00:00:00Z');
+});

@@ -12,7 +12,7 @@ export function sessionPresentation(config,snapshot,{stale=false}={}){
  const worktree=worktreePresentation({...m,worktree:m.worktree??config.worktree});
  if(worktree&&config.worktree?.worktreePath===m.path&&config.workspaceLabel)worktree.name=config.workspaceLabel;
  const state=stale?'상태 확인 필요':!snapshot?'확인 중':!snapshot.active?'실행 종료':Object.keys(snapshot.agentState?.requests??{}).length?'승인 필요':snapshot.thinking?'작업 중':'입력 대기';
- return {active:snapshot?.active,priority:!snapshot?.active?0:Object.keys(snapshot.agentState?.requests??{}).length?3:snapshot.thinking?2:1,title,workspace:config.workspaceLabel??'기본 작업공간',workspaceId:config.workspaceId??null,worktree,machineId:typeof m.machineId==='string'?m.machineId:'',host:typeof m.host==='string'?m.host:'',projectPath:typeof m.path==='string'?m.path:'',engine:m.flavor==='claude'?'Claude':m.flavor==='codex'?'Codex':config.agent==='claude'?'Claude':config.agent==='codex'?'Codex':'에이전트',shortId:config.id.slice(0,8),project:config.projectLabel??(typeof m.path==='string'?m.path.split('/').filter(Boolean).at(-1):'작업 폴더'),state};
+ return {active:snapshot?.active,updatedAt:snapshot?.updatedAt??config.updatedAt??config.createdAt??0,priority:!snapshot?.active?0:Object.keys(snapshot.agentState?.requests??{}).length?3:snapshot.thinking?2:1,title,workspace:config.workspaceLabel??'기본 작업공간',workspaceId:config.workspaceId??null,worktree,machineId:typeof m.machineId==='string'?m.machineId:'',host:typeof m.host==='string'?m.host:'',projectPath:typeof m.path==='string'?m.path:'',engine:m.flavor==='claude'?'Claude':m.flavor==='codex'?'Codex':config.agent==='claude'?'Claude':config.agent==='codex'?'Codex':'에이전트',shortId:config.id.slice(0,8),project:config.projectLabel??(typeof m.path==='string'?m.path.split('/').filter(Boolean).at(-1):'작업 폴더'),state};
 }
 
 export function groupSessions(cards){
@@ -64,4 +64,11 @@ export function workspaceHierarchy(projects,cards){
 export function inlineDefaultWorkspace(project){
  const w=project.workspaces?.[0];
  return project.workspaces?.length===1&&!!w.project&&!w.project.parentKey&&w.kind!=='worktree'&&w.path===project.path;
+}
+// Sidebar rows: "3분 전" style recency. Re-rendered with the list, so it stays roughly current without a clock.
+export function relativeTime(at,now=Date.now()){
+ const t=typeof at==='string'?Date.parse(at):at;if(!Number.isFinite(t)||t<=0)return '';
+ const s=Math.max(0,(now-t)/1000);
+ if(s<60)return '방금';if(s<3600)return `${Math.floor(s/60)}분 전`;if(s<86400)return `${Math.floor(s/3600)}시간 전`;if(s<7*86400)return `${Math.floor(s/86400)}일 전`;
+ const d=new Date(t);return (d.getFullYear()!==new Date(now).getFullYear()?d.getFullYear()+'년 ':'')+`${d.getMonth()+1}월 ${d.getDate()}일`;
 }

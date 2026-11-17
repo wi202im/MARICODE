@@ -27,7 +27,7 @@ import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,refreshDeviceLogin,r
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,readWorkspaceSession,saveWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
 import {createReadRecovery,connectionFailure,desktopRelogin} from './reconnect.mjs';
-import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace} from './workspace.mjs';
+import {sessionPresentation,workspaceHierarchy,workspaceChrome,inlineDefaultWorkspace,relativeTime} from './workspace.mjs';
 import {createHistory} from './history.mjs';
 import {createGitReview} from './git-review.mjs';
 import {toolViews,requestSnapshot,createPermissionActions,permissionChoices} from './workflow.mjs';
@@ -644,7 +644,8 @@ function renderWorkspace(){
    for(const w of project.workspaces){
     const workspaceMatch=projectMatch||(w.label+' '+w.path+' '+w.host).toLowerCase().includes(query);
     const matches=w.cards.filter(c=>(sidebarDisplay.ended||c.selected||c.active!==false)&&(workspaceMatch||(c.title+' '+c.engine+' '+c.config.id).toLowerCase().includes(query)));
-    const recent=c=>c.snapshot?.updatedAt??c.config.updatedAt??c.config.createdAt??0;
+    // Sorting keeps the list-time order so rows do not jump while a session works; the row time is live.
+    const recent=c=>{const t=c.config.updatedAt??c.config.createdAt??0;return typeof t==='string'?Date.parse(t)||0:t;};
     matches.sort((a,b)=>sidebarDisplay.sort==='active'?(b.priority-a.priority||a.title.localeCompare(b.title)):sidebarDisplay.sort==='recent'?recent(b)-recent(a):a.title.localeCompare(b.title));
     if(query&&!workspaceMatch&&!matches.length)continue;
     const label=(sidebarDisplay.group==='flat'?project.label+' / ':'')+w.label+(w.project?.available===false?' · 폴더 확인 필요':'')+(w.kind==='worktree'?' · 워크트리':'')+(w.host?' · '+w.host:'');
@@ -653,8 +654,8 @@ function renderWorkspace(){
     const {section,children}=inline?{section:content,children:content}:header(w.key,label,w.path,w.cards.length,w.project?.key===selectedProject,onselect,w.project?()=>openNewWorkspace(w.project.key):null,w.label+'에 대화 추가','workspace',w.project?.workspaceId?{kind:'workspace',id:w.project.workspaceId,name:w.label,path:w.path,default:!w.project.parentKey}:null);
     for(const c of matches){
      const button=document.createElement('button');button.className='task';button.dataset.sessionId=c.config.id;button.title=c.engine+' · '+c.state+' · '+c.config.id;button.setAttribute('aria-current',String(c.selected));button.disabled=busy||taskCreating;
-     const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' green':'');
-     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');title.textContent=c.title;state.textContent=c.engine+' · '+c.state;text.append(title,state);
+     const dot=document.createElement('span');dot.className='task-dot'+(c.state==='승인 필요'?' amber':c.state==='작업 중'?' working':c.state==='실행 종료'?' ended':'');
+     const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');const when=relativeTime(c.updatedAt);title.textContent=c.title;state.textContent=c.engine+' · '+c.state+(when?' · '+when:'');text.append(title,state);
      // Pinned: an icon on every row (branches in its tooltip); only the open session spells them out. Orange = the open session is off its branches.
      if(c.config.branchPin){const summary=pinSummary(c.config.branchPin),off=c.selected&&branchPin?.sessionId===c.config.id&&branchPin.offBranch,icon=document.createElement('span');icon.className='task-pin-icon'+(off?' off':'');icon.append(navigationBranch());icon.title=(off?'고정 목록 밖 브랜치에 있습니다 · ':'고정한 브랜치 · ')+summary;icon.setAttribute('aria-label',icon.title);title.prepend(icon);
       if(c.selected){const pin=document.createElement('small');pin.className='task-pin'+(off?' off':'');pin.textContent=summary;pin.title=icon.title;text.append(pin);}}button.append(dot,text);
@@ -674,7 +675,8 @@ function renderWorkspace(){
   $('project-list').replaceChildren(...nodes);
  }
  $('session-count').textContent=String(groups.length);$('refresh-list').disabled=catalogBusy||busy||!token;
- $('list-state').textContent=!token?'로그인 필요':catalogBusy?'목록 상태 확인 중…':catalogChecked?`목록 조회 ${catalogChecked} · 선택한 대화는 실시간 갱신`:'목록 상태를 확인해 주세요.';
+ // Only problems are shown; a healthy list keeps its last check time in the tooltip.
+ $('list-state').textContent=!token?'로그인 필요':catalogChecked?'':catalogBusy?'목록 상태 확인 중…':'목록 상태를 확인해 주세요.';$('list-state').title=catalogChecked?`목록 조회 ${catalogChecked} · 선택한 대화는 실시간 갱신`:'';
 }
 const baseTitle=document.title;
 function showTurnAlerts(list){
