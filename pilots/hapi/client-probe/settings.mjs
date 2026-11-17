@@ -2,8 +2,8 @@
 const claudeModels=['opus','fable','sonnet','haiku'];
 const claudeEfforts=['low','medium','high','xhigh','max'];
 const permissionOptions={
- claude:[['default','기본 승인','도구 실행 시 Claude의 기본 승인 정책을 따릅니다.'],['acceptEdits','편집 자동 허용','파일 편집은 자동 허용하고 다른 도구는 Claude 정책을 따릅니다.'],['auto','자동 판단','Claude가 도구 요청의 승인 여부를 자동 판단합니다. CLI·계정 지원 여부는 실행 시 확인합니다.'],['bypassPermissions','Bypass · 승인 생략','이 세션의 도구 승인 확인을 생략합니다. 파일 변경과 명령 실행도 개별 확인 없이 진행할 수 있습니다.'],['plan','계획 모드','Claude의 계획 모드로 전환합니다.']],
- codex:[['default','기본 승인','Codex의 기본 승인·샌드박스 정책을 따릅니다.'],['read-only','읽기 전용','Codex의 읽기 전용 샌드박스를 사용합니다.'],['autoReview','자동 검토','Codex가 요청을 자동 검토합니다. 실행기 지원 여부는 실행 시 확인합니다.'],['yolo','전체 접근 · 승인 생략','이 세션의 도구 승인과 Codex 샌드박스 제한을 해제합니다. 파일 변경과 명령 실행도 개별 확인 없이 진행할 수 있습니다.']]
+ claude:[['default','기본 승인','도구를 실행하기 전에 Claude가 확인을 받습니다.'],['acceptEdits','편집 자동 허용','파일 편집은 바로 진행하고, 다른 도구는 실행 전에 확인을 받습니다.'],['auto','자동 판단','Claude가 도구마다 확인이 필요한지 스스로 판단합니다. 지원하지 않는 계정에서는 적용되지 않습니다.'],['bypassPermissions','Bypass · 승인 생략','이 세션의 도구 승인 확인을 생략합니다. 파일 변경과 명령 실행도 개별 확인 없이 진행할 수 있습니다.'],['plan','계획 모드','Claude의 계획 모드로 전환합니다.']],
+ codex:[['default','기본 승인','Codex의 기본 승인·샌드박스 정책을 따릅니다.'],['read-only','읽기 전용','Codex의 읽기 전용 샌드박스를 사용합니다.'],['autoReview','자동 검토','Codex가 요청을 스스로 검토합니다. 지원하지 않는 버전에서는 적용되지 않습니다.'],['yolo','전체 접근 · 승인 생략','이 세션의 도구 승인과 Codex 샌드박스 제한을 해제합니다. 파일 변경과 명령 실행도 개별 확인 없이 진행할 수 있습니다.']]
 };
 const option=value=>({value,label:value??'자동 · 엔진 기본값'});
 export function permissionLabel(flavor,value){return permissionOptions[flavor]?.find(([v])=>v===value)?.[1]??value;}

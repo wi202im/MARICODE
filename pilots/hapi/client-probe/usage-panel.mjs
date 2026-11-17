@@ -8,7 +8,7 @@ export function usageLines({claude=null,codex=null,now=Date.now(),timeZone}={}){
  let x;
  if(codex?.state==='ok')x={lines:codex.windows.map(w=>w.resetsAt<=now?{text:`${windowLabel(w.windowMinutes)} · 기록 이후 초기화 시각이 지나 지금 사용량은 확인 안 됨`,tone:'stale'}:{text:`${windowLabel(w.windowMinutes)} ${Math.round(w.usedPercent)}% 사용 · 초기화 ${formatReset(w.resetsAt,now,o)}`,tone:w.usedPercent>=100?'reached':w.usedPercent>=80?'high':''}),
   note:`이 Mac의 최근 Codex 기록 기준${codex.plan?` · 요금제 ${codex.plan}`:''}${Number.isFinite(codex.observedAt)?` · 기록 시각 ${when(codex.observedAt)}`:''}`};
- else x={lines:[],note:{'no-records':'Codex 기록에서 한도 정보를 찾지 못했습니다. Codex로 대화하면 기록됩니다.','connection-required':'Codex CLI 연결을 확인한 뒤 표시합니다.'}[codex?.state]??'Codex 한도를 불러오지 못했습니다 · 확인 안 함'};
+ else x={lines:[],note:{'no-records':'Codex 기록에서 한도 정보를 찾지 못했습니다. Codex로 대화하면 기록됩니다.','connection-required':'Codex CLI 연결을 확인한 뒤 표시합니다.'}[codex?.state]??'Codex 한도를 불러오지 못했습니다.'};
  return {claude:c,codex:x};
 }
 export function createUsagePanel({root,api,messages}){

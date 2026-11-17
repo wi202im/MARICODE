@@ -581,11 +581,11 @@ function renderGit(){
  $('git-refresh').disabled=!token||!sessionId||!!current?.loading||paused;
  $('git-summary').disabled=!sessionId;
  $('git-commit').textContent=data?.state==='ready'&&data.commit?data.commit.slice(0,7):'';
- const suffix=data?.state==='ready'?`${data.branch} · ${data.changed?'변경 '+data.changed:'변경 없음'}`:current?.loading?'Git 확인 중…':'Git 미확인';
+ const suffix=data?.state==='ready'?`${data.branch} · ${data.changed?'변경 '+data.changed:'변경 없음'}`:current?.loading?'Git 확인 중…':'Git 정보 없음';
  $('git-label').textContent=!sessionId?'세션 선택':`${name?name+' · ':''}${suffix}${data?.state==='ready'&&!connected?' · 이전 조회':''}`;
  $('git-summary').title=`${$('git-label').textContent} · 상세 보기`;
- $('info-worktree').textContent=worktree?`워크트리: ${worktree.name}\n기준 프로젝트: ${worktree.base}\n실행 폴더: ${worktree.path}\n생성 시 브랜치: ${worktree.branch||'미제공'}`:'워크트리: 별도 정보 없음 · 위 작업 폴더에서 실행';
- $('info-git').textContent=!sessionId?'세션을 선택하면 Git 상태를 조회합니다.':data?.state==='ready'?`브랜치: ${data.branch}\n현재 커밋: ${data.commit??'아직 커밋 없음'}\n변경 파일 ${data.changed}개 · 스테이징 ${data.staged} · 작업본 ${data.unstaged} · 새 파일 ${data.untracked} · 충돌 ${data.conflicts}\n${data.ahead===null?'추적 브랜치 없음':`추적 브랜치 대비 +${data.ahead} / −${data.behind} (fetch하지 않은 로컬 정보)`}\n조회: ${new Date(current.checked).toLocaleTimeString()}${!connected?' · 연결 끊김, 이전 조회 결과':''}\n읽기 전용 조회이며 커밋·브랜치 전환은 실행하지 않습니다.`:current?.loading?'Git 상태를 확인하고 있습니다.':'Git 정보를 가져오지 못했습니다. 실행기 연결과 Git 저장소 여부를 확인해 주세요.';
+ $('info-worktree').textContent=worktree?`워크트리: ${worktree.name}\n기준 프로젝트: ${worktree.base}\n실행 폴더: ${worktree.path}\n생성 시 브랜치: ${worktree.branch||'미제공'}`:'워크트리 없이 위 작업 폴더에서 실행합니다.';
+ $('info-git').textContent=!sessionId?'세션을 선택하면 Git 상태를 조회합니다.':data?.state==='ready'?`브랜치: ${data.branch}\n현재 커밋: ${data.commit??'아직 커밋 없음'}\n변경 파일 ${data.changed}개 · 스테이징 ${data.staged} · 작업본 ${data.unstaged} · 새 파일 ${data.untracked} · 충돌 ${data.conflicts}\n${data.ahead===null?'추적 브랜치 없음':`추적 브랜치 대비 +${data.ahead} / −${data.behind} (마지막으로 받아온 원격 기준)`}\n조회: ${new Date(current.checked).toLocaleTimeString()}${!connected?' · 연결 끊김, 이전 조회 결과':''}`:current?.loading?'Git 상태를 확인하고 있습니다.':'Git 정보를 읽지 못했습니다. Git 저장소가 아니거나 아직 연결 중일 수 있습니다.';
 }
 async function loadGit(force=false){
  if(!workspaceLayout||!token||!sessionId||paused)return;
@@ -1148,7 +1148,7 @@ async function loadSettings(){
   $('settings-source').textContent=result.source;renderPermissionDescription();
   const pending=settingsPending();
   if(pending&&(result.extras?.find(e=>e.field===pending.field)?.current??result.current[pending.field])===pending.value)sessionStorage.removeItem(`hapi-settings-pending:${id}`);
-  $('settings-status').textContent='설정 목록을 조회했습니다. 선택만으로 변경되지 않으며 적용 버튼을 눌러야 합니다.';
+  $('settings-status').textContent='고른 뒤 ‘적용’을 눌러야 바뀝니다.';
   await refresh();return id===sessionId&&mine===settingsSerial;
  }catch(e){if(id===sessionId)$('settings-status').textContent=e.message;return false;}
  finally{if(mine===settingsSerial){settingsLoading=false;render();}}
@@ -1178,7 +1178,7 @@ async function applySetting(field,fromCreation=false){
 }
 function renderPermissionDescription(){
  const option=settingsOwner===sessionId?settingsData?.permissionModes?.find(o=>o.value===$('setting-permissionMode').value):null;
- $('permission-description').textContent=option?option.description+' 이 실행 머신의 현재 세션에만 적용하며 다른 세션·macOS 권한은 변경하지 않습니다.':'';
+ $('permission-description').textContent=option?option.description+' 이 대화에만 적용됩니다.':'';
 }
 if(workspaceLayout){$('setting-permissionMode').onchange=renderPermissionDescription;$('apply-permissionMode').onclick=()=>applySetting('permissionMode');$('load-settings').onclick=loadSettings;$('apply-model').onclick=()=>applySetting('model');$('apply-effort').onclick=()=>applySetting('effort');}
 
