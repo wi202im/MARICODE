@@ -1,9 +1,10 @@
 // Recognition produces a draft only. It never owns a chat-send capability.
 export function createVoiceDraft({context,read,write,state,adapter}){
  let current=null;
+ const abort=run=>{try{run.adapter?.abort();}catch{ /* Cleanup must not leave the composer locked. */ }};
  const finish=(run,message)=>{
   if(current!==run)return;
-  current=null;
+  current=null;clearTimeout(run.finishTimer);
   if(!message&&run.text.trim()&&context()===run.session&&read()===run.draft)write(run.draft+(run.draft.trim()?'\n':'')+run.text.trim());
   else if(!message&&run.text.trim())message='입력 대상이 바뀌었습니다. 음성 입력을 다시 시작해 주세요.';
   state({active:false,message:message??(run.text.trim()?'음성을 초안에 추가했습니다. 내용을 확인한 뒤 보내세요.':'음성을 인식하지 못했습니다.')});
@@ -17,12 +18,14 @@ export function createVoiceDraft({context,read,write,state,adapter}){
     if(current!==run)return;
     if(event.type==='result'){run.text=String(event.text??'').slice(0,20000);state({active:true,text:run.text,message:'듣는 중 · 마이크를 다시 누르면 초안에 추가합니다.'});}
     if(event.type==='ready')state({active:true,text:run.text,message:'듣는 중 · 마이크를 다시 누르면 초안에 추가합니다.'});
-    if(event.type==='error'){finish(run,event.message??'음성 인식에 실패했습니다.');run.adapter?.abort();}
+    if(event.type==='error'){finish(run,event.message??'음성 인식에 실패했습니다.');abort(run);}
     if(event.type==='end')finish(run);
-   });run.adapter.start();}catch{finish(run,'음성 입력을 시작하지 못했습니다. 마이크 권한과 지원 여부를 확인하세요.');run.adapter?.abort();}
+   });run.adapter.start();}catch{finish(run,'음성 입력을 시작하지 못했습니다. 마이크 권한과 지원 여부를 확인하세요.');abort(run);}
   },
-  stop(){const run=current;if(!run||run.stopping)return;run.stopping=true;try{run.adapter.stop();}catch{finish(run,'음성 입력을 종료하지 못했습니다.');run.adapter?.abort();}},
-  cancel(){const run=current;if(!run)return;current=null;run.adapter?.abort();state({active:false,message:'음성 입력을 취소했습니다. 기존 입력은 유지됩니다.'});}
+  stop(){const run=current;if(!run||run.stopping)return;run.stopping=true;
+   run.finishTimer=setTimeout(()=>{if(current!==run)return;finish(run,'음성 입력 종료를 확인하지 못했습니다. 입력창으로 돌아왔습니다.');abort(run);},3000);
+   try{run.adapter.stop();}catch{finish(run,'음성 입력을 종료하지 못했습니다.');abort(run);}},
+  cancel(){const run=current;if(!run)return;current=null;clearTimeout(run.finishTimer);abort(run);state({active:false,message:'음성 입력을 취소했습니다. 기존 입력은 유지됩니다.'});}
  };
 }
 const errors={'aborted':'브라우저가 음성 인식을 취소했습니다 (aborted). 아이폰은 Siri 활성화 여부를 확인하고, 홈 화면 앱에서 발생했다면 같은 주소를 Safari에서 열어 비교해 주세요. 계속되면 기기 키보드의 받아쓰기를 이용하세요.','not-allowed':'마이크 또는 음성 인식 권한이 거부됐습니다. 기기 설정에서 확인하세요.','audio-capture':'사용할 수 있는 마이크가 없습니다.','network':'음성 인식 연결이 끊겼습니다. 다시 시작해 주세요.','no-speech':'음성이 들리지 않았습니다.','language-not-supported':'한국어 음성 인식을 지원하지 않습니다.','service-not-allowed':'이 브라우저에서는 음성 인식을 사용할 수 없습니다.'};

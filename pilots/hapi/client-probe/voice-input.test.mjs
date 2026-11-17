@@ -31,3 +31,14 @@ test('keyboard dictation hint disappears after five seconds or typing without lo
  footer.children[0].onclick();const dismiss=form.status.children.find(x=>x.id==='voice-dismiss');assert.ok(dismiss);dismiss.onclick();assert.equal(form.status.hidden,true);
  footer.children[0].onclick();keyboard.onclick();Recognition.prototype.start=function(){this.onstart?.();};footer.children[0].onclick();t.mock.timers.tick(5000);prompt.dispatchEvent(new Event('input'));assert.equal(form.status.hidden,false);assert.equal(dismiss.hidden,true);voice.cancel();
 });
+
+test('capture cleanup failures must not leave the composer locked or block the next attempt',()=>{
+ let emit;const states=[];const voice=createVoiceDraft({context:()=> 'one',read:()=> '초안',write(){assert.fail('cancel must not write');},state:s=>states.push(s),adapter:cb=>{emit=cb;return {start(){},stop(){},abort(){throw Error('recognizer unavailable');}}}});
+ voice.start();assert.doesNotThrow(()=>voice.cancel());assert.equal(voice.active,false);assert.equal(states.at(-1).active,false);
+ voice.start();assert.doesNotThrow(()=>emit({type:'error',message:'권한 거부'}));assert.equal(states.at(-1).active,false);
+});
+test('missing native stop callback has a bounded wait and late results cannot change the draft',t=>{
+ t.mock.timers.enable({apis:['setTimeout']});let emit,aborts=0;const states=[];const voice=createVoiceDraft({context:()=> 'one',read:()=> '초안',write(){assert.fail('unconfirmed finish must not write');},state:s=>states.push(s),adapter:cb=>{emit=cb;return {start(){},stop(){},abort(){aborts++;}}}});
+ voice.start();voice.stop();t.mock.timers.tick(3000);assert.equal(voice.active,false);assert.equal(states.at(-1).active,false);assert.equal(aborts,1);
+ emit({type:'result',text:'늦게 도착'});emit({type:'end'});assert.equal(voice.active,false);
+});
