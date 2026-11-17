@@ -622,7 +622,7 @@ function renderWorkspace(){
  const cards=trialSessions.map(c=>({config:c,...sessionPresentation({...c,firstPrompt:firstPrompts.get(c.id)},sessionCards.get(c.id)?.snapshot,{stale:sessionCards.get(c.id)?.stale}),selected:c.id===sessionId}));
 
  const groups=workspaceHierarchy(projectCatalog,cards);groups.sort((a,b)=>a.label.localeCompare(b.label));
- $('server-summary').textContent='프로젝트 '+groups.length+' · 작업공간 '+projectCatalog.length+' · 세션 '+trialSessions.length;
+ $('server-summary').textContent=['프로젝트 '+groups.length,projectCatalog.length?'작업공간 '+projectCatalog.length:'','대화 '+trialSessions.length].filter(Boolean).join(' · ');
  $('project-empty').hidden=groups.length>0;
  const signature=JSON.stringify([cards,projectCatalog,selectedProject,query,busy,taskCreating,sidebarDisplay,[...collapsedProjects],!$('new-task-panel').hidden]);
  if(signature!==cardSignature){
@@ -1115,7 +1115,8 @@ function renderSettings(){
  $('model-name').textContent=({claude:'Claude',codex:'Codex'})[session?.metadata?.flavor]??'에이전트';
  const extraOn=settingsOwner===sessionId?(settingsData?.extras??[]).filter(e=>e.current==='fast'||e.current==='plan').map(e=>e.current==='fast'?'Fast':'계획'):[];
  const view=settingsOwner===sessionId?settingsData:null,modelInfo=modelReadout(session,view,messages);
- $('model-chip').textContent=`모델: ${modelInfo.chip}${extraOn.length?' · '+extraOn.join(' · '):''} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
+ // The chip shows the value only; where it came from stays in the tooltip.
+ $('model-chip').textContent=`모델: ${modelInfo.chip.split(' · ')[0]}${extraOn.length?' · '+extraOn.join(' · '):''} ▾`;$('effort-chip').textContent=`추론: ${current.effort??'자동'} ▾`;
  $('permissionMode-chip').textContent=`액세스: ${settingsData?.permissionModes?.find(o=>o.value===current.permissionMode)?.label??permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'} ▾`;
  $('model-chip').title=modelInfo.detail;$('effort-chip').title='자동 값은 실제 실행값을 확정하지 않습니다.';
  $('settings-current').textContent=modelInfo.detail+`\n서버 설정: 추론 ${label(current.effort)} / 액세스 ${permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'}`;
