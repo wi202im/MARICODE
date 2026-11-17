@@ -137,7 +137,7 @@ export function claudeImports({directory,destination,project,machineId}){
    try{
     let existing;try{existing=JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
     if(existing){admitted=true;
-     if(existing.source!==source||existing.fingerprint!==input.fingerprint||existing.project!==project||existing.machineId!==machineId)throw Error('이미 가져온 기록과 선택이 다릅니다. 기존 세션을 확인하세요.');
+     if(existing.source!==source||existing.fingerprint!==input.fingerprint||existing.project!==project||existing.machineId!==machineId)throw Object.assign(Error('이미 가져온 기록과 선택이 다릅니다. 기존 세션을 확인하세요.'),{rejected:true,userMessage:'가져오기를 시작하지 않았습니다. 이미 가져온 기록과 선택이 다릅니다. 기존 세션을 확인하세요.'});
      // Never re-POST an uncertain registration, including after web restart.
      return await observe(existing,path,lookup);
     }

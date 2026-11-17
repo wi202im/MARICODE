@@ -273,8 +273,9 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
     // Recover an existing attempt before preparing/restarting anything. A check
     // needs only the durable import journal and Hub, not a healthy CLI/Runner.
     const priorMachine=await exists(join(c.directory,'runner-home/settings.json'))?await machineId(c):null;
-    const prior=await makeImports(priorMachine).import({...input,source},callbacks,true);
-    if(prior.state==='none'){const existing=await api.existingImport(authorization,'claude',p.path,input.id);if(existing)return {state:'registered',id:existing,existing:true};}
+    // A journal from an earlier runner generation (its ID changes) is refused; the Hub session still opens.
+    let prior,refused;try{prior=await makeImports(priorMachine).import({...input,source},callbacks,true);}catch(error){if(!error.rejected)throw error;refused=error;}
+    if(refused||prior.state==='none'){const existing=await api.existingImport(authorization,'claude',p.path,input.id);if(existing)return {state:'registered',id:existing,existing:true};if(refused)throw refused;}
     if(action==='check'||prior.state!=='none')return prior;
     // No import was admitted. Errors below must not masquerade as a lost
     // registration, but Runner's own lifecycle uncertainty remains protected.

@@ -549,6 +549,15 @@ for(const agent of ['codex','claude'])test(`${agent} import of a conversation al
  for(const action of ['import','check']){const r=await f.service[agent+'Import']('Bearer fixture',f.input,action);assert.deepEqual(r,{state:'registered',id:'existing-session',existing:true},action);}
  assert.equal(f.starts,0);assert.equal(f.posts,0);
 });
+test('claude re-import opens the Hub session even when its import journal came from an earlier runner',async t=>{
+ const {createHash}=await import('node:crypto'),{realpath}=await import('node:fs/promises');
+ const f=await importFixture(t,'claude',(path,id)=>[{id:'existing-session',metadata:{flavor:'claude',path,machineId:'m-older-runner',claudeSessionId:id}}]);
+ const path=await realpath(join(f.input.source,'..'));
+ const journal=join(join(f.input.source,'..'),'runner.claude-imports');await mkdir(journal);
+ await writeFile(join(journal,createHash('sha256').update(path+'\0'+f.input.id).digest('hex')+'.json'),JSON.stringify({state:'registered',hubId:'existing-session',nativeId:f.input.id,source:f.input.source,fingerprint:'1'.repeat(64),project:path,machineId:'m-older-runner'}));
+ for(const action of ['import','check'])assert.deepEqual(await f.service.claudeImport('Bearer fixture',f.input,action),{state:'registered',id:'existing-session',existing:true},action);
+ assert.equal(f.starts,0);assert.equal(f.posts,0);
+});
 test('codex import failures before registration are reported as not started, never as an unknown result',async t=>{
  const f=await importFixture(t,'codex',(path,id)=>[{id:'other-folder',metadata:{flavor:'codex',path:path+'-elsewhere',machineId:'m',agentSessionId:id}}]);
  await assert.rejects(f.service.codexImport('Bearer fixture',f.input,'import'),e=>e.rejected===true&&e.reason==='IMPORT_RUNNER_PREPARE'&&e.userMessage.startsWith('가져오기를 시작하지 않았습니다.')&&!e.userMessage.includes('private runner detail'));

@@ -39,7 +39,15 @@ test('lost registration response only checks fixed ID; changed selection and dup
  const callbacks={register:async record=>{posts++;stored={id:record.hubId,active:false,metadata:record.metadata};throw Error('lost');},lookup:async()=>stored};
  await assert.rejects(f.api.import(request,callbacks));assert.equal(posts,1);
  const result=await f.api.import(request,callbacks);assert.equal(result.state,'registered');assert.equal(posts,1);
- await assert.rejects(f.api.import({...request,fingerprint:'0'.repeat(64)},callbacks));assert.equal(posts,1);
+ await assert.rejects(f.api.import({...request,fingerprint:'0'.repeat(64)},callbacks),e=>e.rejected===true);assert.equal(posts,1);
+});
+test('a journal left by an earlier runner is a definite refusal, never an unknown result that locks the panel',async t=>{
+ const f=await fixture(t),row=(await f.api.list(f.source)).sessions[0],request={source:f.source,...row};let posts=0,stored;
+ const callbacks={register:async record=>{posts++;stored={id:record.hubId,active:false,metadata:record.metadata};},lookup:async()=>stored};
+ await f.api.import(request,callbacks);
+ const later=claudeImports({directory:join(f.root,'imports'),destination:f.destination,project:f.project,machineId:randomUUID()});
+ for(const check of [false,true])await assert.rejects(later.import(request,callbacks,check),e=>e.rejected===true&&e.userMessage.startsWith('가져오기를 시작하지 않았습니다.'));
+ assert.equal(posts,1);
 });
 test('copies only selected subagent transcripts, never account settings or other sessions',async t=>{
  const f=await fixture(t);await mkdir(join(f.folder,f.id,'subagents'),{recursive:true});await writeFile(join(f.folder,f.id,'subagents','agent-abc.jsonl'),f.raw);
