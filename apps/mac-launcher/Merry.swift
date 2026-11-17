@@ -393,7 +393,7 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         if webView === self.webView && local && target.path == "/workspace" && navigationAction.targetFrame?.isMainFrame == true && !authenticating {
             decisionHandler(.cancel); restoreDesktop(); return
         }
-        switch desktopNavigation(target, mainFrame: navigationAction.targetFrame?.isMainFrame == true, linkActivated: navigationAction.navigationType == .linkActivated) {
+        switch desktopNavigation(target, mainFrame: navigationAction.targetFrame.map { $0.isMainFrame }, linkActivated: navigationAction.navigationType == .linkActivated) {
         case .allow: decisionHandler(.allow)
         case .openExternally: decisionHandler(.cancel); NSWorkspace.shared.open(target)
         case .cancel: decisionHandler(.cancel)

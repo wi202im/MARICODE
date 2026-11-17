@@ -74,9 +74,10 @@ func desktopSetupNeedsKey(_ target: URL, setupKey: String?) -> Bool {
 enum DesktopNavigationDecision { case allow, openExternally, cancel }
 // Only this Mac's workspace loads inside the app view. A clicked https link opens in the browser;
 // any other outside navigation (redirects, scripts, frames) is dropped.
-func desktopNavigation(_ target: URL, mainFrame: Bool, linkActivated: Bool) -> DesktopNavigationDecision {
+// mainFrame nil: a link opening a new window (target="_blank"), which WebKit asks about before any frame exists.
+func desktopNavigation(_ target: URL, mainFrame: Bool?, linkActivated: Bool) -> DesktopNavigationDecision {
     if target.scheme == "http" && target.host == "127.0.0.1" && target.port == 61192 { return .allow }
     if target.absoluteString == "about:blank" { return .allow }
-    if target.scheme == "https" && mainFrame && linkActivated { return .openExternally }
+    if target.scheme == "https" && mainFrame != false && linkActivated { return .openExternally }
     return .cancel
 }

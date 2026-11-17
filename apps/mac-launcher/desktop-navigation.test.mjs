@@ -81,6 +81,9 @@ assert(desktopNavigation(URL(string: "about:blank")!, mainFrame: false, linkActi
 assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: true, linkActivated: true) == .openExternally)
 assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: true, linkActivated: false) == .cancel)
 assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: false, linkActivated: true) == .cancel)
+// A clicked target="_blank" link (chat replies) has no target frame yet: it opens in the browser; a script-opened window does not.
+assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: nil, linkActivated: true) == .openExternally)
+assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: nil, linkActivated: false) == .cancel)
 assert(desktopNavigation(URL(string: "http://example.com/")!, mainFrame: true, linkActivated: true) == .cancel)
 assert(desktopNavigation(URL(string: "http://127.0.0.1:61193/")!, mainFrame: true, linkActivated: true) == .cancel)
 print("PASS")
