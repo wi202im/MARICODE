@@ -18,11 +18,16 @@ test('browser aborted while finishing is normal completion; unexpected abort exp
  const other=[];browserVoiceAdapter(Recognition,e=>other.push(e)).start();recognition.onerror({error:'aborted'});assert.equal(other[0].type,'error');assert.match(other[0].message,/aborted/);
 });
 
-test('failed browser recognition offers keyboard dictation without losing the draft or restarting capture',()=>{
+test('keyboard dictation hint disappears after five seconds or typing without losing the draft',t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
  class Element extends EventTarget{constructor(){super();this.children=[];this.hidden=false;this.value='기존 초안';}setAttribute(){}append(...items){this.children.push(...items);}before(item){this.status=item;}insertBefore(item){this.children.push(item);}focus(){this.focused=true;}}
  const doc=new Element();doc.createElement=()=>new Element();const form=new Element(),prompt=new Element(),footer=new Element();form.querySelector=selector=>selector==='#send'?null:footer;
  let recognition,starts=0;class Recognition{constructor(){recognition=this;}start(){starts++;this.onerror({error:'aborted'});}abort(){}}
  const win=new Element();win.SpeechRecognition=Recognition;win.isSecureContext=true;win.confirm=()=>true;
- setupVoiceInput({form,prompt,context:()=> 'session',changed(){},window:win,document:doc});
+ const voice=setupVoiceInput({form,prompt,context:()=> 'session',changed(){},window:win,document:doc});
  footer.children[0].onclick();const keyboard=form.status.children.find(x=>x.id==='voice-keyboard');assert.ok(keyboard);assert.equal(keyboard.hidden,false);keyboard.onclick();assert.equal(prompt.focused,true);assert.equal(prompt.readOnly,false);assert.equal(prompt.value,'기존 초안');assert.equal(starts,1);
+ assert.equal(form.status.hidden,false);t.mock.timers.tick(5000);assert.equal(form.status.hidden,true);
+ footer.children[0].onclick();keyboard.onclick();prompt.dispatchEvent(new Event('input'));assert.equal(form.status.hidden,true);assert.equal(prompt.value,'기존 초안');
+ footer.children[0].onclick();const dismiss=form.status.children.find(x=>x.id==='voice-dismiss');assert.ok(dismiss);dismiss.onclick();assert.equal(form.status.hidden,true);
+ footer.children[0].onclick();keyboard.onclick();Recognition.prototype.start=function(){this.onstart?.();};footer.children[0].onclick();t.mock.timers.tick(5000);prompt.dispatchEvent(new Event('input'));assert.equal(form.status.hidden,false);assert.equal(dismiss.hidden,true);voice.cancel();
 });

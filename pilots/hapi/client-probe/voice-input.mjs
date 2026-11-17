@@ -39,28 +39,32 @@ export function setupVoiceInput({form,prompt,context,changed,window:win=window,d
  const button=doc.createElement('button');button.type='button';button.id='voice-input';button.title='음성 입력';button.setAttribute('aria-label','음성 입력 시작');button.setAttribute('aria-pressed','false');
  button.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>';
  const status=doc.createElement('div');status.className='voice-status';status.hidden=true;status.setAttribute('role','status');
- const label=doc.createElement('span'),preview=doc.createElement('span'),cancel=doc.createElement('button');cancel.type='button';cancel.textContent='취소';const keyboard=doc.createElement('button');keyboard.type='button';keyboard.id='voice-keyboard';keyboard.textContent='키보드 받아쓰기';keyboard.hidden=true;status.append(label,preview,cancel,keyboard);form.before(status);
+ const label=doc.createElement('span'),preview=doc.createElement('span'),cancel=doc.createElement('button');cancel.type='button';cancel.textContent='취소';const keyboard=doc.createElement('button');keyboard.type='button';keyboard.id='voice-keyboard';keyboard.textContent='키보드 받아쓰기';keyboard.hidden=true;const dismiss=doc.createElement('button');dismiss.type='button';dismiss.id='voice-dismiss';dismiss.textContent='닫기';dismiss.hidden=true;status.append(label,preview,cancel,keyboard,dismiss);form.before(status);
  // Mic sits beside send (dictate, then send) and stays visible so dictation can continue after text exists.
  form.querySelector('.composer-footer').insertBefore(button,form.querySelector('#send'));
- let native=null,deadline=null;
+ let native=null,deadline=null,hintTimer=null;
  const adapter=emit=>{
   if(!bridge)return browserVoiceAdapter(Recognition,emit);
   const id=win.crypto.randomUUID();native={id,emit};
   return {start:()=>bridge.postMessage('voice-start:'+id),stop:()=>bridge.postMessage('voice-stop:'+id),abort(){if(native?.id===id)native=null;bridge.postMessage('voice-cancel:'+id);}};
  };
  const voice=createVoiceDraft({context,read:()=>prompt.value,write:value=>{prompt.value=value;prompt.dispatchEvent(new Event('input',{bubbles:true}));},adapter,state:s=>{
-  status.hidden=false;label.textContent=s.message;preview.textContent=s.text??'';cancel.hidden=!s.active;keyboard.hidden=!!bridge||s.active;button.setAttribute('aria-pressed',String(s.active));button.setAttribute('aria-label',s.active?'음성 입력 마치기':'음성 입력 시작');prompt.readOnly=s.active;
+  clearTimeout(hintTimer);hintTimer=null;dismiss.hidden=s.active;status.hidden=false;label.textContent=s.message;preview.textContent=s.text??'';cancel.hidden=!s.active;keyboard.hidden=!!bridge||s.active;button.setAttribute('aria-pressed',String(s.active));button.setAttribute('aria-label',s.active?'음성 입력 마치기':'음성 입력 시작');prompt.readOnly=s.active;
   if(s.active&&!deadline)deadline=setTimeout(()=>voice.stop(),60000);else if(!s.active){clearTimeout(deadline);deadline=null;native=null;}changed();
  }});
  win.maricodeVoiceEvent=e=>{if(native?.id===e?.id)native.emit(e);};
  button.onclick=()=>{
   if(voice.active){voice.stop();return;}
+  clearTimeout(hintTimer);hintTimer=null;dismiss.hidden=false;cancel.hidden=true;keyboard.hidden=true;preview.textContent='';
   if(!context()){status.hidden=false;label.textContent='대화를 선택한 뒤 음성 입력을 시작하세요.';return;}
   if(!bridge&&(!Recognition||!win.isSecureContext)){status.hidden=false;keyboard.hidden=false;label.textContent='이 환경은 음성 입력을 지원하지 않습니다. 기기 키보드의 받아쓰기를 이용하세요.';return;}
   if(!bridge&&!win.confirm('브라우저 음성 인식은 음성을 외부 인식 서비스로 보낼 수 있습니다. 회사·민감한 내용에는 사용하지 마세요. 한국어 음성 입력을 시작할까요?'))return;
   voice.start();
  };
- keyboard.onclick=()=>{voice.cancel();label.textContent='키보드의 마이크를 눌러 받아쓰기를 시작하세요. 마이크가 없으면 기기의 받아쓰기 설정을 확인하세요.';prompt.focus();};
+ const hideNotice=()=>{if(voice.active)return;clearTimeout(hintTimer);hintTimer=null;status.hidden=true;};
+ dismiss.onclick=hideNotice;
+ prompt.addEventListener('input',hideNotice);
+ keyboard.onclick=()=>{voice.cancel();clearTimeout(hintTimer);status.hidden=false;keyboard.hidden=true;label.textContent='키보드의 마이크로 받아쓰기를 시작하세요.';prompt.focus();hintTimer=setTimeout(hideNotice,5000);};
  cancel.onclick=()=>voice.cancel();
  doc.addEventListener('visibilitychange',()=>{if(doc.hidden)voice.cancel();});win.addEventListener('pagehide',()=>voice.cancel());
  form.addEventListener('submit',e=>{if(voice.active){e.preventDefault();e.stopImmediatePropagation();label.textContent='음성 입력을 먼저 마친 뒤 내용을 확인하고 보내세요.';}},true);
