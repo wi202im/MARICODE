@@ -27,6 +27,8 @@ export function createBranchPin({api,section,banner,document:doc=globalThis.docu
   if(!id){section.replaceChildren(head,el('p','세션을 선택하세요.'));return;}
   if(!state){section.replaceChildren(head,el('p','브랜치를 확인하고 있습니다…'));return;}
   const rows=[head];if(state.error)rows.push(el('p',state.error,'branch-error'));
+  // A failed read says nothing about the folder; show the error alone.
+  if(state.error&&!state.repos){section.replaceChildren(...rows,button('다시 확인',()=>load()));return;}
   const repos=state.repos??[];
   if(!state.pin){
    rows.push(el('p',repos.length?'브랜치와 상관없이 진행하는 세션입니다. 고정하면 아래 브랜치에서만 진행하고, 바뀌면 보내기 전에 알립니다.':'세션 폴더와 바로 아래 폴더에서 Git 저장소를 찾지 못했습니다.'));

@@ -63,3 +63,12 @@ test('an up-to-date branch or a remote that cannot be checked sends without aski
  const banner=doc.createElement('div'),ui=createBranchPin({api,section:doc.createElement('section'),banner,document:doc});
  assert.equal(await ui.beforeSend(sid),'send');fail=true;assert.equal(await ui.beforeSend(sid),'send');assert.equal(banner.children.length,0);
 });
+test('when branches cannot be read, only the error shows, not a claim that there is no repository',async()=>{
+ const doc=fakeDocument(),section=doc.createElement('section');
+ const ui=createBranchPin({api:async()=>{throw Error('이 화면에서 할 수 없는 요청입니다 (오류 403).');},section,banner:doc.createElement('div'),document:doc});
+ await ui.load(sid);
+ const texts=section.children.map(n=>n.textContent);
+ assert.ok(texts.includes('이 화면에서 할 수 없는 요청입니다 (오류 403).'));
+ assert.ok(!texts.some(t=>/찾지 못했습니다/.test(t??'')),texts.join(' | '));
+ assert.ok(find(doc,'다시 확인'),'retry offered');
+});
