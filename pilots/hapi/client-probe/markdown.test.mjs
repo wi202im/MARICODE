@@ -24,3 +24,8 @@ test('replies make bare URLs, project paths and path-like code clickable',()=>{
  assert.equal(pathTarget('/Users/me/x/theme.css#L3'),'/Users/me/x/theme.css');
  for(const v of ['npm test','1.1.1','--content-width','https://x.test/a.js','a<b>.js'])assert.equal(pathTarget(v),null);
 });
+test('numbered items split by blank lines or bullet details keep their own numbers',()=>{
+ const lists=parseMarkdown('1. **First**\n\n- detail\n\n2. **Second**\n\n- detail\n\n3. Third\n4. Fourth').filter(b=>b.type==='list'&&b.ordered);
+ assert.deepEqual(lists.map(b=>b.start),[1,2,3]);assert.deepEqual(lists[2].items,['Third','Fourth']);
+ assert.equal(parseMarkdown('- a\n- b')[0].start,undefined);
+});

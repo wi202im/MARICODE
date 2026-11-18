@@ -39,7 +39,7 @@ export function parseMarkdown(text){
   if(fence){const body=[];i++;while(i<lines.length&&!new RegExp('^\\s*'+fence[1][0]+'{'+fence[1].length+',}\\s*$').test(lines[i]))body.push(lines[i++]);if(i<lines.length)i++;out.push({type:'code',language:fence[2].trim().split(/\s/)[0],text:body.join('\n')});continue;}
   const h=/^(#{1,6})\s+(.+)$/.exec(lines[i]);if(h){out.push({type:'heading',level:Number(h[1].length),text:h[2]});i++;continue;}
   if(divider(lines[i+1])){const header=cells(lines[i]),rows=[];i+=2;while(i<lines.length&&lines[i].includes('|')&&lines[i].trim())rows.push(cells(lines[i++]));out.push({type:'table',header,rows});continue;}
-  if(listItem(lines[i])){const items=[],ordered=/^\s*\d/.test(lines[i]);while(i<lines.length&&listItem(lines[i])&&/^\s*\d/.test(lines[i])===ordered)items.push(listItem(lines[i++])[1]);out.push({type:'list',ordered,items});continue;}
+  if(listItem(lines[i])){const items=[],start=/^\s*(\d+)/.exec(lines[i])?.[1],ordered=!!start;while(i<lines.length&&listItem(lines[i])&&/^\s*\d/.test(lines[i])===ordered)items.push(listItem(lines[i++])[1]);out.push({type:'list',ordered,items,...(ordered?{start:Number(start)}:{})});continue;}
   if(/^>/.test(lines[i])){const body=[];while(i<lines.length&&/^>/.test(lines[i]))body.push(lines[i++].replace(/^>\s?/,''));out.push({type:'quote',text:body.join('\n')});continue;}
   const body=[lines[i++]];while(i<lines.length&&lines[i].trim()&&!special(i))body.push(lines[i++]);out.push({type:'paragraph',text:body.join('\n')});
  }return out;
@@ -56,7 +56,7 @@ export function renderMarkdown(text,doc=document){
  for(const b of parseMarkdown(text)){
   if(b.type==='code'){const box=doc.createElement('section'),bar=doc.createElement('div'),name=doc.createElement('span'),pre=doc.createElement('pre'),code=doc.createElement('code');box.className='code-block';bar.className='code-toolbar';name.textContent=b.language||'코드';bar.append(name,copyButton(b.text,'코드 복사',doc));code.textContent=b.text;pre.append(code);box.append(bar,pre);root.append(box);continue;}
   if(b.type==='table'){const wrap=doc.createElement('div'),table=doc.createElement('table'),head=doc.createElement('thead'),body=doc.createElement('tbody');wrap.className='markdown-table';wrap.tabIndex=0;wrap.setAttribute('aria-label','표 · 가로로 스크롤할 수 있습니다');for(const [index,row] of [b.header,...b.rows].entries()){const tr=doc.createElement('tr');for(const value of row){const cell=doc.createElement(index===0?'th':'td');inline(cell,value,doc);tr.append(cell);} (index===0?head:body).append(tr);}table.append(head,body);wrap.append(table);root.append(wrap);continue;}
-  if(b.type==='list'){const e=doc.createElement(b.ordered?'ol':'ul');for(const item of b.items){const li=doc.createElement('li');inline(li,item,doc);e.append(li);}root.append(e);continue;}
+  if(b.type==='list'){const e=doc.createElement(b.ordered?'ol':'ul');if(b.start>1)e.setAttribute('start',b.start);for(const item of b.items){const li=doc.createElement('li');inline(li,item,doc);e.append(li);}root.append(e);continue;}
   const e=doc.createElement(b.type==='heading'?'h'+Math.min(b.level+1,6):b.type==='quote'?'blockquote':'p');inline(e,b.text,doc);root.append(e);
  }return root;
 }
