@@ -156,3 +156,19 @@
 
 /* Files: the machine line is noise now that files are always on this Mac; refresh is an icon beside the folder title. */
 .live-files .file-server{display:none}.live-files{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;align-content:start}.live-files>*{grid-column:1/-1}.live-files>#path{grid-column:1;grid-row:1;margin:0}.live-files>.file-navigation{grid-column:2;grid-row:1;margin:0}.live-files .file-navigation button{font-size:11px;min-height:24px;padding:2px 8px}.live-files #files-refresh{width:24px;height:24px;padding:0;font-size:16px;color:var(--muted);border-color:transparent}.live-files #files-refresh:not(:hover){background:transparent}.live-files>#entries{margin-top:8px}
+/* Light theme code colours (GitHub light palette) over vendor/hljs-github-dark.css. */
+:root[data-theme=light] .hljs{color:#1f2328;background:transparent}
+:root[data-theme=light] .hljs-doctag,:root[data-theme=light] .hljs-keyword,:root[data-theme=light] .hljs-meta .hljs-keyword,:root[data-theme=light] .hljs-template-tag,:root[data-theme=light] .hljs-template-variable,:root[data-theme=light] .hljs-type,:root[data-theme=light] .hljs-variable.language_{color:#cf222e}
+:root[data-theme=light] .hljs-title,:root[data-theme=light] .hljs-title.class_,:root[data-theme=light] .hljs-title.class_.inherited__,:root[data-theme=light] .hljs-title.function_{color:#8250df}
+:root[data-theme=light] .hljs-attr,:root[data-theme=light] .hljs-attribute,:root[data-theme=light] .hljs-literal,:root[data-theme=light] .hljs-meta,:root[data-theme=light] .hljs-number,:root[data-theme=light] .hljs-operator,:root[data-theme=light] .hljs-selector-attr,:root[data-theme=light] .hljs-selector-class,:root[data-theme=light] .hljs-selector-id,:root[data-theme=light] .hljs-variable{color:#0550ae}
+:root[data-theme=light] .hljs-meta .hljs-string,:root[data-theme=light] .hljs-regexp,:root[data-theme=light] .hljs-string{color:#0a3069}
+:root[data-theme=light] .hljs-built_in,:root[data-theme=light] .hljs-symbol{color:#953800}
+:root[data-theme=light] .hljs-code,:root[data-theme=light] .hljs-comment,:root[data-theme=light] .hljs-formula{color:#6e7781}
+:root[data-theme=light] .hljs-name,:root[data-theme=light] .hljs-quote,:root[data-theme=light] .hljs-selector-pseudo,:root[data-theme=light] .hljs-selector-tag{color:#116329}
+:root[data-theme=light] .hljs-subst{color:#1f2328}
+:root[data-theme=light] .hljs-section{color:#0550ae;font-weight:700}
+:root[data-theme=light] .hljs-bullet{color:#953800}
+:root[data-theme=light] .hljs-emphasis{color:#1f2328;font-style:italic}
+:root[data-theme=light] .hljs-strong{color:#1f2328;font-weight:700}
+:root[data-theme=light] .hljs-addition{color:#116329;background-color:#dafbe1}
+:root[data-theme=light] .hljs-deletion{color:#82071e;background-color:#ffebe9}

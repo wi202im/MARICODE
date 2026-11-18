@@ -86,6 +86,21 @@ assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: nil, l
 assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: nil, linkActivated: false) == .cancel)
 assert(desktopNavigation(URL(string: "http://example.com/")!, mainFrame: true, linkActivated: true) == .cancel)
 assert(desktopNavigation(URL(string: "http://127.0.0.1:61193/")!, mainFrame: true, linkActivated: true) == .cancel)
+for action in ["theme-light", "theme-dark"] {
+ assert(desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:true,action:action))
+ assert(!desktopCommandAllowed(scheme:"https",host:"mini.tail123.ts.net",port:443,mainFrame:true,action:action))
+ assert(!desktopCommandAllowed(scheme:"http",host:"127.0.0.1",port:61192,mainFrame:false,action:action))
+}
+assert(desktopTheme(action: "theme-light") == "light")
+assert(desktopTheme(action: "theme-dark") == "dark")
+assert(desktopTheme(action: "theme-neon") == nil)
+assert(desktopSavedTheme(nil) == "dark")
+assert(desktopSavedTheme("light") == "light")
+assert(desktopSavedTheme("neon") == "dark")
+let dark = desktopChromeColors(theme: "dark"), light = desktopChromeColors(theme: "light")
+assert(dark.dark && !light.dark)
+assert(dark.background == [0.075, 0.075, 0.086] && dark.baseline == [0.16, 0.16, 0.18])
+assert(light.background.allSatisfy { $0 > 0.9 } && light.baseline.allSatisfy { $0 > 0.8 && $0 < 0.95 })
 print("PASS")
 `);
  execFileSync('/usr/bin/swiftc',[resolve('apps/mac-launcher/DesktopNavigation.swift'),join(dir,'main.swift'),'-o',join(dir,'check')],{stdio:'pipe'});

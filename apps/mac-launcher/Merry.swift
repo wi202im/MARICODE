@@ -33,6 +33,8 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     var connectionTimer: Timer?
     var productTitle: String { ["Maricode", Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ") }
     let pageTitle = NSTextField(labelWithString: "")
+    // Window frame (top bar and its bottom line); recoloured by the web view's theme choice.
+    let chromeView = NSView(), chromeBaseline = NSView()
     let backButton = NSButton()
     var utilityTrail = DesktopUtilityTrail()
     let browserContainer = NSView()
@@ -96,10 +98,10 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         }
         appUpdater.onAvailable = { [weak self] version in self?.updateNotice.isHidden = version == nil; self?.updateNotice.title = version.map { "업데이트 \($0)" } ?? "새 업데이트" }
         let controls = NSStackView(views: [updateNotice, status, computer, rightPanelButton]); controls.spacing = 12
-        let chrome = NSView(); chrome.wantsLayer = true
-        chrome.layer?.backgroundColor = NSColor(srgbRed: 0.075, green: 0.075, blue: 0.086, alpha: 1).cgColor
+        let chrome = chromeView; chrome.wantsLayer = true
         for view in [chrome, browserContainer] { view.translatesAutoresizingMaskIntoConstraints = false; window.contentView!.addSubview(view) }
-        let baseline = NSView(); baseline.wantsLayer = true; baseline.layer?.backgroundColor = NSColor(srgbRed: 0.16, green: 0.16, blue: 0.18, alpha: 1).cgColor
+        let baseline = chromeBaseline; baseline.wantsLayer = true
+        applyWindowTheme(desktopSavedTheme(UserDefaults.standard.string(forKey: "MaricodeTheme")))
         for view in [baseline, controls, leftPanelButton, backButton, pageTitle] { view.translatesAutoresizingMaskIntoConstraints = false; chrome.addSubview(view) }
         let content = window.contentView!
         NSLayoutConstraint.activate([
@@ -318,11 +320,22 @@ final class MerryDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         }
         reopenDevicesAfterRestart = action == "remote-settings"; startWeb()
     }
+    // Light/dark frame to match the page; remembered so the next launch opens in the same theme.
+    func applyWindowTheme(_ theme: String) {
+        let c = desktopChromeColors(theme: theme)
+        let background = NSColor(srgbRed: c.background[0], green: c.background[1], blue: c.background[2], alpha: 1)
+        window.appearance = NSAppearance(named: c.dark ? .darkAqua : .aqua)
+        window.backgroundColor = background
+        chromeView.layer?.backgroundColor = background.cgColor
+        chromeBaseline.layer?.backgroundColor = NSColor(srgbRed: c.baseline[0], green: c.baseline[1], blue: c.baseline[2], alpha: 1).cgColor
+        UserDefaults.standard.set(desktopSavedTheme(theme), forKey: "MaricodeTheme")
+    }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
         guard (message.webView === webView || message.webView === utilityViews["settings"]), let rawAction = message.body as? String else { return }
         let action = rawAction.hasPrefix("voice-start:") ? "voice-start" : rawAction.hasPrefix("voice-stop:") ? "voice-stop" : rawAction.hasPrefix("voice-cancel:") ? "voice-cancel" : rawAction.hasPrefix("pairing-prepare:") ? "pairing-prepare" : rawAction.hasPrefix("pairing-cancel:") ? "pairing-cancel" : rawAction.hasPrefix("quit-cancelled:") ? "quit-cancelled" : rawAction.hasPrefix("pairing-qr:") ? "pairing-qr" : rawAction.hasPrefix("quit-ready:") ? "quit-ready" : rawAction.hasPrefix("choose-claude-source:") ? "choose-claude-source" : rawAction
         guard desktopCommandAllowed(scheme: origin.protocol, host: origin.host, port: origin.port, mainFrame: message.frameInfo.isMainFrame, action: action) else { return }
+        if let theme = desktopTheme(action: action) { applyWindowTheme(theme); return }
         if ["voice-start", "voice-stop", "voice-cancel"].contains(action) {
             guard message.webView === webView, desktopWorkspacePath(webView.url?.path),
                   let request = rawAction.split(separator: ":").last.map(String.init), UUID(uuidString: request) != nil else { return }

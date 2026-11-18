@@ -2,7 +2,7 @@ import Foundation
 
 func desktopCommandAllowed(scheme: String, host: String, port: Int, mainFrame: Bool, action: String) -> Bool {
     mainFrame && scheme == "http" && host == "127.0.0.1" && port == 61192 &&
-        ["voice-start", "voice-stop", "voice-cancel", "quit-ready", "quit-cancelled", "connect", "add-project", "choose-claude-source", "codex", "claude", "configure", "add-agent", "change-project", "remote-settings", "pairing-qr", "pairing-prepare", "pairing-cancel", "remote-start", "remote-stop", "remote-state"].contains(action)
+        ["voice-start", "voice-stop", "voice-cancel", "quit-ready", "quit-cancelled", "connect", "add-project", "choose-claude-source", "codex", "claude", "configure", "add-agent", "change-project", "remote-settings", "pairing-qr", "pairing-prepare", "pairing-cancel", "remote-start", "remote-stop", "remote-state", "theme-light", "theme-dark"].contains(action)
 }
 
 // The QR opens the install guide with the one-time pairing code in the fragment, which browsers do not send to the server.
@@ -80,4 +80,11 @@ func desktopNavigation(_ target: URL, mainFrame: Bool?, linkActivated: Bool) -> 
     if target.absoluteString == "about:blank" { return .allow }
     if target.scheme == "https" && mainFrame != false && linkActivated { return .openExternally }
     return .cancel
+}
+
+// The web view's per-device theme choice (보기 설정) also recolours this window's frame.
+func desktopTheme(action: String) -> String? { ["theme-light": "light", "theme-dark": "dark"][action] }
+func desktopSavedTheme(_ value: String?) -> String { value == "light" ? "light" : "dark" }
+func desktopChromeColors(theme: String) -> (dark: Bool, background: [Double], baseline: [Double]) {
+    theme == "light" ? (false, [0.973, 0.973, 0.973], [0.898, 0.898, 0.898]) : (true, [0.075, 0.075, 0.086], [0.16, 0.16, 0.18])
 }

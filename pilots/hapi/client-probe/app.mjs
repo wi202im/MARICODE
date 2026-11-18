@@ -10,6 +10,7 @@ import {questionForm} from './question-form.mjs';
 import {createAttachmentComposer} from './attachment-composer.mjs';
 import {fitPreviews} from './attachments.mjs';
 import {createUsagePanel} from './usage-panel.mjs';
+import {readTheme,applyTheme,setTheme} from './theme.mjs';
 import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
@@ -41,6 +42,9 @@ const chatDrafts=createChatDrafts(),questionDrafts=new Map();let permissionRende
 function rememberChat(){chatDrafts.save(sessionId,{text:$('prompt').value,note:$('handoff-note').textContent});}
 const sessionCards=new Map(),firstPrompts=new Map();let catalogSerial=0,catalogBusy=false,catalogChecked=null,cardSignature='';
 const collapsedProjects=new Set();
+// Theme is this device's choice (theme-init.js already applied it before paint); tell the Mac app window too.
+applyTheme(document,readTheme(deviceStorage));
+if($('display-theme')){$('display-theme').value=readTheme(deviceStorage);$('display-theme').onchange=()=>setTheme(document,deviceStorage,$('display-theme').value);}
 let sidebarDisplay=displayPreferences();try{sidebarDisplay=displayPreferences(JSON.parse(localStorage.getItem('maricode-display-preferences')));}catch{}
 let navigationEnabled=false,allSessionEntries=[],navigationTarget=null,navigationPending=false;
 let gitView={owner:'',data:null,loading:false,checked:0};
