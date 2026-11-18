@@ -11,7 +11,8 @@ export function nativeClaudeSourcePicker(view=globalThis.window){
   try{view.webkit.messageHandlers.maricode.postMessage('choose-claude-source:'+requestId);}catch(error){clear();reject(error);}
  });
 }
-export function createClaudeImportPanel({element,api,context,opened,changed,pickSource=nativeClaudeSourcePicker()}){
+// openExisting only selects a conversation Maricode already lists (no import-history check, no resume).
+export function createClaudeImportPanel({element,api,context,opened,openExisting=opened,changed,pickSource=nativeClaudeSourcePicker()}){
  const $=id=>element.querySelector('#'+id)??element.ownerDocument.getElementById(id),key='maricode-claude-import-pending';
  let supported={claude:false,codex:false},loading=false,selection=null,owner=null,serial=0,searchedOwner=null,lastChecked=null;
  const freshness=()=>{const label=$('claude-import-updated');if(label)label.textContent=lastChecked?'마지막 확인 '+new Date(lastChecked).toLocaleString()+' · 원본 작업을 마친 뒤 새로고침하세요.':'목록을 확인한 적이 없습니다.';};
@@ -83,7 +84,7 @@ export function createClaudeImportPanel({element,api,context,opened,changed,pick
    if(element.hidden||$('claude-import-start').disabled)return;
    const row=selection.rows.find(r=>r.id===$('claude-import-select').value);if(!row)return;
    if(row.existingId){loading=true;render();let message='이미 Maricode에 있는 대화를 열었습니다. 새로 등록하거나 복사하지 않습니다.';
-    try{await opened(row.existingId,selection.agent);}catch{message='기존 대화를 열지 못했습니다. 세션 목록에서 직접 열어 주세요.';}
+    try{await openExisting(row.existingId,selection.agent);}catch(error){message=error?.shown===true?error.message:'기존 대화를 열지 못했습니다. 세션 목록에서 직접 열어 주세요.';}
     finally{loading=false;render();$('claude-import-status').textContent=message;}return;}
    const request={project:selection.project,source:selection.source,id:row.id,fingerprint:row.fingerprint,agent:selection.agent};
    try{sessionStorage.setItem(key,JSON.stringify(request));pending=request;}catch{$('claude-import-status').textContent='요청을 보관하지 못해 시작하지 않았습니다.';return;}

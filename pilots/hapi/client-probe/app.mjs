@@ -885,6 +885,15 @@ try{selectedProject=sessionStorage.getItem('maricode-project')||'';}catch{}
 const claudeImportPanel=workspaceLayout?createClaudeImportPanel({element:$('claude-import-panel'),api,
  context:()=>({connectionState:draftAccount?.agent===$('task-agent').value?(draftAccount.loading?'checking':draftAccount.provider?.state):'checking',mode:draftSessionMode,agent:$('task-agent').value,project:draftProject,path:projectCatalog.find(p=>p.key===draftProject)?.path,general:projectCatalog.find(p=>p.key===draftProject)?.general,projectAvailable:taskProjectsReady&&projectCatalog.some(p=>p.key===draftProject),busy:busy||taskCreating}),
  changed:value=>{taskCreating=value;busy=value;render();renderTaskCreation();},
+ // A conversation already in Maricode: just go to it. It may never have been imported (no imported-history)
+ // and is not resumed here; a hidden one is explained instead of silently failing.
+ openExisting:async id=>{
+  await openWorkspace();
+  const entry=allSessionEntries.find(s=>s.id===id);
+  if(!entry)throw Object.assign(Error('Maricode 대화 목록에서 이 대화를 찾지 못했습니다. 목록 옆 새로고침 후 다시 시도하세요.'),{shown:true});
+  if(entry.hidden)throw Object.assign(Error('숨긴 대화입니다. 왼쪽 보기 설정에서 숨긴 대화를 표시한 뒤 열어 주세요.'),{shown:true});
+  await selectSession(id);$('new-task-panel').hidden=true;workspaceDrawer(false);
+ },
  opened:async(id,agent)=>{
   // Codex imports land as ordinary HAPI messages; only Claude keeps a separate imported-history snapshot.
   if(agent!=='codex'){const previous=await api('/api/sessions/'+encodeURIComponent(id)+'/import-history');

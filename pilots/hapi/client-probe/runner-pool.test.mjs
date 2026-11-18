@@ -94,3 +94,11 @@ test('overlapping workspace reads share only the same authorization and never re
  await assert.rejects(pool.workspace('Bearer denied'),/denied/);
  await assert.rejects(pool.workspace('Bearer denied'),/denied/);assert.equal(reads,5);
 });
+test('each Runner judges "already in Maricode" by the full list Maricode shows across all Runners',async t=>{
+ const {mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path');
+ const dir=await mkdtemp(join(tmpdir(),'pool-visible-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const configs=[];const pool=createRunnerPool({directory:join(dir,'runner'),projectsPath:join(dir,'projects'),hubUrl:'http://127.0.0.1:1'},{sweepMs:0,createUnit:cfg=>{configs.push(cfg);return {workspace:async()=>[{id:'shown-1'},{id:'shown-2',hidden:true}],close:async()=>{}};}});
+ t.after(()=>pool.close());
+ assert.equal(typeof configs[0].visibleSessions,'function');
+ assert.deepEqual(await configs[0].visibleSessions('Bearer x'),['shown-1','shown-2']);
+});

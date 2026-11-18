@@ -532,7 +532,7 @@ test('workspace reads authorize once and keep history for missing folders withou
 });
 
 // A conversation already open in Maricode (any of this Mac's runners) is opened again, never re-registered.
-async function importFixture(t,agent,sessionsFor){
+async function importFixture(t,agent,sessionsFor,visible){
  const {createServer}=await import('node:http'),{randomUUID}=await import('node:crypto'),{accountProfiles}=await import('./account-profiles.mjs'),{projectRegistry}=await import('./project-registry.mjs');
  const root=await mkdtemp(join(tmpdir(),'maricode-import-existing-')),source=join(root,'cli');await mkdir(source);
  const c={directory:join(root,'runner'),accountConfig:join(root,'accounts'),projectsPath:join(root,'projects'),binary:'/bin/echo',tokenFile:join(root,'token')};
@@ -541,6 +541,7 @@ async function importFixture(t,agent,sessionsFor){
  const hub=createServer((req,res)=>{if(req.url==='/cli/sessions'){posts++;return res.writeHead(500).end('{}');}if(req.url==='/api/sessions')return res.end(JSON.stringify({sessions:sessionsFor(p.path,nativeId)}));res.writeHead(404).end('{}');});
  await new Promise(r=>hub.listen(0,'127.0.0.1',r));c.hubUrl=`http://127.0.0.1:${hub.address().port}`;
  t.after(()=>{hub.closeAllConnections();hub.close();return rm(root,{recursive:true,force:true});});
+ if(visible)c.visibleSessions=async auth=>{assert.equal(auth,'Bearer fixture');return visible;};
  let starts=0;const service=createRunnerSetup(c,{prepare:async()=>{starts++;throw Error('private runner detail');},launch:async()=>{starts++;throw Error('must not launch');}});
  return {service,input:{project:p.id,source,id:nativeId,fingerprint:'0'.repeat(64)},get starts(){return starts;},get posts(){return posts;}};
 }
@@ -567,4 +568,13 @@ test('import lists mark conversations already in this Mac\'s Hub for the same fo
  const f=await importFixture(t,'codex',(path,id)=>[{id:'elsewhere',metadata:{flavor:'codex',path:path+'-elsewhere',agentSessionId:id}},{id:'claude-one',metadata:{flavor:'claude',path,claudeSessionId:id}},{id:'existing-session',metadata:{flavor:'codex',path,machineId:'m-old',codexSessionId:id}}]);
  const {realpath}=await import('node:fs/promises'),path=await realpath(join(f.input.source,'..'));
  assert.deepEqual(await f.service.existingImports('Bearer fixture','codex',path,[{id:f.input.id,title:'a'},{id:'other',title:'b'}]),[{id:f.input.id,title:'a',existingId:'existing-session'},{id:'other',title:'b'}]);
+});
+
+for(const agent of ['codex','claude'])test(`${agent}: a session Maricode does not list (an earlier runner's machine) is not "already here"; it can be imported again`,async t=>{
+ const f=await importFixture(t,agent,(path,id)=>[{id:'listed-other',metadata:{flavor:agent,path,machineId:'current',agentSessionId:'00000000-0000-4000-8000-000000000000'}},{id:'old-runner-session',metadata:{flavor:agent,path,machineId:'old',agentSessionId:id}}],['listed-other']);
+ await assert.rejects(f.service[agent+'Import']('Bearer fixture',f.input,'import'),e=>e.rejected===true&&e.reason==='IMPORT_RUNNER_PREPARE','goes on to a normal import instead of opening an invisible session');
+});
+for(const agent of ['codex','claude'])test(`${agent}: a listed session (shown or hidden in Maricode) is still opened instead of imported`,async t=>{
+ const f=await importFixture(t,agent,(path,id)=>[{id:'listed',metadata:{flavor:agent,path,machineId:'current',agentSessionId:id}}],['listed']);
+ assert.deepEqual(await f.service[agent+'Import']('Bearer fixture',f.input,'import'),{state:'registered',id:'listed',existing:true});assert.equal(f.starts,0);
 });

@@ -238,15 +238,17 @@ export function createRunnerSetup(config,{prepare=prepareRunner,launch=launchRun
    const available=await api.workspace(authorization),session=available.find(s=>s.id===id);if(!session)throw Error('등록된 세션을 선택하세요.');
    return claudeImports({directory:shared+'.claude-imports',project:session.project,machineId:await machineId(c)}).history(id,before);
   },
-  // A conversation already in this Mac's Hub for the same folder (on any runner of this Mac,
-  // archived or not) is the import result: open it, never register or prepare a duplicate.
+  // A conversation Maricode lists for the same folder (on any runner of this Mac, archived or hidden)
+  // is the import result: open it, never register or prepare a duplicate. Hub sessions of an earlier
+  // runner's machine are not listed by Maricode and cannot be opened, so they do not count.
   async existingImport(authorization,agent,path,nativeId){
    return (await api.existingImports(authorization,agent,path,[{id:nativeId}]))[0].existingId??null;
   },
   // Import lists read the CLI history folder, which also holds conversations already in Maricode: mark them.
   async existingImports(authorization,agent,path,rows){
    const list=await authorize(authorization),key=agent==='codex'?'codexSessionId':'claudeSessionId';
-   return rows.map(row=>{const id=list.sessions?.find(s=>s.metadata?.flavor===agent&&s.metadata?.path===path&&(s.metadata?.[key]??s.metadata?.agentSessionId)===row.id)?.id;return id?{...row,existingId:id}:row;});
+   const listed=c.visibleSessions?new Set(await c.visibleSessions(authorization)):null;
+   return rows.map(row=>{const id=list.sessions?.find(s=>s.metadata?.flavor===agent&&s.metadata?.path===path&&(s.metadata?.[key]??s.metadata?.agentSessionId)===row.id&&(!listed||listed.has(s.id)))?.id;return id?{...row,existingId:id}:row;});
   },
   async claudeImport(authorization,input,action){
    await authorize(authorization);

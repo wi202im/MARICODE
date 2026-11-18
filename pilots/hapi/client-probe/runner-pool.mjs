@@ -18,10 +18,12 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
  async function load(){try{const a=JSON.parse(await readFile(file,'utf8'));return {rows:a.rows??{},requests:a.requests??{}};}catch(e){if(e.code==='ENOENT')return {rows:{},requests:{}};throw e;}}
  // Serialized read-modify-write; the file is replaced atomically.
  function update(fn){const next=saving.then(async()=>{const a=await load();if(await fn(a)===false)return a;const tmp=file+'.'+randomUUID()+'.tmp';await writeFile(tmp,JSON.stringify(a)+'\n',{mode:0o600,flag:'wx'});await rename(tmp,file);return a;});saving=next.catch(()=>{});return next;}
- const primary=createUnit({...config,excludeKeys:async()=>Object.keys((await load()).rows)},'primary');
+ // What Maricode lists (all Runners); an import only treats these as conversations already here.
+ const visibleSessions=async auth=>(await pool.workspace(auth)).map(s=>s.id);
+ const primary=createUnit({...config,visibleSessions,excludeKeys:async()=>Object.keys((await load()).rows)},'primary');
  function unit(id){
   if(!/^[a-f0-9-]{36}$/.test(id))throw Error('Invalid Runner assignment');
-  if(!units.has(id))units.set(id,createUnit({...config,directory:config.directory+'.project-'+id,shared:config.directory,
+  if(!units.has(id))units.set(id,createUnit({...config,visibleSessions,directory:config.directory+'.project-'+id,shared:config.directory,
    // Roots are exactly the folders assigned to this Runner, including the one it is starting for.
    roots:async project=>{const a=await update(a=>{if(!project||a.rows[project])return false;a.rows[project]=id;});
     const paths=[];for(const [key,owner] of Object.entries(a.rows))if(owner===id)try{paths.push(await pathOf(key));}catch{/* A missing folder does not block the others. */}
@@ -49,7 +51,7 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
  const timer=sweepMs?setInterval(()=>sweepIdle().catch(()=>{}),sweepMs).unref():null;
  const scoped=scope=>typeof scope==='string'?forRow(scope,undefined,{create:false}):scope?.session?bySession(scope.session):primary;
  const pass=name=>(...args)=>primary[name](...args);
- return {
+ const pool={
   projects:pass('projects'),generalChat:pass('generalChat'),workspaceChoices:pass('workspaceChoices'),accountProfiles:pass('accountProfiles'),
   prepare:pass('prepare'),start:pass('start'),stop:pass('stop'),reprepare:pass('reprepare'),sessionTerminalStatus:pass('sessionTerminalStatus'),
   async assignedElsewhere(){return Object.keys((await load()).rows);},
@@ -102,4 +104,5 @@ export function createRunnerPool(config,{createUnit=cfg=>createRunnerSetup(cfg),
   },
   async close(){clearInterval(timer);const errors=[];for(const u of await all())try{await u.close();}catch(e){errors.push(e);}if(errors.length)throw errors[0];}
  };
+ return pool;
 }

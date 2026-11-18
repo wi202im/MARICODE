@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createClaudeImportPanel,nativeClaudeSourcePicker,createImportedHistory} from './claude-import-ui.mjs';
 
-function fixture(pickSource,respond=()=>({sessions:[],status:"empty"}),opened=()=>{}){
+function fixture(pickSource,respond=()=>({sessions:[],status:"empty"}),opened=()=>{},openExisting){
  const nodes=new Map(),get=id=>{if(!nodes.has(id))nodes.set(id,{value:'',checked:false,disabled:false,hidden:false,textContent:'',replaceChildren(...rows){this.rows=rows;},click(){if(!this.disabled)return this.onclick?.();}});return nodes.get(id);};
  const element={open:false,hidden:true,querySelector:s=>get(s.slice(1)),addEventListener(){}};
  const store=new Map();globalThis.sessionStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};globalThis.document={createElement:()=>({})};
  const c={agent:'claude',project:'one',path:'/fixture/project',projectAvailable:true,busy:false,mode:'import'},requests=[];
- const panel=createClaudeImportPanel({element,pickSource,context:()=>c,changed(){},opened,api:async(path,options)=>{requests.push({path,...options.body});return respond(options.body,path);}});
+ const panel=createClaudeImportPanel({element,pickSource,context:()=>c,changed(){},opened,...(openExisting?{openExisting}:{}),api:async(path,options)=>{requests.push({path,...options.body});return respond(options.body,path);}});
  panel.configure(true);return {get,c,requests,panel,store,element};
 }
 test('selected profile searches the current workspace once; cancel preserves the previous path',async()=>{
@@ -131,4 +131,17 @@ test('a listed conversation already in Maricode is labelled and opened directly 
  assert.equal(f.get('claude-import-start').textContent,'기존 대화 열기');assert.equal(f.get('claude-import-start').disabled,false);
  await f.get('claude-import-start').onclick();
  assert.deepEqual(opened,[id,'claude']);assert.equal(f.requests.length,1);assert.equal(f.panel.pending,false);assert.equal(f.store.size,0);
+});
+
+test('opening a conversation already in Maricode only selects it: no imported-history check, no resume, and the reason is shown',async()=>{
+ const id='33333333-3333-4333-8333-333333333333';let imported=0,selected=[];let fail=null;
+ const f=fixture(null,(_,path)=>path.endsWith('/list')?{sessions:[{id:'source',title:'Here',importable:true,fingerprint:'abc',existingId:id}],searched:{source:'/fixture'}}:assert.fail('no import request'),async()=>{imported++;},async(selectedId,agent)=>{if(fail)throw fail;selected.push([selectedId,agent]);});
+ await f.get('claude-import-find').onclick();f.get('claude-import-select').value='source';f.panel.render();
+ assert.equal(f.get('claude-import-start').textContent,'기존 대화 열기');
+ await f.get('claude-import-start').onclick();
+ assert.deepEqual(selected,[[id,'claude']]);assert.equal(imported,0);assert.match(f.get('claude-import-status').textContent,/이미 Maricode에 있는 대화를 열었습니다/);
+ fail=Object.assign(Error('숨긴 대화입니다. 왼쪽 보기 설정에서 숨긴 대화를 표시한 뒤 열어 주세요.'),{shown:true});
+ await f.get('claude-import-start').onclick();assert.match(f.get('claude-import-status').textContent,/숨긴 대화입니다/);
+ fail=Error('internal detail');await f.get('claude-import-start').onclick();assert.match(f.get('claude-import-status').textContent,/기존 대화를 열지 못했습니다/);assert.ok(!f.get('claude-import-status').textContent.includes('internal'));
+ assert.equal(f.requests.filter(r=>!r.path.endsWith('/list')).length,0);
 });
