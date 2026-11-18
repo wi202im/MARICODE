@@ -41,7 +41,8 @@ export async function startFakeHub({project,port=0}){
  const text=async req=>{let b='';for await(const c of req)b+=c;return b;};
  let question={q1:{tool:'AskUserQuestion',arguments:{questions:[{question:'어디에 배포할까요?',header:'배포',multiSelect:false,options:[{label:'스테이징',description:'먼저 확인'},{label:'운영'}]}]},createdAt:Date.now()}};
  const flavor=id=>id===ids.codex?'codex':'claude';
- const session=id=>({id,active:true,activeAt:Date.now(),updatedAt:Date.now(),thinking:id===ids.busy&&globalThis.uxBusyThinking!==false,metadata:{path:project,flavor:flavor(id),machineId:'ux-mac',host:'ux-mac',name:sessionList.find(s=>s.id===id)?.label},
+ // globalThis.uxCodexEnded: the Codex session is ended until resumed (model list scenario).
+ const session=id=>({id,active:!(id===ids.codex&&globalThis.uxCodexEnded),activeAt:Date.now(),updatedAt:Date.now(),thinking:id===ids.busy&&globalThis.uxBusyThinking!==false,metadata:{path:project,flavor:flavor(id),machineId:'ux-mac',host:'ux-mac',name:sessionList.find(s=>s.id===id)?.label},
   agentState:{requests:id===ids.question?question:{},controlledByUser:false},permissionMode:'default',modelMode:'default'});
  const messages=id=>id===ids.claude?claudeMessages(project):id===ids.busy?busyMessages(project):codexMessages();
  const inside=p=>{const full=resolve(project,p||'.');if(relative(project,full).startsWith('..'))throw Error('outside');return full;};
@@ -61,6 +62,9 @@ export async function startFakeHub({project,port=0}){
    if(rest==='/messages/queued-state')return send({queuedLocalIds:[...queued],indeterminateLocalIds:[],invokedLocalMessages:[]});
    if(req.method==='DELETE'&&rest.startsWith('/messages/')){queued=new Set();return send({status:'cancelled',localId:'queued-1'});}
    if(rest==='/abort')return send({ok:true});
+   if(rest==='/resume'&&req.method==='POST'){if(id===ids.codex)globalThis.uxCodexEnded=false;return send({ok:true});}
+   // Like HAPI: Codex reports models only from a running session.
+   if(rest==='/codex-models'){if(id===ids.codex&&globalThis.uxCodexEnded){res.writeHead(409);return send({error:'Session is inactive'});}return send({success:true,models:[{id:'gpt-6.1-sol',displayName:'gpt-6.1-sol',isDefault:true,supportedReasoningEfforts:['low','medium','high']},{id:'gpt-6-astra',displayName:'gpt-6-astra'}]});}
    if(/^\/permissions\/[^/]+\/(approve|deny)$/.test(rest)){question={};return send({ok:true});}
    if(rest==='/git-diff-numstat')return send({success:true,exitCode:0,stdout:u.searchParams.get('staged')?'':'2\t1\tsrc/file-viewer.mjs\n'});
    if(rest==='/git-diff-file')return send({success:true,exitCode:0,stdout:'diff --git a/src/file-viewer.mjs b/src/file-viewer.mjs\n@@ -1,2 +1,3 @@\n-const maxTabs=8;\n+// Center file tabs\n+const maxTabs=12;\n export function open(path){ return path; }\n'});

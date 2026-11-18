@@ -145,6 +145,13 @@ export const scenarios=[
   ['질문 카드의 버튼은 제출 하나',async ui=>{const b=await ui.evaluate("[...document.querySelectorAll('.permission-card button')].filter(e=>e.offsetParent).map(e=>e.textContent.trim()).join(',')");if(b!=='제출')throw Error('보이는 버튼: '+b);return {changes:1};}],
   ['답하지 않고 거절 고르기',ui=>ui.click('답하지 않고 거절')],['제출',ui=>ui.click('.question-submit')],
   ['거절이 전달됨',async ui=>{for(let t=0;t<20;t++){if(await ui.evaluate("document.body.innerText.includes('거절을 전달했습니다')"))return {changes:1};await ui.wait(200);}throw Error('거절 전달 안내가 보이지 않음');}]]},
+ {name:'종료된 Codex 세션의 모델 바꾸기',goal:'목록이 없으면 이유와 재개 버튼을 보고, 눌러서 실제 목록을 불러온다',session:ids.codex,steps:[
+  ['세션이 종료된 상태로 모델 선택 열기',async ui=>{globalThis.uxCodexEnded=true;await ui.evaluate("location.reload();true");await ui.wait(800);await ui.login();await ui.wait(1500);await ui.click('#model-chip');await ui.expectVisible('#model-list-action',4000);
+   const r=JSON.parse(await ui.evaluate("JSON.stringify([document.getElementById('model-list-action').textContent,document.getElementById('setting-model').textContent,document.getElementById('apply-model').disabled])"));
+   if(r[0]!=='세션 재개하고 모델 목록 불러오기'||/목록 밖/.test(r[1])||r[2]!==true)throw Error('표시: '+JSON.stringify(r));return {changes:1};}],
+  ['버튼으로 재개하고 목록 불러오기',async ui=>{await ui.click('#model-list-action');for(let i=0;i<30&&await ui.evaluate("document.getElementById('setting-model').options.length")<3;i++)await ui.wait(300);
+   const r=JSON.parse(await ui.evaluate("JSON.stringify([[...document.getElementById('setting-model').options].map(o=>o.value),document.getElementById('model-list-notice').hidden,document.getElementById('apply-model').disabled])"));
+   if(!r[0].includes('gpt-6-astra')||r[1]!==true||globalThis.uxCodexEnded)throw Error('불러오기: '+JSON.stringify(r));return {changes:1};}]]},
  {name:'라이트 테마로 바꾸기',goal:'보기 설정에서 라이트를 고르고, 다시 열어도 이 기기에서 유지된다',session:ids.claude,steps:[
   ['처음은 다크',async ui=>{await ui.evaluate("localStorage.removeItem('maricode-theme');true");if(await ui.evaluate("document.documentElement.dataset.theme")!=='dark')throw Error('기본이 다크가 아님');return {changes:1};}],
   ['보기 설정에서 라이트 선택',async ui=>{await ui.click('#display-preferences summary');await ui.expectVisible('#display-theme');await ui.evaluate("(()=>{const s=document.getElementById('display-theme');s.value='light';s.dispatchEvent(new Event('change'));return true;})()");

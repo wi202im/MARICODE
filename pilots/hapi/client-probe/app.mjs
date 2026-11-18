@@ -23,7 +23,7 @@ import {icon} from './icons.mjs';
 import './vendor/vscode-elements/bundled.js';
 import {pinSummary} from './branch-rules.mjs';
 import {createPalette,createFind} from './palette.mjs';
-import {compactSettings,permissionLabel,modelReadout,settingsControls,settingsDraft} from './settings.mjs';
+import {compactSettings,permissionLabel,modelReadout,settingsControls,settingsDraft,modelListNotice} from './settings.mjs';
 import {saveDeviceLogin,clearDeviceLogin,restoreDeviceLogin,refreshDeviceLogin,readDeviceLogin,deviceLabel,validServerId,deviceLoginKey} from './device-login.mjs';
 import {renderMarkdown,copyButton} from './markdown.mjs';
 import {draftRunnerLabel,draftAccountView,recentWorkspaceSession,readWorkspaceSession,saveWorkspaceSession,workspaceSelection,sessionProject,draftProjectSelection,displayPreferences,createChatDrafts,moreBelow} from './workspace-entry.mjs';
@@ -1158,6 +1158,9 @@ function renderSettings(){
  $('settings-current').textContent=modelInfo.detail+`\n서버 설정: 추론 ${label(current.effort)} / 액세스 ${permissionLabel(session?.metadata?.flavor,current.permissionMode)??'미확인'}`;
  const controls=settingsControls(session,{loaded:!!view,editable:!!view?.editable,connected,busy,loading:settingsLoading,pending:!!pending,actionPending:!!actions?.pending,permissionPending:!!permissionActions?.pending}),allowed=controls.apply;
  $('settings-reason').textContent=controls.reason;
+ // Codex gave no model list (ended session or no answer): one explicit button, never an automatic resume.
+ const nextStep=modelListNotice(view);$('model-list-notice').hidden=!nextStep;
+ if(nextStep){$('model-list-text').textContent=nextStep.text;$('model-list-action').textContent=nextStep.label;$('model-list-action').disabled=busy||settingsLoading||!connected||!!actions?.pending||!!pending;}
  for(const field of ['model','effort','permissionMode']){$(`setting-${field}`).disabled=!controls.browse;$(`apply-${field}`).disabled=!allowed||!settingsData?.[field==='model'?'models':field==='effort'?'efforts':'permissionModes']?.length;}
  for(const e of settingsOwner===sessionId?settingsData?.extras??[]:[])if($(`setting-${e.field}`)){$(`setting-${e.field}`).disabled=!controls.browse;$(`apply-${e.field}`).disabled=!allowed;}
  $('load-settings').disabled=busy||settingsLoading||!connected;
@@ -1172,7 +1175,7 @@ async function loadSettings(){
   for(const field of ['model','effort','permissionMode']){
    const select=$(`setting-${field}`),options=result[field==='model'?'models':field==='effort'?'efforts':'permissionModes']??[];
    select.replaceChildren(...options.map(item=>{const o=document.createElement('option');o.value=item.value??'';o.textContent=item.label;return o;}));
-   if(!options.some(o=>o.value===result.current[field])){const o=document.createElement('option');o.value=result.current[field]??'';o.textContent=`현재: ${result.current[field]??(field==='permissionMode'?'미확인':'자동')} (목록 밖)`;o.disabled=true;select.prepend(o);}
+   if(!options.some(o=>o.value===result.current[field])){const o=document.createElement('option');o.value=result.current[field]??'';o.textContent=`현재: ${result.current[field]??(field==='permissionMode'?'미확인':'자동')}${field==='model'&&result.modelList!=='ok'?'':' (목록 밖)'}`;o.disabled=true;select.prepend(o);}
    select.value=result.current[field]??'';
   }
   $('setting-extras').replaceChildren(...(result.extras??[]).map(e=>{
@@ -1186,6 +1189,18 @@ async function loadSettings(){
   await refresh();return id===sessionId&&mine===settingsSerial;
  }catch(e){if(id===sessionId)$('settings-status').textContent=e.message;return false;}
  finally{if(mine===settingsSerial){settingsLoading=false;render();}}
+}
+async function loadModelList(){
+ const nextStep=modelListNotice(settingsOwner===sessionId?settingsData:null);
+ if(!nextStep||busy||settingsLoading||!connected||actions?.pending)return;
+ const id=sessionId,mine=epoch;
+ if(nextStep.action==='resume'){
+  let resumed=false;busy=true;render();
+  try{resumed=await resumeForAction('같은 세션을 다시 열고 있습니다. 열리면 모델 목록을 불러옵니다…');}catch(e){if(mine===epoch)notice(e.message);}finally{busy=false;render();}
+  if(id!==sessionId||mine!==epoch)return;
+  if(!resumed){$('settings-status').textContent='세션 재개를 확인하지 못해 모델 목록을 불러오지 않았습니다. 상태를 확인한 뒤 다시 시도하세요. 자동으로 다시 열지 않습니다.';return;}
+ }
+ if(await loadSettings()&&id===sessionId&&mine===epoch)$('settings-status').textContent=settingsData?.modelList==='ok'?'모델 목록을 불러왔습니다. 고른 뒤 ‘모델 적용’을 누르세요.':'모델 목록을 아직 받지 못했습니다. 잠시 뒤 다시 불러오세요.';
 }
 async function applySetting(field,fromCreation=false){
  if($(`apply-${field}`).disabled&&!(fromCreation&&taskCreating&&settingsOwner===sessionId&&settingsData?.editable))return;
@@ -1214,7 +1229,7 @@ function renderPermissionDescription(){
  const option=settingsOwner===sessionId?settingsData?.permissionModes?.find(o=>o.value===$('setting-permissionMode').value):null;
  $('permission-description').textContent=option?option.description+' 이 대화에만 적용됩니다.':'';
 }
-if(workspaceLayout){$('setting-permissionMode').onchange=renderPermissionDescription;$('apply-permissionMode').onclick=()=>applySetting('permissionMode');$('load-settings').onclick=loadSettings;$('apply-model').onclick=()=>applySetting('model');$('apply-effort').onclick=()=>applySetting('effort');}
+if(workspaceLayout){$('setting-permissionMode').onchange=renderPermissionDescription;$('apply-permissionMode').onclick=()=>applySetting('permissionMode');$('load-settings').onclick=loadSettings;$('model-list-action').onclick=loadModelList;$('apply-model').onclick=()=>applySetting('model');$('apply-effort').onclick=()=>applySetting('effort');}
 
 let accountsBusy=false;
 async function refreshAccounts(){

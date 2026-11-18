@@ -34,7 +34,9 @@ export function settingsView(session,catalog){
   if(chosen?.serviceTiers?.includes('fast'))extras.push({field:'serviceTier',label:'속도',current:session.serviceTier==='fast'?'fast':'standard',options:[{value:'standard',label:'표준'},{value:'fast',label:'Fast · 사용량 더 소모'}]});
  }
  if(flavor==='codex')extras.push({field:'collaborationMode',label:'협업 방식',current:session?.collaborationMode==='plan'?'plan':'default',options:[{value:'default',label:'기본'},{value:'plan',label:'계획 먼저'}]});
- return {flavor,current,editable,models,efforts,extras,permissionModes:(permissionOptions[flavor]??[]).map(([value,label,description])=>({value,label,description})),source:flavor==='claude'?(listed?.length?'실행 컴퓨터의 Claude가 알려준 모델 목록 · 선택한 모델의 추론 수준':'기본 목록(0.33.3 기준) · 계정에 따라 쓸 수 없는 모델이 있을 수 있습니다'):'실행 에이전트의 모델 목록 · 선택한 모델의 추론 수준',scope:'이 세션의 다음 요청부터 사용합니다. 자동 값은 실제 모델·추론 수준을 확정하지 않습니다.'};
+ // Codex reports its models only from a running session (HAPI answers 409 for an ended one): say why the list is empty.
+ const modelList=flavor!=='codex'||catalog?.success&&Array.isArray(catalog.models)?'ok':session?.active===true?'unavailable':'inactive';
+ return {flavor,current,editable,models,efforts,extras,modelList,permissionModes:(permissionOptions[flavor]??[]).map(([value,label,description])=>({value,label,description})),source:flavor==='claude'?(listed?.length?'실행 컴퓨터의 Claude가 알려준 모델 목록 · 선택한 모델의 추론 수준':'기본 목록(0.33.3 기준) · 계정에 따라 쓸 수 없는 모델이 있을 수 있습니다'):'실행 에이전트의 모델 목록 · 선택한 모델의 추론 수준',scope:'이 세션의 다음 요청부터 사용합니다. 자동 값은 실제 모델·추론 수준을 확정하지 않습니다.'};
 }
 export function settingChange(session,catalog,input){
  const v=settingsView(session,catalog);
@@ -94,4 +96,11 @@ export function modelReadout(session,view,messages=[]){
  const chip=sameFamily?`${report.id} · ${report.source}`:alias&&choice===selected?`${selected} · 버전 미확인`:choice;
  const detail=`선택: ${choice}${selected&&choice!==selected?' ('+selected+')':''}${alias?' · 별칭':''}\n${report?report.source+': '+report.id:'실제 실행 모델 ID: 아직 확인되지 않음'}\n실행 기록은 그 시점에 보고된 값입니다. 다음 응답의 모델을 보장하지 않습니다.`;
  return {chip,detail,selected,report};
+}
+
+// The settings panel's notice when Codex gave no model list; the button is one explicit next step.
+export function modelListNotice(view){
+ if(view?.modelList==='inactive')return {text:'세션이 종료돼 모델 목록을 불러오지 못했습니다. 세션을 다시 열면 실행 중인 Codex의 목록을 불러옵니다.',action:'resume',label:'세션 재개하고 모델 목록 불러오기'};
+ if(view?.modelList==='unavailable')return {text:'실행 중인 Codex가 모델 목록을 알려 주지 않았습니다. 잠시 뒤 다시 불러오세요.',action:'reload',label:'모델 목록 다시 불러오기'};
+ return null;
 }

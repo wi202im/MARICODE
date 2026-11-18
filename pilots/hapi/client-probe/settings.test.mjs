@@ -107,3 +107,17 @@ test('compact settings keep effort and access meaning without treating unknown m
  assert.deepEqual(compactSettings('codex',null,null),{effort:'자동',access:'미확인',elevated:false});
  assert.deepEqual(compactSettings('unknown','custom','yolo'),{effort:'custom',access:'미확인',elevated:false});
 });
+test('a Codex session without a model list says why and offers one explicit next step',async()=>{
+ const {settingsView,modelListNotice}=await import('./settings.mjs');
+ const codex=(active,extra={})=>({active,thinking:false,model:'gpt-6.1-sol',metadata:{flavor:'codex'},agentState:{controlledByUser:false,requests:{}},...extra});
+ const listed=settingsView(codex(true),{success:true,models:[{id:'gpt-6.1-sol'},{id:'gpt-6-astra'}]});
+ assert.equal(listed.modelList,'ok');assert.equal(modelListNotice(listed),null);
+ const ended=settingsView(codex(false),null);
+ assert.equal(ended.modelList,'inactive');assert.deepEqual(ended.models,[]);
+ assert.deepEqual(modelListNotice(ended),{text:'세션이 종료돼 모델 목록을 불러오지 못했습니다. 세션을 다시 열면 실행 중인 Codex의 목록을 불러옵니다.',action:'resume',label:'세션 재개하고 모델 목록 불러오기'});
+ const failed=settingsView(codex(true),{success:false,error:'timeout'});
+ assert.equal(failed.modelList,'unavailable');
+ assert.deepEqual(modelListNotice(failed),{text:'실행 중인 Codex가 모델 목록을 알려 주지 않았습니다. 잠시 뒤 다시 불러오세요.',action:'reload',label:'모델 목록 다시 불러오기'});
+ const claude=settingsView({active:false,model:null,metadata:{flavor:'claude'},agentState:{controlledByUser:false,requests:{}}},null);
+ assert.equal(claude.modelList,'ok','Claude keeps its preset list when the account list is unavailable');assert.equal(modelListNotice(claude),null);
+});
