@@ -15,7 +15,7 @@ import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
 import {createFileMentions} from './file-mentions.mjs';
-import {turnAlerts,alertText} from './turn-alerts.mjs';
+import {turnAlerts,alertText,sessionWorking} from './turn-alerts.mjs';
 import {createBranchPin} from './branch-pin-ui.mjs';
 import {createFileTabs,fileErrorMessage} from './file-viewer.mjs';
 import {createFileTree} from './file-tree.mjs';
@@ -238,7 +238,12 @@ async function refresh(){
   if(workspaceLayout)$('messages').toggleAttribute('data-empty',!messages.length);
   if(!history.hasMore&&!firstPrompts.has(sessionId)){const first=messages.map(messageView).find(v=>v?.role==='user'&&v.text?.trim());if(first)firstPrompts.set(sessionId,first.text.trim().replace(/\s+/g,' ').slice(0,80));}
   if(confirmedDraft(messages,actions.pending,$('prompt').value.trim())){$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();}
-  if(workspaceLayout&&session?.id===sessionId&&alertSnapshots.size)alertSnapshots.set(sessionId,session);
+  if(workspaceLayout&&session?.id===sessionId){
+   if(sessionWorking(session)||session.active===false)unseenDone.delete(sessionId);
+   const alerts=turnAlerts(alertSnapshots,new Map([[sessionId,session]]),{selectedId:sessionId,visible:!document.hidden});
+   alertSnapshots.set(sessionId,session);
+   if(alerts.length)showTurnAlerts(alerts);
+  }
   if(branchTurn?.id===sessionId&&messages.some(m=>m.seq>branchTurn.seq&&m.content?.content?.type==='event'&&m.content.content.data?.type==='ready')){branchTurn=null;branchPin?.afterTurn(sessionId);}
   refreshQueue(mine);
   const previousPending=actions.pending,released=actions.reconcile(messages,session.active,session.resumeUnconfirmed);
@@ -363,7 +368,7 @@ function clearLogin(message,state='login-needed'){
   sessionTerminalEnabled=false;fileEditEnabled=false;$('terminal-offer')?.remove();attachmentComposer?.clearAll();usagePanel?.clear();questionDrafts.clear();chatDrafts.clear();if($('navigation-dialog'))closeNavigation();
   recovery?.stop();
   saveTabToken(sessionStorage,'',false);clearDeviceLogin(deviceStorage);deviceServerId='';
-  catalogSerial++;sessionCards.clear();firstPrompts.clear();catalogChecked=null;cardSignature='';
+  catalogSerial++;sessionCards.clear();firstPrompts.clear();alertSnapshots.clear();unseenDone.clear();catalogChecked=null;cardSignature='';
   epoch++;refreshSerial++;fileSerial++;streamController?.abort();clearTimeout(refreshTimer);refreshTimer=null;token='';session=null;messages=[];connected=false;permissionActions=null;
   if(workspaceLayout){$('account-list').replaceChildren();$('account-host').textContent='연결 상태를 확인해 주세요.';$('account-notice').textContent='';}
   $('workspace').hidden=true;$('login').hidden=false;fileTabs?.clear();$('messages').replaceChildren();$('file-content').textContent='';$('prompt').value='';$('handoff-note').textContent='';attachmentComposer?.clear();showConnection(state);render();notice(message);
@@ -634,7 +639,7 @@ function renderWorkspace(){
  if(empty){$('session-status').textContent='세션 없음';$('host-name').textContent=window.webkit?.messageHandlers?.maricode?'이 Mac':'연결된 컴퓨터';$('execution-target').textContent=$('host-name').textContent;$('project-name').textContent=projectCatalog.find(p=>p.key===selectedProject)?.label??'프로젝트를 추가하세요';}
 
  const query=$('search').value.trim().toLowerCase();
- const cards=trialSessions.map(c=>({config:c,...sessionPresentation({...c,firstPrompt:firstPrompts.get(c.id)},sessionCards.get(c.id)?.snapshot,{stale:sessionCards.get(c.id)?.stale}),selected:c.id===sessionId}));
+ const cards=trialSessions.map(c=>({config:c,...sessionPresentation({...c,firstPrompt:firstPrompts.get(c.id)},sessionCards.get(c.id)?.snapshot,{stale:sessionCards.get(c.id)?.stale}),selected:c.id===sessionId,unseenDone:unseenDone.has(c.id)&&c.id!==sessionId}));
 
  const groups=workspaceHierarchy(projectCatalog,cards);groups.sort((a,b)=>a.label.localeCompare(b.label));
  $('server-summary').textContent=['프로젝트 '+groups.length,projectCatalog.length?'작업공간 '+projectCatalog.length:'','대화 '+trialSessions.length].filter(Boolean).join(' · ');
@@ -669,7 +674,7 @@ function renderWorkspace(){
     const {section,children}=inline?{section:content,children:content}:header(w.key,label,w.path,w.cards.length,w.project?.key===selectedProject,onselect,w.project?()=>openNewWorkspace(w.project.key):null,w.label+'에 대화 추가','workspace',w.project?.workspaceId?{kind:'workspace',id:w.project.workspaceId,name:w.label,path:w.path,default:!w.project.parentKey}:null);
     for(const c of matches){
      const button=document.createElement('button');button.className='task';button.dataset.sessionId=c.config.id;button.title=c.engine+' · '+c.state+' · '+c.config.id;button.setAttribute('aria-current',String(c.selected));button.disabled=busy||taskCreating;
-     const dot=document.createElement('span');const status=rowStatus(c.state,unseenDone.has(c.config.id)&&!c.selected);dot.className='task-dot'+(status.dot?' '+status.dot:'');
+     const dot=document.createElement('span');const status=rowStatus(c.state,c.unseenDone);dot.className='task-dot'+(status.dot?' '+status.dot:'');
      const text=document.createElement('span'),title=document.createElement('strong'),state=document.createElement('small');const when=relativeTime(c.updatedAt);title.textContent=c.title;state.textContent=c.engine+' · '+status.label+(when?' · '+when:'');text.append(title,state);
      // Pinned: an icon on every row (branches in its tooltip); only the open session spells them out. Orange = the open session is off its branches.
      if(c.config.branchPin){const summary=pinSummary(c.config.branchPin),off=c.selected&&branchPin?.sessionId===c.config.id&&branchPin.offBranch,icon=document.createElement('span');icon.className='task-pin-icon'+(off?' off':'');icon.append(navigationBranch());icon.title=(off?'고정 목록 밖 브랜치에 있습니다 · ':'고정한 브랜치 · ')+summary;icon.setAttribute('aria-label',icon.title);title.prepend(icon);
@@ -794,7 +799,12 @@ async function refreshCatalog(){
   allSessionEntries=config.sessions;trialSessions=config.sessions.filter(s=>!s.hidden);
   results.forEach((r,i)=>{const id=config.sessions[i].id;if(id===sessionId&&session&&connected)return;sessionCards.set(id,r.status==='fulfilled'?{snapshot:r.value.session,stale:false}:{...sessionCards.get(id),stale:true});});
   $('session-select').replaceChildren(...trialSessions.map(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.label;return o;}));$('session-select').value=sessionId;
-  const snapshots=new Map(trialSessions.map(s=>[s.id,s.id===sessionId&&session?session:sessionCards.get(s.id)?.snapshot]));
+  const snapshots=new Map(trialSessions.map(s=>{
+   const card=sessionCards.get(s.id);
+   const snapshot=card?.stale?alertSnapshots.get(s.id):card?.snapshot;
+   if(sessionWorking(snapshot)||snapshot?.active===false)unseenDone.delete(s.id);
+   return [s.id,snapshot];
+  }));
   if(alertSnapshots.size)showTurnAlerts(turnAlerts(alertSnapshots,snapshots,{selectedId:sessionId,visible:!document.hidden}));
   alertSnapshots=snapshots;
   catalogChecked=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
@@ -841,7 +851,7 @@ if(workspaceLayout){
  if($('keyboard-hint'))$('keyboard-hint').textContent=(/Mac|iPhone|iPad/.test(navigator.platform)?'⌘K':'Ctrl+K')+' 명령 · Enter 전송 · Shift+Enter 줄바꿈';$('refresh-list').onclick=refreshCatalog;
  let catalogTick=0;
  setInterval(()=>{
-  const busyElsewhere=[...alertSnapshots].some(([id,s])=>(id!==sessionId||document.hidden)&&(s?.thinking||Object.keys(s?.agentState?.requests??{}).length));
+  const busyElsewhere=[...alertSnapshots].some(([id,s])=>(id!==sessionId||document.hidden)&&(sessionWorking(s)||Object.keys(s?.agentState?.requests??{}).length));
   if(!token||paused||connectionState==='denied'||(++catalogTick%3&&!busyElsewhere))return;
   // Hidden windows still check busy conversations so a finished turn can be flagged in the title.
   if(document.hidden&&!busyElsewhere)return;

@@ -120,3 +120,16 @@ test('a finished conversation not yet opened reads as done until it is opened; a
  assert.deepEqual(rowStatus('작업 중',true),{label:'작업 중',dot:'working'});
  assert.deepEqual(rowStatus('실행 종료',false),{label:'실행 종료',dot:'ended'});
 });
+
+test('sidebar pulses for background tasks after the answer ends and preserves approval priority',async()=>{
+ const {rowStatus}=await import('./workspace.mjs');
+ const config={id:'example',label:'Background work'};
+ const running={active:true,thinking:false,backgroundTaskCount:2};
+ const status=(snapshot,options)=>sessionPresentation(config,snapshot,options);
+ assert.equal(rowStatus(status(running).state,true).dot,'working');
+ assert.equal(status(running).priority,2);
+ assert.equal(rowStatus(status({...running,agentState:{requests:{one:{}}}}).state,false).dot,'amber');
+ assert.equal(rowStatus(status({...running,backgroundTaskCount:0}).state,false).dot,'');
+ assert.equal(rowStatus(status({...running,active:false}).state,false).dot,'ended');
+ assert.equal(rowStatus(status(running,{stale:true}).state,false).dot,'');
+});

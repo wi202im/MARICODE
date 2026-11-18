@@ -9,3 +9,12 @@ test('alerts fire for finished turns, new approvals and stopped runs outside the
  assert.deepEqual(turnAlerts(prev,next,{selectedId:'a',visible:true}).map(x=>x.id),['b','d']);
  assert.deepEqual(turnAlerts(prev,next,{selectedId:'a',visible:false}).map(x=>x.id),['a','b','d']);
 });
+
+test('completion waits for the last background task and does not confuse session shutdown with completion',()=>{
+ const foreground=s(true),background={...s(false),backgroundTaskCount:2};
+ const check=(before,after)=>turnAlerts(new Map([['a',before]]),new Map([['a',after]]),{selectedId:'other',visible:true}).map(a=>a.kind);
+ assert.deepEqual(check(foreground,background),[]);
+ assert.deepEqual(check(background,{...background,backgroundTaskCount:1}),[]);
+ assert.deepEqual(check(background,{...background,backgroundTaskCount:0}),['done']);
+ assert.deepEqual(check(background,s(false,{},false)),['stopped']);
+});

@@ -1,4 +1,5 @@
 import {worktreePresentation} from './git-status.mjs';
+import {sessionWorking} from './turn-alerts.mjs';
 // Titles come from the catalog as well as live detail, so an unavailable detail
 // request cannot turn every row back into the same provider placeholder.
 export function sessionTitle(config,snapshot){
@@ -11,8 +12,9 @@ export function sessionPresentation(config,snapshot,{stale=false}={}){
  const m=snapshot?.metadata??{},title=sessionTitle(config,snapshot);
  const worktree=worktreePresentation({...m,worktree:m.worktree??config.worktree});
  if(worktree&&config.worktree?.worktreePath===m.path&&config.workspaceLabel)worktree.name=config.workspaceLabel;
- const state=stale?'상태 확인 필요':!snapshot?'확인 중':!snapshot.active?'실행 종료':Object.keys(snapshot.agentState?.requests??{}).length?'승인 필요':snapshot.thinking?'작업 중':'입력 대기';
- return {active:snapshot?.active,updatedAt:snapshot?.updatedAt??config.updatedAt??config.createdAt??0,priority:!snapshot?.active?0:Object.keys(snapshot.agentState?.requests??{}).length?3:snapshot.thinking?2:1,title,workspace:config.workspaceLabel??'기본 작업공간',workspaceId:config.workspaceId??null,worktree,machineId:typeof m.machineId==='string'?m.machineId:'',host:typeof m.host==='string'?m.host:'',projectPath:typeof m.path==='string'?m.path:'',engine:m.flavor==='claude'?'Claude':m.flavor==='codex'?'Codex':config.agent==='claude'?'Claude':config.agent==='codex'?'Codex':'에이전트',shortId:config.id.slice(0,8),project:config.projectLabel??(typeof m.path==='string'?m.path.split('/').filter(Boolean).at(-1):'작업 폴더'),state};
+ const approval=Object.keys(snapshot?.agentState?.requests??{}).length>0,working=sessionWorking(snapshot);
+ const state=stale?'상태 확인 필요':!snapshot?'확인 중':!snapshot.active?'실행 종료':approval?'승인 필요':working?'작업 중':'입력 대기';
+ return {active:snapshot?.active,updatedAt:snapshot?.updatedAt??config.updatedAt??config.createdAt??0,priority:!snapshot?.active?0:approval?3:working?2:1,title,workspace:config.workspaceLabel??'기본 작업공간',workspaceId:config.workspaceId??null,worktree,machineId:typeof m.machineId==='string'?m.machineId:'',host:typeof m.host==='string'?m.host:'',projectPath:typeof m.path==='string'?m.path:'',engine:m.flavor==='claude'?'Claude':m.flavor==='codex'?'Codex':config.agent==='claude'?'Claude':config.agent==='codex'?'Codex':'에이전트',shortId:config.id.slice(0,8),project:config.projectLabel??(typeof m.path==='string'?m.path.split('/').filter(Boolean).at(-1):'작업 폴더'),state};
 }
 
 export function groupSessions(cards){
