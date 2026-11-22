@@ -9,6 +9,7 @@ export const mediaType=name=>media[ext(name)]??null;
 export function fileKind(name){
  const type=mediaType(name);if(type)return type==='application/pdf'?'pdf':type.split('/')[0];
  if(['md','markdown','mdown','mkd'].includes(ext(name)))return 'markdown';
+ if(['html','htm'].includes(ext(name)))return 'html';
  return 'text';
 }
 const aliases={js:'javascript',mjs:'javascript',cjs:'javascript',jsx:'javascript',ts:'typescript',tsx:'typescript',mts:'typescript',cts:'typescript',py:'python',rb:'ruby',rs:'rust',kt:'kotlin',kts:'kotlin',

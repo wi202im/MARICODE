@@ -86,6 +86,13 @@ export function createServer({cleanStart=false,appReset=null,pairing,deviceLogin
     try {
     // Workspace protocol is opt-in for existing unversioned clients. Reject before any side effect.
     if(req.headers['x-merry-protocol']!==undefined&&req.headers['x-merry-protocol']!=='1'){res.writeHead(426,{'Content-Type':'application/json'}).end(JSON.stringify({rejected:true,error:'workspace-update-required'}));return;}
+    if(req.method==='GET'&&u.pathname==='/html-preview'&&!u.search){
+      // Fixed shell only. Its sandboxed srcdoc inherits this policy, including inline CSS.
+      res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-src 'self'; form-action 'none'; frame-ancestors 'self'; base-uri 'none'");
+      res.setHeader('Content-Type','text/html; charset=utf-8');
+      res.end('<!doctype html><meta charset="utf-8"><title>HTML 미리보기</title><style>html,body{height:100%;margin:0}iframe{display:block;width:100%;height:100%;border:0}</style><iframe sandbox title="HTML 문서" tabindex="0"></iframe>');
+      return;
+    }
     if(u.pathname==='/desktop-connect'){
       const ownHost=`127.0.0.1:${server.address().port}`;
       const local=req.headers.host===ownHost&&['127.0.0.1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)&&!req.headers.forwarded&&!Object.keys(req.headers).some(k=>k.startsWith('x-forwarded-')||k.startsWith('tailscale-'));

@@ -3,7 +3,7 @@ import {diffLines} from './git-status.mjs';
 import {fileKind,mediaType,highlightLanguage,highlightLimit,textReadLimit} from './file-kinds.mjs';
 // Center file tabs: chat stays the first tab, files open beside it.
 // Text comes through the Hub file read; media through a short-lived link streamed by this server.
-// On this Mac's own screen an existing UTF-8 text file opens directly in the editor (CodeMirror; markdown
+// On this Mac's own screen an existing UTF-8 text file opens directly in the editor (CodeMirror; markdown and HTML
 // after choosing 원본) and is saved through
 // the server, which refuses the save when the file changed since it was loaded (hash of the loaded bytes).
 const defaultLibs={
@@ -15,6 +15,8 @@ const defaultLibs={
 export const editLimit=1024*1024;
 const sha256=async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');
 const maxTabs=12;
+const hasReadingMode=kind=>kind==='markdown'||kind==='html';
+const readingLabel=kind=>kind==='html'?'미리보기':'보기';
 export const formatBytes=n=>n<1024?`${n} B`:n<1024**2?`${(n/1024).toFixed(1)} KB`:n<1024**3?`${(n/1024**2).toFixed(1)} MB`:`${(n/1024**3).toFixed(1)} GB`;
 // A link inside a project file, resolved against that file; null when it leaves the folder or is not a path.
 // A 403 here means the path (often a broken symbolic link) cannot be reached.
@@ -77,6 +79,23 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   }
   return box;
  }
+ function htmlView(text,t){
+  const frame=el('iframe');frame.title=t.path+' · HTML 미리보기';
+  frame.onload=()=>{
+   const shell=frame.contentDocument,preview=shell?.querySelector('iframe[sandbox]');
+   if(!preview)return;
+   // Parse into an inert template and strip navigation before the sandbox parses the result.
+   const template=shell.createElement('template');
+   template.innerHTML=text;
+   for(const node of template.content.querySelectorAll('script, noscript, base, meta, link, iframe, frame, object, embed, portal, fencedframe, template, animate, animateMotion, animateTransform, set'))node.remove();
+   for(const node of template.content.querySelectorAll('[href], [xlink\\:href]')){
+    node.removeAttribute('href');node.removeAttribute('xlink:href');
+   }
+   preview.srcdoc='<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="frame-src \'none\'">'+template.innerHTML;
+  };
+  frame.src='/html-preview';
+  return frame;
+ }
  const mediaLink=path=>api(base()+'/file-link?path='+encodeURIComponent(path)).then(r=>r.url);
  async function body(t){
   if(t.diff!==undefined){const pre=el('pre',undefined,'diff-view');for(const l of diffLines(t.diff))pre.append(el('span',l.text,'diff-'+l.kind));return pre;}
@@ -94,6 +113,7 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   if(bytes.subarray(0,8000).includes(0))return el('p','텍스트가 아닌 파일이라 미리보기를 지원하지 않습니다.','file-view-note');
   t.text=new TextDecoder().decode(bytes);t.hash=editable()&&save&&bytes.length<=editLimit?await sha256(bytes):null;
   if(kind==='markdown'&&t.mode!=='source')return markdownView(t.text,t);
+  if(kind==='html'&&t.mode!=='source')return htmlView(t.text,t);
   if(canEdit(t)&&!mixedLineEnds(t.text))return null; // shown in the editor by load()
   return codeView(t.text,t.path);
  }
@@ -102,16 +122,17 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
  const canEdit=t=>editable()&&!!save&&t.diff===undefined&&typeof t.hash==='string';
  async function load(t){
   const mine=++serial;t.loading=mine;
+  const kind=fileKind(t.path),toggle=t.diff===undefined&&hasReadingMode(kind),reading=toggle&&t.mode!=='source';
   const head=el('div',undefined,'file-pane-head'),title=el('strong',t.label??t.path),meta=el('small',t.size?formatBytes(t.size):'');title.title=t.path;
   // The file's mode lives in its own header (not the bottom notice, which would cover video controls).
-  const mode=el('small',t.diff===undefined&&fileKind(t.path)==='markdown'&&t.mode!=='source'&&editable()&&save?'보기 · 원본에서 편집':'읽기 전용','file-mode');
+  const mode=el('small',reading?(editable()&&save?readingLabel(kind)+' · 원본에서 편집':readingLabel(kind)+' · 읽기 전용'):'읽기 전용','file-mode');
   head.append(title,mode,meta);
-  if(t.diff===undefined&&fileKind(t.path)==='markdown'){const mode=el('button',t.mode==='source'?'보기':'원본');mode.type='button';mode.onclick=()=>{t.mode=t.mode==='source'?'view':'source';load(t);};head.append(mode);}
+  if(toggle){const mode=el('button',reading?'원본':readingLabel(kind));mode.type='button';mode.onclick=()=>{t.mode=reading?'source':'view';load(t);};head.append(mode);}
   const reload=el('button','새로고침');reload.type='button';reload.onclick=()=>load(t);head.append(reload);
   const content=el('div',undefined,'file-pane-body');content.append(el('p','불러오는 중…','file-view-note'));
   t.pane.replaceChildren(head,content);t.content=content;
   try{const b=await body(t);if(t.loading!==mine)return;if(b===null)return startEdit(t);meta.textContent=t.size?formatBytes(t.size):'';
-   if(canEdit(t)&&fileKind(t.path)!=='markdown'||canEdit(t)&&t.mode==='source')content.replaceChildren(el('p','줄바꿈 형식(CRLF·LF)이 섞인 파일이라 형식이 바뀌지 않도록 읽기 전용으로 엽니다.','file-view-note'),b);else content.replaceChildren(b);}
+   if(canEdit(t)&&!reading)content.replaceChildren(el('p','줄바꿈 형식(CRLF·LF)이 섞인 파일이라 형식이 바뀌지 않도록 읽기 전용으로 엽니다.','file-view-note'),b);else content.replaceChildren(b);}
   catch(e){if(t.loading!==mine)return;content.replaceChildren(el('p',fileErrorMessage(e),'file-view-note error'));}
  }
  async function startEdit(t){
@@ -120,8 +141,9 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   const head=el('div',undefined,'file-pane-head'),title=el('strong',t.path),state=el('small','','file-edit-state'),saveButton=el('button','저장'),reload=el('button','새로고침');
   title.title=t.path;saveButton.type=reload.type='button';head.append(el('small','편집 중 · ⌘S 저장','file-mode'));saveButton.title='저장 (⌘S)';reload.title='디스크의 최신 내용으로 다시 엽니다';saveButton.disabled=true;head.append(title,state,saveButton);
   // Leaving the editor (markdown view, reload) asks first when there are unsaved edits.
-  const leave=next=>{if(t.dirty&&!ask(discard))return;t.editor?.destroy();t.editor=null;t.editing=false;t.dirty=false;next();load(t);};
-  if(fileKind(t.path)==='markdown'){const view=el('button','보기');view.type='button';view.onclick=()=>leave(()=>{t.mode='view';});head.append(view);}
+  const leave=next=>{if(t.saving||t.dirty&&!ask(discard))return;t.editor?.destroy();t.editor=null;t.editing=false;t.dirty=false;next();load(t);};
+  const kind=fileKind(t.path);
+  if(hasReadingMode(kind)){const view=el('button',readingLabel(kind));view.type='button';view.onclick=()=>leave(()=>{t.mode='view';});head.append(view);}
   head.append(reload);
   const content=el('div',undefined,'file-pane-body file-editor');t.pane.replaceChildren(head,content);
   const status=(text,error=false)=>{state.textContent=text;state.className='file-edit-state'+(error?' error':'');};

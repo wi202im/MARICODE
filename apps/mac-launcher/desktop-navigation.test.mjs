@@ -78,6 +78,9 @@ assert(!desktopSetupNeedsKey(URL(string: "https://mini.tail123.ts.net/setup")!, 
 // Outside pages never load inside the app view: user clicks open the browser, everything else is dropped.
 assert(desktopNavigation(URL(string: "http://127.0.0.1:61192/workspace")!, mainFrame: true, linkActivated: true) == .allow)
 assert(desktopNavigation(URL(string: "about:blank")!, mainFrame: false, linkActivated: false) == .allow)
+assert(desktopNavigation(URL(string: "about:srcdoc")!, mainFrame: false, linkActivated: false) == .allow)
+assert(desktopNavigation(URL(string: "about:srcdoc")!, mainFrame: true, linkActivated: false) == .cancel)
+assert(desktopNavigation(URL(string: "about:srcdoc")!, mainFrame: nil, linkActivated: false) == .cancel)
 assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: true, linkActivated: true) == .openExternally)
 assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: true, linkActivated: false) == .cancel)
 assert(desktopNavigation(URL(string: "https://example.com/")!, mainFrame: false, linkActivated: true) == .cancel)

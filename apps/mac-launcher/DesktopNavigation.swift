@@ -78,6 +78,7 @@ enum DesktopNavigationDecision { case allow, openExternally, cancel }
 func desktopNavigation(_ target: URL, mainFrame: Bool?, linkActivated: Bool) -> DesktopNavigationDecision {
     if target.scheme == "http" && target.host == "127.0.0.1" && target.port == 61192 { return .allow }
     if target.absoluteString == "about:blank" { return .allow }
+    if target.absoluteString == "about:srcdoc" && mainFrame == false && !linkActivated { return .allow }
     if target.scheme == "https" && mainFrame != false && linkActivated { return .openExternally }
     return .cancel
 }

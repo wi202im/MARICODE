@@ -623,3 +623,21 @@ test('branch remote check and pull reach the session Runner with only the sessio
  assert.equal((await fetch(url+'/api/branch-pull',{method:'POST',headers:{...auth,origin:'https://evil.example','content-type':'application/json'},body:'{}'})).status,403);
  assert.deepEqual(calls,[['remote','Bearer synthetic',sid],['pull','Bearer synthetic',{id:sid,repos:['api']}]]);
 });
+
+test('the HTML preview shell permits inline styles only inside its isolated frame',async t=>{
+ const server=createServer({upstream:'http://127.0.0.1:1',sessionId:id});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(()=>{server.closeAllConnections();server.close();});
+ const origin='http://127.0.0.1:'+server.address().port;
+ const shell=await fetch(origin+'/html-preview');
+ assert.equal(shell.status,200);
+ const policy=shell.headers.get('content-security-policy');
+ assert.match(policy,/default-src 'none'/);
+ assert.match(policy,/style-src 'unsafe-inline'/);
+ assert.match(policy,/frame-ancestors 'self'/);
+ assert.match(policy,/form-action 'none'/);
+ assert.match(await shell.text(),/<iframe sandbox(?:\s|>)/);
+ const workspace=await fetch(origin+'/workspace');
+ assert.match(workspace.headers.get('content-security-policy'),/style-src 'self'/);
+ await workspace.text();
+});

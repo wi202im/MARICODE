@@ -147,3 +147,38 @@ test('opening a file does not use the bottom notice; its mode is shown in the ta
  assert.deepEqual(notes,[]);
  assert.equal(deep(view,n=>n.className==='file-mode')?.textContent,'읽기 전용');
 });
+
+test('HTML opens in a preview, and its source uses the existing editor and discard confirmation',async()=>{
+ const html='<!doctype html><h1>Preview <em>title</em></h1>';
+ const s=editSetup({'docs/sample.HTM':html});
+ s.tabs.open('docs/sample.HTM');
+ await waitFor(()=>s.inView(n=>n.tag==='iframe'||n.className==='file-editor'));
+ const frame=s.inView(n=>n.tag==='iframe');
+ assert.equal(frame?.src,'/html-preview');
+ assert.equal(s.editor,null);
+ s.button('원본').onclick();
+ await waitFor(()=>s.editor);
+ assert.equal(s.editor.text,html);
+ s.editor.text='<h1>Edited</h1>';s.editor.onChange();
+ s.button('미리보기').onclick();
+ assert.equal(s.editor.destroyed,false);
+ assert.equal(s.asks.length,1);
+ s.answer=true;
+ s.button('미리보기').onclick();
+ await waitFor(()=>s.inView(n=>n.tag==='iframe'));
+ assert.equal(s.editor.destroyed,true);
+ assert.equal(s.saves.length,0);
+});
+
+test('a remote HTML file can toggle back to a read-only source',async()=>{
+ const html='<p>HTML document</p>';
+ const s=editSetup({'page.html':html},{editable:false});
+ s.tabs.open('page.html');
+ await waitFor(()=>s.inView(n=>n.tag==='iframe'));
+ s.button('원본').onclick();
+ await waitFor(()=>s.inView(n=>n.tag==='code'));
+ assert.equal(s.inView(n=>n.tag==='code').textContent,html);
+ assert.equal(s.button('저장'),undefined);
+ s.button('미리보기').onclick();
+ await waitFor(()=>s.inView(n=>n.tag==='iframe'));
+});
