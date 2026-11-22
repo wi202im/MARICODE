@@ -11,6 +11,7 @@ import {createAttachmentComposer} from './attachment-composer.mjs';
 import {fitPreviews} from './attachments.mjs';
 import {createUsagePanel} from './usage-panel.mjs';
 import {readTheme,applyTheme,setTheme} from './theme.mjs';
+import {createNotice} from './notice.mjs';
 import {renderConversation,renderTool,renderEdit} from './chat-render.mjs';
 import {formatDuration,describeTool,contextUsage} from './chat-presentation.mjs';
 import {createCommandSuggest} from './composer-commands.mjs';
@@ -63,7 +64,8 @@ serverLabel.textContent=location.origin;connectionLabel.setAttribute('role','sta
 connectionBanner.append(serverLabel,connectionLabel,reconnectButton);if(!workspaceLayout)document.body.prepend(connectionBanner);
 function showConnection(state){connectionState=state;const dot=document.querySelector('.host .dot');if(dot){dot.dataset.state=state;dot.title=connectionLabels[state]??state;}connectionLabel.textContent=connectionLabels[state]??state;if($('connection')){$('connection').textContent=connectionLabel.textContent;$('connection').dataset.connectionState=state;}reconnectButton.disabled=!token||['restoring','connecting'].includes(state);}
 const pendingKey=()=>`hapi-d1-pending:${sessionId}`;
-const notice=text=>{$('notice').textContent=text;};
+// Bottom notice: { fade: true } only for simple confirmations (see notice.mjs).
+const notice=createNotice($('notice'));
 // Success confirmations would otherwise sit in the status strip long after the reply arrives.
 const briefNotice=text=>{notice(text);setTimeout(()=>{if($('notice').textContent===text)notice('');},5000);};
 function renderHistorySummary(){
@@ -251,7 +253,7 @@ async function refresh(){
   if(released==='resume-not-started')notice('재개가 시작되지 않았습니다. AI 연결·로그인 상태와 원래 기록을 확인한 뒤 메시지를 다시 보내 주세요. 자동으로 다시 시도하지 않습니다.');
   else if(actions.pending)notice('앞서 보낸 메시지가 전달됐는지 확인하고 있습니다.');
   else if(previousPending)briefNotice(previousPending.kind==='resume'?'같은 세션을 다시 열었습니다. 대화를 이어가세요.':previousPending.kind==='archive'?'실행을 종료했습니다. 대화 기록과 파일은 보존됩니다.':'메시지가 전달됐습니다.');
-  else if(historyReset)notice('이력이 변경되거나 연결 공백이 있어 최근 이력부터 다시 불러왔습니다.');
+  else if(historyReset)notice('이력이 변경되거나 연결 공백이 있어 최근 이력부터 다시 불러왔습니다.',{fade:true});
   render();if(workspaceLayout)loadGit();return true;
 }
 function scheduleRefresh(){if(refreshTimer)return;refreshTimer=setTimeout(()=>{refreshTimer=null;refresh().catch(e=>notice(e.message));},300);}
@@ -266,7 +268,7 @@ async function stream(authEpoch){
       if(r.status===401&&authEpoch===epoch){clearLogin('로그인이 만료됐습니다. 다시 연결해 주세요.','expired');return;}
       if(!r.ok||!r.body)throw Object.assign(Error('실시간 연결 실패'),{status:r.status});
       if(authEpoch!==epoch)return;
-      if(!await refresh()||authEpoch!==epoch)return;connected=true;showConnection('live');if($('notice').textContent==='연결이 끊겼습니다. 재연결 후 서버 상태와 이력을 다시 확인합니다.')notice('다시 연결했습니다. 서버 상태와 대화 이력을 확인했습니다.');render();touch();
+      if(!await refresh()||authEpoch!==epoch)return;connected=true;showConnection('live');if($('notice').textContent==='연결이 끊겼습니다. 재연결 후 서버 상태와 이력을 다시 확인합니다.')notice('다시 연결했습니다. 서버 상태와 대화 이력을 확인했습니다.',{fade:true});render();touch();
       const decode=new TextDecoder();const parse=createSSEDecoder(event=>{
         if(authEpoch!==epoch)return;
         if(event.sessionId&&event.sessionId!==sessionId)return;
@@ -382,10 +384,10 @@ $('older').onclick=async()=>{
     if(cursor?.at==null||cursor?.seq==null)throw Error('이전 이력 위치를 확인하지 못했습니다.');
     const page=await api(base()+`/messages?limit=50&beforeAt=${cursor.at}&beforeSeq=${cursor.seq}`);
     if(mine!==epoch||held!==history||cursor!==history.cursor)return;
-    if(!history.older(page)){await refresh();notice('이력이 변경돼 최근 내용부터 다시 확인했습니다.');return;}
+    if(!history.older(page)){await refresh();notice('이력이 변경돼 최근 내용부터 다시 확인했습니다.',{fade:true});return;}
     const panel=$('conversation-history')??$('messages'),height=panel.scrollHeight,top=panel.scrollTop;
     messages=history.messages;render();panel.scrollTop=top+(panel.scrollHeight-height);
-    notice('이전 이력을 추가로 불러왔습니다.');
+    notice('이전 이력을 추가로 불러왔습니다.',{fade:true});
   }catch(e){if(mine===epoch)notice(e.message);}finally{if(mine===epoch){loadingHistory=false;render();}}
 };
 $('sync').onclick=()=>Promise.resolve(connectionState==='live'?refresh():reconnect()).catch(e=>notice(e.message));
@@ -509,7 +511,7 @@ async function openPath(path,kind){
       if(serial!==fileSerial||authEpoch!==epoch)return;
       if(!f.success||typeof f.content!=='string')throw Error('파일을 열 수 없습니다.');
       const bytes=Uint8Array.from(atob(f.content),c=>c.charCodeAt(0));
-      selectedFile=path;fileFeedback('');$('file-title').textContent=path;$('file-content').textContent=new TextDecoder().decode(bytes);notice('읽기 전용 파일 보기');
+      selectedFile=path;fileFeedback('');$('file-title').textContent=path;$('file-content').textContent=new TextDecoder().decode(bytes);notice('읽기 전용 파일 보기',{fade:true});
     }
   }catch(e){if(serial===fileSerial&&authEpoch===epoch)fileError(e);}
 }
@@ -1370,7 +1372,7 @@ function openNavigation(target){
 }
 async function changeNavigation(input){
  if(navigationPending)return;navigationPending=true;for(const b of $('navigation-dialog').querySelectorAll('button,input'))b.disabled=true;$('navigation-status').textContent='변경 중…';
- try{await api('/api/navigation',{method:'POST',body:input});await openWorkspace();closeNavigation();notice(input.action==='rename'?'표시 이름을 변경했습니다.':input.action==='restore'?'목록에 복원했습니다.':input.action==='delete'?'세션 기록을 삭제했습니다. CLI 원본 기록은 남아 있습니다.':'목록에서 정리했습니다. 보기 설정에서 복원할 수 있습니다.');}
+ try{await api('/api/navigation',{method:'POST',body:input});await openWorkspace();closeNavigation();notice(input.action==='rename'?'표시 이름을 변경했습니다.':input.action==='restore'?'목록에 복원했습니다.':input.action==='delete'?'세션 기록을 삭제했습니다. CLI 원본 기록은 남아 있습니다.':'목록에서 정리했습니다. 보기 설정에서 복원할 수 있습니다.',{fade:true});}
  catch(error){const text=error.message+' 응답이 끊긴 경우 목록을 새로고침해 결과부터 확인하세요.';$('navigation-status').textContent=text;if($('navigation-dialog').hidden)notice(text);}
  finally{navigationPending=false;for(const b of $('navigation-dialog').querySelectorAll('button,input'))b.disabled=false;}
 }

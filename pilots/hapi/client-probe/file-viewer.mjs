@@ -102,7 +102,10 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
  const canEdit=t=>editable()&&!!save&&t.diff===undefined&&typeof t.hash==='string';
  async function load(t){
   const mine=++serial;t.loading=mine;
-  const head=el('div',undefined,'file-pane-head'),title=el('strong',t.label??t.path),meta=el('small',t.size?formatBytes(t.size):'');title.title=t.path;head.append(title,meta);
+  const head=el('div',undefined,'file-pane-head'),title=el('strong',t.label??t.path),meta=el('small',t.size?formatBytes(t.size):'');title.title=t.path;
+  // The file's mode lives in its own header (not the bottom notice, which would cover video controls).
+  const mode=el('small',t.diff===undefined&&fileKind(t.path)==='markdown'&&t.mode!=='source'&&editable()&&save?'보기 · 원본에서 편집':'읽기 전용','file-mode');
+  head.append(title,mode,meta);
   if(t.diff===undefined&&fileKind(t.path)==='markdown'){const mode=el('button',t.mode==='source'?'보기':'원본');mode.type='button';mode.onclick=()=>{t.mode=t.mode==='source'?'view':'source';load(t);};head.append(mode);}
   const reload=el('button','새로고침');reload.type='button';reload.onclick=()=>load(t);head.append(reload);
   const content=el('div',undefined,'file-pane-body');content.append(el('p','불러오는 중…','file-view-note'));
@@ -115,7 +118,7 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
   const text=t.text,crlf=text.includes('\r\n');
   const mine=++serial;t.loading=mine;t.editing=true;t.dirty=false;
   const head=el('div',undefined,'file-pane-head'),title=el('strong',t.path),state=el('small','','file-edit-state'),saveButton=el('button','저장'),reload=el('button','새로고침');
-  title.title=t.path;saveButton.type=reload.type='button';saveButton.title='저장 (⌘S)';reload.title='디스크의 최신 내용으로 다시 엽니다';saveButton.disabled=true;head.append(title,state,saveButton);
+  title.title=t.path;saveButton.type=reload.type='button';head.append(el('small','편집 중 · ⌘S 저장','file-mode'));saveButton.title='저장 (⌘S)';reload.title='디스크의 최신 내용으로 다시 엽니다';saveButton.disabled=true;head.append(title,state,saveButton);
   // Leaving the editor (markdown view, reload) asks first when there are unsaved edits.
   const leave=next=>{if(t.dirty&&!ask(discard))return;t.editor?.destroy();t.editor=null;t.editing=false;t.dirty=false;next();load(t);};
   if(fileKind(t.path)==='markdown'){const view=el('button','보기');view.type='button';view.onclick=()=>leave(()=>{t.mode='view';});head.append(view);}
@@ -140,7 +143,7 @@ export function createFileTabs({api,base,strip,view,host,document:doc=globalThis
  function open(path,{size}={}){
   let t=tabs.find(x=>x.path===path);
   if(!t){t={path,size,mode:'view',pane:el('div',undefined,'file-pane')};tabs.push(t);if(tabs.length>maxTabs)closeTab(tabs.find(x=>x!==t));load(t);}
-  show(t);notice(editable()?'이 Mac에서는 텍스트 파일을 바로 편집합니다 · ⌘S로 저장':'읽기 전용 파일 보기');return t;
+  show(t);return t;
  }
  // A change from the chat: the diff the AI's edit made, read-only, in its own tab beside the file itself.
  function openDiff({path,diff,label,key='diff:'+path,title=`${name(path)} · 변경`}){

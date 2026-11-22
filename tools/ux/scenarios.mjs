@@ -58,6 +58,12 @@ export const scenarios=[
    if(await fs.readFile(globalThis.uxProject+'/.env','utf8')!=='CHANGED=1\n')throw Error('바뀐 파일을 덮어씀');await ui.expectVisible('.file-edit-state.error');return {changes:1};}],
   ['새로고침 전에 변경 버리기 확인',async ui=>{await ui.evaluate("window.confirm=()=>{window.__asked=(window.__asked??0)+1;return true;};true");await ui.click('.file-pane-head button[title="디스크의 최신 내용으로 다시 엽니다"]');if(await ui.evaluate("window.__asked")!==1)throw Error('변경 버리기 확인 없음');
    for(let i=0;i<20&&await ui.evaluate("document.querySelector('.cm-line')?.textContent")!=='CHANGED=1';i++)await ui.wait(150);if(await ui.evaluate("document.querySelector('.cm-line')?.textContent")!=='CHANGED=1')throw Error('최신 내용으로 다시 열리지 않음');return {changes:1};}]]},
+ {name:'파일 보기가 아래 안내에 가리지 않음',goal:'파일을 열어도 아래 안내가 뜨지 않고, 다른 안내가 떠도 파일 화면 아래쪽(동영상 재생 바 자리)이 가려지지 않는다',session:ids.claude,steps:[
+  ['README 열기',async ui=>{await ui.evaluate("document.getElementById('notice').textContent='';true");await ui.click('#info-tab');await ui.click('#files-tab');await ui.click('vscode-tree-item[data-name="README.md"]');await ui.wait(800);
+   const r=JSON.parse(await ui.evaluate("JSON.stringify([document.getElementById('notice').textContent,document.querySelector('.file-pane-head .file-mode')?.textContent])"));if(r[0]!==''||!r[1])throw Error('안내/표시: '+JSON.stringify(r));return {changes:1};}],
+  ['안내가 떠도 파일 화면 아래가 보임',async ui=>{await ui.evaluate("document.getElementById('notice').textContent='중지 요청을 확인하지 못했습니다. 상태를 다시 확인해 주세요.';true");await ui.wait(300);
+   const r=JSON.parse(await ui.evaluate("(()=>{const n=document.getElementById('notice').getBoundingClientRect(),p=document.querySelector('.file-pane').getBoundingClientRect();return JSON.stringify([Math.round(p.bottom),Math.round(n.top)]);})()"));
+   await ui.evaluate("document.getElementById('notice').textContent='';true");if(r[0]>r[1]+1)throw Error('파일 화면 아래가 안내에 가려짐: '+JSON.stringify(r));return {changes:1};}]]},
  {name:'답변 속 경로 열기',goal:'AI 답변에 적힌 파일과 폴더를 눌러 바로 연다',session:ids.claude,steps:[
   ['답변의 파일 경로 누르기',ui=>ui.click('a[data-path="src/file-viewer.mjs"]')],['가운데에 파일 탭이 열림',ui=>ui.expectVisible('.center-tab.active')],
   ['대화 탭으로 돌아가기',ui=>ui.click('.center-tab-main')],['답변의 폴더 경로 누르기',ui=>ui.click('a[data-path="docs/"]')],['파일 트리에서 폴더가 펼쳐짐',ui=>ui.expectVisible('vscode-tree-item[data-name="viewer.md"]')]]},

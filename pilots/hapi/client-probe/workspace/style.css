@@ -89,7 +89,7 @@
  body[data-layout=workspace] .live-notice{position:fixed;bottom:var(--statusbar-height);left:var(--sidebar-width);right:0;z-index:15}
  body.sidebar-collapsed:has(#workspace:not([hidden])) .live-notice{left:0}
  body:has(.workspace.inspector-visible) .live-notice{right:var(--inspector-width)}
- body:has(.live-notice:not(:empty)) .composer-wrap{padding-bottom:40px}
+ body:has(.live-notice:not(:empty)) .composer-wrap{padding-bottom:40px}body:has(.live-notice:not(:empty)) .file-view{padding-bottom:calc(var(--statusbar-height) + 48px)}
 }
 
 /* Supporting views own their tabs; the conversation remains in the center. */

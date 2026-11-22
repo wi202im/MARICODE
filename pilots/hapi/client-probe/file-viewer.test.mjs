@@ -137,3 +137,13 @@ test('file errors are told apart by status, not by the wording of the request er
  assert.match(fileErrorMessage(Object.assign(Error('x (오류 415).'),{status:415})),/재생할 수 없습니다/);
  assert.equal(fileErrorMessage(Error('다른 오류')),'다른 오류');
 });
+test('opening a file does not use the bottom notice; its mode is shown in the tab header instead',async()=>{
+ const notes=[];const doc=fakeDocument(),host=doc.createElement('section'),strip=doc.createElement('div'),view=doc.createElement('section');
+ const api=async path=>path.includes('/file-link')?{url:'/file-raw/x'}:{success:true,content:b64('x'),size:1};
+ const libs={highlight:async()=>({getLanguage:()=>false,registerLanguage(){}}),grammar:async()=>{throw Error('none');},markdown:async()=>class{render(t){return t;}}};
+ const tabs=createFileTabs({api,base:()=>'/api/sessions/s',strip,view,host,document:doc,libs,notice:m=>notes.push(m)});
+ const deep=(n,f)=>f(n)?n:n.children?.map(c=>deep(c,f)).find(Boolean);
+ tabs.open('a.txt');await settle();tabs.open('movie.mov');await settle();
+ assert.deepEqual(notes,[]);
+ assert.equal(deep(view,n=>n.className==='file-mode')?.textContent,'읽기 전용');
+});
